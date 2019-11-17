@@ -1,3 +1,8 @@
+mod app;
+mod platform;
+use app::*;
+
 fn main() {
-    println!("Hello, world!");
+    let mut vulkan_app = VulkanApp::new();
+    vulkan_app.run();
 }
