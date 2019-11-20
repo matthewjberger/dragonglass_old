@@ -3,6 +3,9 @@ mod platform;
 use app::*;
 
 fn main() {
-    let mut vulkan_app = VulkanApp::new();
-    vulkan_app.run();
+    env_logger::init();
+    match VulkanApp::new() {
+        Ok(mut app) => app.run(),
+        Err(error) => log::error!("Failed to create application. Cause: {}", error),
+    }
 }
