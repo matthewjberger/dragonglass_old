@@ -1,6 +1,9 @@
 mod app;
+mod debug;
+mod error;
 mod platform;
-use app::*;
+
+use app::VulkanApp;
 
 fn main() {
     env_logger::init();

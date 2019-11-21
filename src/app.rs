@@ -1,23 +1,16 @@
-use crate::platform;
+use crate::{debug, platform};
 use ash::{
     extensions::ext::DebugUtils,
     version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
-    vk::{
-        self, Bool32, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
-        DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerEXT, PhysicalDevice, Queue,
-    },
+    vk::{self, DebugUtilsMessengerEXT, PhysicalDevice, Queue},
     vk_make_version, Device, Entry, Instance,
 };
-use std::{error::Error, ffi::CStr, ffi::CString, os::raw::c_void, result};
+use std::{
+    error::Error,
+    ffi::{CStr, CString},
+    result,
+};
 //use winit::{ControlFlow, Event, EventsLoop, VirtualKeyCode, WindowEvent};
-
-#[cfg(debug_assertions)]
-const ENABLE_VALIDATION_LAYERS: bool = true;
-
-#[cfg(not(debug_assertions))]
-const ENABLE_VALIDATION_LAYERS: bool = false;
-
-const REQUIRED_LAYERS: [&str; 1] = ["VK_LAYER_LUNARG_standard_validation"];
 
 const WINDOW_TITLE: &str = "Vulkan Tutorial";
 // const WINDOW_WIDTH: u32 = 800;
@@ -28,19 +21,6 @@ const ENGINE_VERSION: u32 = vk_make_version!(1, 0, 0);
 const ENGINE_NAME: &str = "Sepia Engine";
 
 type Result<T> = result::Result<T, Box<dyn Error>>;
-
-unsafe extern "system" fn vulkan_debug_callback(
-    _: DebugUtilsMessageSeverityFlagsEXT,
-    _: DebugUtilsMessageTypeFlagsEXT,
-    p_callback_data: *const DebugUtilsMessengerCallbackDataEXT,
-    _: *mut c_void,
-) -> Bool32 {
-    log::debug!(
-        "Validation layer: {:?}",
-        CStr::from_ptr((*p_callback_data).p_message)
-    );
-    vk::FALSE
-}
 
 pub struct VulkanApp {
     _entry: Entry,
@@ -59,7 +39,7 @@ impl VulkanApp {
         // let window = VulkanApp::init_window(&events_loop);
 
         let (entry, instance) = Self::create_instance()?;
-        let debug_utils = Self::setup_debug_messenger(&entry, &instance)?;
+        let debug_utils = debug::setup_debug_messenger(&entry, &instance)?;
         let physical_device = Self::pick_physical_device(&instance)
             .expect("Couldn't pick a suitable physical device!");
         let (logical_device, _graphics_queue) =
@@ -91,16 +71,16 @@ impl VulkanApp {
             .build();
 
         let mut extension_names = platform::required_extension_names();
-        if ENABLE_VALIDATION_LAYERS {
+        if debug::ENABLE_VALIDATION_LAYERS {
             extension_names.push(DebugUtils::name().as_ptr());
         }
-        let (_layer_names, layer_name_ptrs) = Self::get_layer_names_and_pointers();
+        let (_layer_names, layer_name_ptrs) = debug::get_layer_names_and_pointers();
         let mut instance_create_info = vk::InstanceCreateInfo::builder()
             .application_info(&app_info)
             .enabled_extension_names(&extension_names);
 
-        if ENABLE_VALIDATION_LAYERS {
-            Self::check_validation_layer_support(&entry);
+        if debug::ENABLE_VALIDATION_LAYERS {
+            debug::check_validation_layer_support(&entry);
             instance_create_info = instance_create_info.enabled_layer_names(&layer_name_ptrs);
         }
 
@@ -108,51 +88,23 @@ impl VulkanApp {
         Ok((entry, instance))
     }
 
-    fn check_validation_layer_support(entry: &Entry) {
-        for required in REQUIRED_LAYERS.iter() {
-            let found = entry
-                .enumerate_instance_layer_properties()
-                .unwrap()
-                .iter()
-                .any(|layer| {
-                    let name = unsafe { CStr::from_ptr(layer.layer_name.as_ptr()) };
-                    let name = name.to_str().expect("Failed to get layer name pointer");
-                    required == &name
-                });
-
-            if !found {
-                panic!("Validation layer not supported: {}", required);
-            }
-        }
-    }
-
-    fn setup_debug_messenger(
-        entry: &Entry,
-        instance: &Instance,
-    ) -> Result<Option<(DebugUtils, vk::DebugUtilsMessengerEXT)>> {
-        if !ENABLE_VALIDATION_LAYERS {
-            return Ok(None);
-        }
-        let create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
-            .flags(vk::DebugUtilsMessengerCreateFlagsEXT::all())
-            .message_severity(vk::DebugUtilsMessageSeverityFlagsEXT::all())
-            .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
-            .pfn_user_callback(Some(vulkan_debug_callback))
-            .build();
-        let debug_utils = DebugUtils::new(entry, instance);
-        let messenger = unsafe { debug_utils.create_debug_utils_messenger(&create_info, None)? };
-        Ok(Some((debug_utils, messenger)))
-    }
-
+    /// Pick the first physical device that supports graphics queue families
     fn pick_physical_device(instance: &Instance) -> Option<PhysicalDevice> {
         let devices = unsafe {
             instance
                 .enumerate_physical_devices()
                 .expect("Couldn't get physical devices")
         };
-        devices
+        let device = devices
             .into_iter()
-            .find(|device| Self::is_device_suitable(instance, *device))
+            .find(|device| Self::is_device_suitable(instance, *device));
+
+        let props = unsafe { instance.get_physical_device_properties(*device.as_ref().unwrap()) };
+        log::debug!("Selected physical device: {:?}", unsafe {
+            CStr::from_ptr(props.device_name.as_ptr())
+        });
+
+        device
     }
 
     fn is_device_suitable(instance: &Instance, device: PhysicalDevice) -> bool {
@@ -170,19 +122,6 @@ impl VulkanApp {
             .map(|(index, _)| index as _)
     }
 
-    fn get_layer_names_and_pointers() -> (Vec<CString>, Vec<*const i8>) {
-        let layer_names = REQUIRED_LAYERS
-            .iter()
-            .map(|name| CString::new(*name).expect("Failed to build CString"))
-            .collect::<Vec<_>>();
-
-        let layer_name_ptrs = layer_names
-            .iter()
-            .map(|name| name.as_ptr())
-            .collect::<Vec<_>>();
-        (layer_names, layer_name_ptrs)
-    }
-
     fn create_logical_device_with_graphics_queue(
         instance: &Instance,
         physical_device: PhysicalDevice,
@@ -195,12 +134,12 @@ impl VulkanApp {
             .build()];
 
         let device_features = vk::PhysicalDeviceFeatures::builder().build();
-        let (_, layer_name_ptrs) = Self::get_layer_names_and_pointers();
+        let (_, layer_name_ptrs) = debug::get_layer_names_and_pointers();
 
         let mut device_create_info_builder = vk::DeviceCreateInfo::builder()
             .queue_create_infos(&queue_create_infos)
             .enabled_features(&device_features);
-        if ENABLE_VALIDATION_LAYERS {
+        if debug::ENABLE_VALIDATION_LAYERS {
             device_create_info_builder =
                 device_create_info_builder.enabled_layer_names(&layer_name_ptrs)
         }
