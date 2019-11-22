@@ -171,6 +171,20 @@ fn main() {
             .expect("Failed to create instance")
     };
 
+    // Initialize the window
+    let mut event_loop = EventsLoop::new();
+    let window = winit::WindowBuilder::new()
+        .with_title(WINDOW_TITLE)
+        .with_dimensions((WINDOW_WIDTH, WINDOW_HEIGHT).into())
+        .build(&event_loop)
+        .expect("Failed to create window.");
+
+    // Create the window surface
+    let surface = Surface::new(&entry, &instance);
+    let surface_khr = unsafe {
+        create_surface(&entry, &instance, &window).expect("Failed to create window surface!")
+    };
+
     // Setup the debug messenger
     let mut debug_utils: Option<DebugUtils> = None;
     let messenger = if ENABLE_VALIDATION_LAYERS {
@@ -206,16 +220,29 @@ fn main() {
         .into_iter()
         .find(|device| {
             // Check if device is suitable
-            let props = unsafe { instance.get_physical_device_queue_family_properties(*device) };
-            props
-                .iter()
-                .enumerate()
-                .find(|(_, family)| {
-                    // Must have at least 1 queue and must have a graphics queue
-                    family.queue_count > 0 && family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                })
-                .map(|(index, _)| index as u32)
-                .is_some()
+            let mut graphics = None;
+            let mut present = None;
+            let properties =
+                unsafe { instance.get_physical_device_queue_family_properties(*device) };
+            for (index, family) in properties.iter().filter(|f| f.queue_count > 0).enumerate() {
+                let index = index as u32;
+                if family.queue_flags.contains(vk::QueueFlags::GRAPHICS) && graphics.is_none() {
+                    graphics = Some(index);
+                }
+
+                let present_support = unsafe {
+                    surface.get_physical_device_surface_support(*device, index, surface_khr)
+                };
+
+                if present_support && present.is_none() {
+                    present = Some(index);
+                }
+
+                if graphics.is_some() && present.is_some() {
+                    break;
+                }
+            }
+            graphics.is_some() && present.is_some()
         })
         .expect("Failed to create logical device");
 
@@ -225,27 +252,59 @@ fn main() {
         CStr::from_ptr(props.device_name.as_ptr())
     });
 
-    // Find the index of the graphics queue family
-    let queue_family_index = {
-        let props =
+    // Find the index of the graphics and present queue families
+    let (graphics_family_index, present_family_index) = {
+        // Check if device is suitable
+        let mut graphics = None;
+        let mut present = None;
+        let properties =
             unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
-        props
-            .iter()
-            .enumerate()
-            .find(|(_, family)| {
-                // Must have at least 1 queue and must have a graphics queue
-                family.queue_count > 0 && family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-            })
-            .map(|(index, _)| index as u32)
-            .expect("Failed to get queue family index")
+        for (index, family) in properties.iter().filter(|f| f.queue_count > 0).enumerate() {
+            let index = index as u32;
+            if family.queue_flags.contains(vk::QueueFlags::GRAPHICS) && graphics.is_none() {
+                graphics = Some(index);
+            }
+
+            let present_support = unsafe {
+                surface.get_physical_device_surface_support(physical_device, index, surface_khr)
+            };
+
+            if present_support && present.is_none() {
+                present = Some(index);
+            }
+
+            if graphics.is_some() && present.is_some() {
+                break;
+            }
+        }
+        (
+            graphics.expect("Failed to find a graphics queue"),
+            present.expect("Failed to find a present queue"),
+        )
     };
 
     // Create the device queue creation info
     let queue_priorities = [1.0f32];
-    let queue_create_infos = [vk::DeviceQueueCreateInfo::builder()
-        .queue_family_index(queue_family_index)
-        .queue_priorities(&queue_priorities)
-        .build()];
+    let queue_create_infos = {
+        // Need to dedup since the graphics family and presentation family
+        // can have the same queue family index and
+        // Vulkan does not allow passing an array containing duplicated family
+        // indices.
+        let mut indices = vec![graphics_family_index, present_family_index];
+        indices.dedup();
+
+        // Build an array of DeviceQueueCreateInfo,
+        // one for each different family index
+        indices
+            .iter()
+            .map(|index| {
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(*index)
+                    .queue_priorities(&queue_priorities)
+                    .build()
+            })
+            .collect::<Vec<_>>()
+    };
 
     // Get the features of the physical device
     let device_features = vk::PhysicalDeviceFeatures::builder().build();
@@ -270,22 +329,9 @@ fn main() {
             .expect("Failed to create logical device.")
     };
 
-    // Retrieve the graphics queue from the logical device using the graphics queue family index
-    let _graphics_queue = unsafe { logical_device.get_device_queue(queue_family_index, 0) };
-
-    // Initialize the window
-    let mut event_loop = EventsLoop::new();
-    let window = winit::WindowBuilder::new()
-        .with_title(WINDOW_TITLE)
-        .with_dimensions((WINDOW_WIDTH, WINDOW_HEIGHT).into())
-        .build(&event_loop)
-        .expect("Failed to create window.");
-
-    // Create the window surface
-    let surface = Surface::new(&entry, &instance);
-    let surface_khr = unsafe {
-        create_surface(&entry, &instance, &window).expect("Failed to create window surface!")
-    };
+    // Retrieve the graphics and present queues from the logical device using the graphics queue family index
+    let graphics_queue = unsafe { logical_device.get_device_queue(graphics_family_index, 0) };
+    let present_queue = unsafe { logical_device.get_device_queue(present_family_index, 0) };
 
     // Run the main loop
     event_loop.run_forever(|event| match event {
