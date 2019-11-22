@@ -1,5 +1,8 @@
 use ash::{
-    extensions::{ext::DebugUtils, khr::Surface},
+    extensions::{
+        ext::DebugUtils,
+        khr::{Surface, Swapchain},
+    },
     version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
     vk::{
         self, Bool32, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
@@ -119,17 +122,17 @@ fn main() {
         .build();
 
     // Determine required extension names
-    let mut extension_names = required_extension_names();
+    let mut instance_extension_names = required_extension_names();
 
     // If validation layers are enabled
     // add the Debug Utils extension name to the list of required extension names
     if ENABLE_VALIDATION_LAYERS {
-        extension_names.push(DebugUtils::name().as_ptr());
+        instance_extension_names.push(DebugUtils::name().as_ptr());
     }
     // Create the instance creation info
     let mut instance_create_info = vk::InstanceCreateInfo::builder()
         .application_info(&app_info)
-        .enabled_extension_names(&extension_names);
+        .enabled_extension_names(&instance_extension_names);
 
     // Determine the required layer names
     let layer_names = REQUIRED_LAYERS
@@ -242,7 +245,24 @@ fn main() {
                     break;
                 }
             }
-            graphics.is_some() && present.is_some()
+
+            // Get the supported surface formats
+            let formats = unsafe {
+                surface
+                    .get_physical_device_surface_formats(*device, surface_khr)
+                    .expect("Failed to get physical device surface formats")
+            };
+
+            // Get the supported present modes
+            let present_modes = unsafe {
+                surface
+                    .get_physical_device_surface_present_modes(*device, surface_khr)
+                    .expect("Failed to get physical device surface present modes")
+            };
+
+            let queue_families_supported = graphics.is_some() && present.is_some();
+            let swapchain_adequate = !formats.is_empty() && !present_modes.is_empty();
+            queue_families_supported && swapchain_adequate
         })
         .expect("Failed to create logical device");
 
@@ -254,7 +274,6 @@ fn main() {
 
     // Find the index of the graphics and present queue families
     let (graphics_family_index, present_family_index) = {
-        // Check if device is suitable
         let mut graphics = None;
         let mut present = None;
         let properties =
@@ -277,34 +296,36 @@ fn main() {
                 break;
             }
         }
-        (
-            graphics.expect("Failed to find a graphics queue"),
-            present.expect("Failed to find a present queue"),
-        )
+        (graphics, present)
     };
+
+    // Need to dedup since the graphics family and presentation family
+    // can have the same queue family index and
+    // Vulkan does not allow passing an array containing duplicated family
+    // indices.
+    let mut queue_family_indices = vec![
+        graphics_family_index.expect("Failed to find a graphics queue"),
+        present_family_index.expect("Failed to find a present queue"),
+    ];
+    queue_family_indices.dedup();
 
     // Create the device queue creation info
     let queue_priorities = [1.0f32];
-    let queue_create_infos = {
-        // Need to dedup since the graphics family and presentation family
-        // can have the same queue family index and
-        // Vulkan does not allow passing an array containing duplicated family
-        // indices.
-        let mut indices = vec![graphics_family_index, present_family_index];
-        indices.dedup();
 
-        // Build an array of DeviceQueueCreateInfo,
-        // one for each different family index
-        indices
-            .iter()
-            .map(|index| {
-                vk::DeviceQueueCreateInfo::builder()
-                    .queue_family_index(*index)
-                    .queue_priorities(&queue_priorities)
-                    .build()
-            })
-            .collect::<Vec<_>>()
-    };
+    // Build an array of DeviceQueueCreateInfo,
+    // one for each different family index
+    let queue_create_infos = queue_family_indices
+        .iter()
+        .map(|index| {
+            vk::DeviceQueueCreateInfo::builder()
+                .queue_family_index(*index)
+                .queue_priorities(&queue_priorities)
+                .build()
+        })
+        .collect::<Vec<_>>();
+
+    // Specify device extensions
+    let device_extensions = [Swapchain::name().as_ptr()];
 
     // Get the features of the physical device
     let device_features = vk::PhysicalDeviceFeatures::builder().build();
@@ -312,6 +333,7 @@ fn main() {
     // Create the device creation info using the queue creation info and available features
     let mut device_create_info_builder = vk::DeviceCreateInfo::builder()
         .queue_create_infos(&queue_create_infos)
+        .enabled_extension_names(&device_extensions)
         .enabled_features(&device_features);
 
     if ENABLE_VALIDATION_LAYERS {
@@ -330,28 +352,229 @@ fn main() {
     };
 
     // Retrieve the graphics and present queues from the logical device using the graphics queue family index
-    let graphics_queue = unsafe { logical_device.get_device_queue(graphics_family_index, 0) };
-    let present_queue = unsafe { logical_device.get_device_queue(present_family_index, 0) };
+    let graphics_queue =
+        unsafe { logical_device.get_device_queue(graphics_family_index.unwrap(), 0) };
+    let present_queue =
+        unsafe { logical_device.get_device_queue(present_family_index.unwrap(), 0) };
+
+    // Get the surface capabilities
+    let capabilities = unsafe {
+        surface
+            .get_physical_device_surface_capabilities(physical_device, surface_khr)
+            .expect("Failed to get physical device surface capabilities")
+    };
+
+    // Get the supported surface formats
+    let formats = unsafe {
+        surface
+            .get_physical_device_surface_formats(physical_device, surface_khr)
+            .expect("Failed to get physical device surface formats")
+    };
+
+    // Get the supported present modes
+    let present_modes = unsafe {
+        surface
+            .get_physical_device_surface_present_modes(physical_device, surface_khr)
+            .expect("Failed to get physical device surface present modes")
+    };
+
+    // Specify a default format and color space
+    let (default_format, default_color_space) = (
+        vk::Format::B8G8R8A8_UNORM,
+        vk::ColorSpaceKHR::SRGB_NONLINEAR,
+    );
+
+    // Choose the default format if available or choose the first available format
+    let surface_format = if formats.len() == 1 && formats[0].format == vk::Format::UNDEFINED {
+        // If only one format is available
+        // but it is undefined, assign a default
+        vk::SurfaceFormatKHR {
+            format: default_format,
+            color_space: default_color_space,
+        }
+    } else {
+        *formats
+            .iter()
+            .find(|format| {
+                format.format == default_format
+                    && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
+            })
+            .unwrap_or(formats.first().expect("Failed to get first surface format"))
+    };
+
+    // Choose the swapchain surface present mode
+    let present_mode = if present_modes.contains(&vk::PresentModeKHR::MAILBOX) {
+        vk::PresentModeKHR::MAILBOX
+    } else if present_modes.contains(&vk::PresentModeKHR::FIFO) {
+        vk::PresentModeKHR::FIFO
+    } else {
+        vk::PresentModeKHR::IMMEDIATE
+    };
+
+    // Choose the swapchain extent
+    let extent = if capabilities.current_extent.width != std::u32::MAX {
+        capabilities.current_extent
+    } else {
+        let min = capabilities.min_image_extent;
+        let max = capabilities.max_image_extent;
+        let width = WINDOW_WIDTH.min(max.width).max(min.width);
+        let height = WINDOW_HEIGHT.min(max.height).max(min.height);
+        vk::Extent2D { width, height }
+    };
+
+    // Choose the number of images to use in the swapchain
+    let image_count = {
+        let max = capabilities.max_image_count;
+        let mut preferred = capabilities.min_image_count + 1;
+        if max > 0 && preferred > max {
+            preferred = max;
+        }
+        preferred
+    };
+
+    log::debug!(
+        "Creating swapchain.\n\tFormat: {:?}\n\tColorSpace: {:?}\n\tPresentMode: {:?}\n\tExtent: {:?}\n\tImageCount: {}",
+        surface_format.format,
+        surface_format.color_space,
+        present_mode,
+        extent,
+        image_count
+    );
+
+    // Build the swapchain creation info
+    let swapchain_create_info = {
+        let mut builder = vk::SwapchainCreateInfoKHR::builder()
+            .surface(surface_khr)
+            .min_image_count(image_count)
+            .image_format(surface_format.format)
+            .image_color_space(surface_format.color_space)
+            .image_extent(extent)
+            .image_array_layers(1)
+            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT);
+
+        builder = match (graphics_family_index, present_family_index) {
+            (Some(graphics), Some(present)) if graphics != present => builder
+                .image_sharing_mode(vk::SharingMode::CONCURRENT)
+                .queue_family_indices(&queue_family_indices),
+            (Some(_), Some(_)) => builder.image_sharing_mode(vk::SharingMode::EXCLUSIVE),
+            _ => panic!(),
+        };
+
+        builder
+            .pre_transform(capabilities.current_transform)
+            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+            .present_mode(present_mode)
+            .clipped(true)
+            .build()
+    };
+
+    // Create the swapchain using the swapchain creation info
+    let swapchain = Swapchain::new(&instance, &logical_device);
+    let swapchain_khr = unsafe {
+        swapchain
+            .create_swapchain(&swapchain_create_info, None)
+            .unwrap()
+    };
+
+    // Get the swapchain images
+    let images = unsafe { swapchain.get_swapchain_images(swapchain_khr).unwrap() };
+
+    // Create the swapchain image views
+    let image_views = images
+        .into_iter()
+        .map(|image| {
+            let create_info = vk::ImageViewCreateInfo::builder()
+                .image(image)
+                .view_type(vk::ImageViewType::TYPE_2D)
+                .format(surface_format.format)
+                .components(vk::ComponentMapping {
+                    r: vk::ComponentSwizzle::IDENTITY,
+                    g: vk::ComponentSwizzle::IDENTITY,
+                    b: vk::ComponentSwizzle::IDENTITY,
+                    a: vk::ComponentSwizzle::IDENTITY,
+                })
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                })
+                .build();
+
+            unsafe {
+                logical_device
+                    .create_image_view(&create_info, None)
+                    .unwrap()
+            }
+        })
+        .collect::<Vec<_>>();
+
+    // Create the vertex shader module
+    let mut vertex_shader_file = std::fs::File::open("shaders/shader.vert.spv").unwrap();
+    let vertex_shader_source = ash::util::read_spv(&mut vertex_shader_file).unwrap();
+    let vertex_shader_create_info = vk::ShaderModuleCreateInfo::builder()
+        .code(&vertex_shader_source)
+        .build();
+    let vertex_shader_module = unsafe {
+        logical_device
+            .create_shader_module(&vertex_shader_create_info, None)
+            .unwrap()
+    };
+
+    // Create the fragment shader module
+    let mut fragment_shader_file = std::fs::File::open("shaders/shader.frag.spv").unwrap();
+    let fragment_shader_source = ash::util::read_spv(&mut fragment_shader_file).unwrap();
+    let fragment_shader_create_info = vk::ShaderModuleCreateInfo::builder()
+        .code(&fragment_shader_source)
+        .build();
+    let fragment_shader_module = unsafe {
+        logical_device
+            .create_shader_module(&fragment_shader_create_info, None)
+            .unwrap()
+    };
+
+    // Build vertex input creation info
+    let vertex_input_create_info = vk::PipelineVertexInputStateCreateInfo::builder()
+        // Will need these when shader has vertices that aren't hard-coded
+        //.vertex_binding_descriptions()
+        //.vertex_attribute_descriptions()
+        .build();
+
+    // Build input assembly creation info
+    let input_assembly_create_info = vk::PipelineInputAssemblyStateCreateInfo::builder()
+        .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
+        .primitive_restart_enable(false)
+        .build();
+
+    // Delete shader modules
+    unsafe {
+        logical_device.destroy_shader_module(vertex_shader_module, None);
+        logical_device.destroy_shader_module(fragment_shader_module, None);
+    };
 
     // Run the main loop
-    event_loop.run_forever(|event| match event {
-        Event::WindowEvent { event, .. } => match event {
-            WindowEvent::KeyboardInput { input, .. } => {
-                if let Some(VirtualKeyCode::Escape) = input.virtual_keycode {
-                    ControlFlow::Break
-                } else {
-                    ControlFlow::Continue
-                }
-            }
-            WindowEvent::CloseRequested => ControlFlow::Break,
-            _ => ControlFlow::Continue,
-        },
-        _ => ControlFlow::Continue,
-    });
+    // event_loop.run_forever(|event| match event {
+    //     Event::WindowEvent { event, .. } => match event {
+    //         WindowEvent::KeyboardInput { input, .. } => {
+    //             if let Some(VirtualKeyCode::Escape) = input.virtual_keycode {
+    //                 ControlFlow::Break
+    //             } else {
+    //                 ControlFlow::Continue
+    //             }
+    //         }
+    //         WindowEvent::CloseRequested => ControlFlow::Break,
+    //         _ => ControlFlow::Continue,
+    //     },
+    //     _ => ControlFlow::Continue,
+    // });
 
     // Free objects
     log::debug!("Dropping application");
     unsafe {
+        image_views
+            .iter()
+            .for_each(|v| logical_device.destroy_image_view(*v, None));
         logical_device.destroy_device(None);
         surface.destroy_surface(surface_khr, None);
         if let Some(messenger) = messenger {
