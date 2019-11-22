@@ -1,14 +1,317 @@
-mod app;
-mod debug;
-mod error;
-mod platform;
+use ash::{
+    extensions::{ext::DebugUtils, khr::Surface},
+    version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
+    vk::{
+        self, Bool32, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
+        DebugUtilsMessengerCallbackDataEXT,
+    },
+    vk_make_version,
+};
+use std::{
+    ffi::{CStr, CString},
+    os::raw::c_void,
+};
+use winit::{ControlFlow, Event, EventsLoop, VirtualKeyCode, WindowEvent};
 
-use app::VulkanApp;
+// Enable validation layers only in debug mode
+
+#[cfg(debug_assertions)]
+pub const ENABLE_VALIDATION_LAYERS: bool = true;
+
+#[cfg(not(debug_assertions))]
+pub const ENABLE_VALIDATION_LAYERS: bool = false;
+
+pub const REQUIRED_LAYERS: [&str; 1] = ["VK_LAYER_LUNARG_standard_validation"];
+
+// Setup the callback for the debug utils extension
+unsafe extern "system" fn vulkan_debug_callback(
+    _: DebugUtilsMessageSeverityFlagsEXT,
+    _: DebugUtilsMessageTypeFlagsEXT,
+    p_callback_data: *const DebugUtilsMessengerCallbackDataEXT,
+    _: *mut c_void,
+) -> Bool32 {
+    log::debug!(
+        "Validation layer: {:?}",
+        CStr::from_ptr((*p_callback_data).p_message)
+    );
+    vk::FALSE
+}
+
+// Determine required surface extensions based on platform
+
+#[cfg(target_os = "windows")]
+pub fn required_extension_names() -> Vec<*const i8> {
+    use ash::extensions::khr::Win32Surface;
+    vec![Surface::name().as_ptr(), Win32Surface::name().as_ptr()]
+}
+
+#[cfg(target_os = "linux")]
+pub fn required_extension_names() -> Vec<*const i8> {
+    use ash::extensions::khr::XlibSurface;
+    vec![Surface::name().as_ptr(), XlibSurface::name().as_ptr()]
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn create_surface<E: EntryV1_0, I: InstanceV1_0>(
+    entry: &E,
+    instance: &I,
+    window: &winit::Window,
+) -> Result<vk::SurfaceKHR, vk::Result> {
+    use ash::extensions::khr::Win32Surface;
+    use std::ptr;
+    use winapi::{shared::windef::HWND, um::libloaderapi::GetModuleHandleW};
+    use winit::os::windows::WindowExt;
+
+    let hwnd = window.get_hwnd() as HWND;
+    let hinstance = GetModuleHandleW(ptr::null()) as *const c_void;
+    let win32_create_info = vk::Win32SurfaceCreateInfoKHR {
+        s_type: vk::StructureType::WIN32_SURFACE_CREATE_INFO_KHR,
+        p_next: ptr::null(),
+        flags: Default::default(),
+        hinstance,
+        hwnd: hwnd as *const c_void,
+    };
+    let win32_surface_loader = Win32Surface::new(entry, instance);
+    win32_surface_loader.create_win32_surface(&win32_create_info, None)
+}
+
+#[cfg(target_os = "linux")]
+unsafe fn create_surface<E: EntryV1_0, I: InstanceV1_0>(
+    entry: &E,
+    instance: &I,
+    window: &winit::Window,
+) -> Result<vk::SurfaceKHR, vk::Result> {
+    use ash::extensions::khr::XlibSurface;
+    use winit::os::unix::WindowExt;
+    let x11_display = window.get_xlib_display().unwrap();
+    let x11_window = window.get_xlib_window().unwrap();
+    let x11_create_info = vk::XlibSurfaceCreateInfoKHR::builder()
+        .window(x11_window)
+        .dpy(x11_display as *mut vk::Display);
+
+    let xlib_surface_loader = XlibSurface::new(entry, instance);
+    xlib_surface_loader.create_xlib_surface(&x11_create_info, None)
+}
+
+const WINDOW_TITLE: &str = "Vulkan Tutorial";
+const WINDOW_WIDTH: u32 = 800;
+const WINDOW_HEIGHT: u32 = 600;
+const APPLICATION_VERSION: u32 = vk_make_version!(1, 0, 0);
+const API_VERSION: u32 = vk_make_version!(1, 0, 0);
+const ENGINE_VERSION: u32 = vk_make_version!(1, 0, 0);
+const ENGINE_NAME: &str = "Sepia Engine";
 
 fn main() {
     env_logger::init();
-    match VulkanApp::new() {
-        Ok(mut app) => app.run(),
-        Err(error) => log::error!("Failed to create application. Cause: {}", error),
+
+    // Load the Vulkan library
+    let entry = ash::Entry::new().expect("Failed to create entry");
+
+    // Create the application info
+    let app_name = CString::new(WINDOW_TITLE).expect("Failed to create CString");
+    let engine_name = CString::new(ENGINE_NAME).expect("Failed to create CString");
+    let app_info = vk::ApplicationInfo::builder()
+        .application_name(&app_name)
+        .engine_name(&engine_name)
+        .api_version(API_VERSION)
+        .application_version(APPLICATION_VERSION)
+        .engine_version(ENGINE_VERSION)
+        .build();
+
+    // Determine required extension names
+    let mut extension_names = required_extension_names();
+
+    // If validation layers are enabled
+    // add the Debug Utils extension name to the list of required extension names
+    if ENABLE_VALIDATION_LAYERS {
+        extension_names.push(DebugUtils::name().as_ptr());
+    }
+    // Create the instance creation info
+    let mut instance_create_info = vk::InstanceCreateInfo::builder()
+        .application_info(&app_info)
+        .enabled_extension_names(&extension_names);
+
+    // Determine the required layer names
+    let layer_names = REQUIRED_LAYERS
+        .iter()
+        .map(|name| CString::new(*name).expect("Failed to build CString"))
+        .collect::<Vec<_>>();
+
+    // Determine required layer name pointers
+    let layer_name_ptrs = layer_names
+        .iter()
+        .map(|name| name.as_ptr())
+        .collect::<Vec<_>>();
+
+    if ENABLE_VALIDATION_LAYERS {
+        // Check if the required validation layers are supported
+        for required in REQUIRED_LAYERS.iter() {
+            let found = entry
+                .enumerate_instance_layer_properties()
+                .expect("Couldn't enumerate instance layer properties")
+                .iter()
+                .any(|layer| {
+                    let name = unsafe { CStr::from_ptr(layer.layer_name.as_ptr()) };
+                    let name = name.to_str().expect("Failed to get layer name pointer");
+                    required == &name
+                });
+
+            if !found {
+                panic!("Validation layer not supported: {}", required);
+            }
+        }
+
+        instance_create_info = instance_create_info.enabled_layer_names(&layer_name_ptrs);
+    }
+
+    // Create a Vulkan instance
+    let instance = unsafe {
+        entry
+            .create_instance(&instance_create_info, None)
+            .expect("Failed to create instance")
+    };
+
+    // Setup the debug messenger
+    let mut debug_utils: Option<DebugUtils> = None;
+    let messenger = if ENABLE_VALIDATION_LAYERS {
+        debug_utils = Some(DebugUtils::new(&entry, &instance));
+        let create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+            .flags(vk::DebugUtilsMessengerCreateFlagsEXT::all())
+            .message_severity(vk::DebugUtilsMessageSeverityFlagsEXT::all())
+            .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
+            .pfn_user_callback(Some(vulkan_debug_callback))
+            .build();
+        unsafe {
+            Some(
+                debug_utils
+                    .as_mut()
+                    .unwrap()
+                    .create_debug_utils_messenger(&create_info, None)
+                    .expect("Failed to create debug utils messenger"),
+            )
+        }
+    } else {
+        None
+    };
+
+    // Pick a physical device
+    let devices = unsafe {
+        instance
+            .enumerate_physical_devices()
+            .expect("Couldn't get physical devices")
+    };
+
+    // Pick the first suitable physical device
+    let physical_device = devices
+        .into_iter()
+        .find(|device| {
+            // Check if device is suitable
+            let props = unsafe { instance.get_physical_device_queue_family_properties(*device) };
+            props
+                .iter()
+                .enumerate()
+                .find(|(_, family)| {
+                    // Must have at least 1 queue and must have a graphics queue
+                    family.queue_count > 0 && family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+                })
+                .map(|(index, _)| index as u32)
+                .is_some()
+        })
+        .expect("Failed to create logical device");
+
+    // Log the name of the physical device that was selected
+    let props = unsafe { instance.get_physical_device_properties(physical_device) };
+    log::debug!("Selected physical device: {:?}", unsafe {
+        CStr::from_ptr(props.device_name.as_ptr())
+    });
+
+    // Find the index of the graphics queue family
+    let queue_family_index = {
+        let props =
+            unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
+        props
+            .iter()
+            .enumerate()
+            .find(|(_, family)| {
+                // Must have at least 1 queue and must have a graphics queue
+                family.queue_count > 0 && family.queue_flags.contains(vk::QueueFlags::GRAPHICS)
+            })
+            .map(|(index, _)| index as u32)
+            .expect("Failed to get queue family index")
+    };
+
+    // Create the device queue creation info
+    let queue_priorities = [1.0f32];
+    let queue_create_infos = [vk::DeviceQueueCreateInfo::builder()
+        .queue_family_index(queue_family_index)
+        .queue_priorities(&queue_priorities)
+        .build()];
+
+    // Get the features of the physical device
+    let device_features = vk::PhysicalDeviceFeatures::builder().build();
+
+    // Create the device creation info using the queue creation info and available features
+    let mut device_create_info_builder = vk::DeviceCreateInfo::builder()
+        .queue_create_infos(&queue_create_infos)
+        .enabled_features(&device_features);
+
+    if ENABLE_VALIDATION_LAYERS {
+        // Add the validation layers to the list of enabled layers if validation layers are enabled
+        device_create_info_builder =
+            device_create_info_builder.enabled_layer_names(&layer_name_ptrs)
+    }
+
+    let device_create_info = device_create_info_builder.build();
+
+    // Create the logical device using the physical device and device creation info
+    let logical_device = unsafe {
+        instance
+            .create_device(physical_device, &device_create_info, None)
+            .expect("Failed to create logical device.")
+    };
+
+    // Retrieve the graphics queue from the logical device using the graphics queue family index
+    let _graphics_queue = unsafe { logical_device.get_device_queue(queue_family_index, 0) };
+
+    // Initialize the window
+    let mut event_loop = EventsLoop::new();
+    let window = winit::WindowBuilder::new()
+        .with_title(WINDOW_TITLE)
+        .with_dimensions((WINDOW_WIDTH, WINDOW_HEIGHT).into())
+        .build(&event_loop)
+        .expect("Failed to create window.");
+
+    // Create the window surface
+    let surface = Surface::new(&entry, &instance);
+    let surface_khr = unsafe {
+        create_surface(&entry, &instance, &window).expect("Failed to create window surface!")
+    };
+
+    // Run the main loop
+    event_loop.run_forever(|event| match event {
+        Event::WindowEvent { event, .. } => match event {
+            WindowEvent::KeyboardInput { input, .. } => {
+                if let Some(VirtualKeyCode::Escape) = input.virtual_keycode {
+                    ControlFlow::Break
+                } else {
+                    ControlFlow::Continue
+                }
+            }
+            WindowEvent::CloseRequested => ControlFlow::Break,
+            _ => ControlFlow::Continue,
+        },
+        _ => ControlFlow::Continue,
+    });
+
+    // Free objects
+    log::debug!("Dropping application");
+    unsafe {
+        logical_device.destroy_device(None);
+        surface.destroy_surface(surface_khr, None);
+        if let Some(messenger) = messenger {
+            let debug_utils = debug_utils.take().unwrap();
+            debug_utils.destroy_debug_utils_messenger(messenger, None);
+        }
+        instance.destroy_instance(None);
     }
 }
