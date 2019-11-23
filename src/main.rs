@@ -14,7 +14,7 @@ use std::{
     ffi::{CStr, CString},
     os::raw::c_void,
 };
-use winit::{ControlFlow, Event, EventsLoop, VirtualKeyCode, WindowEvent};
+use winit::{Event, EventsLoop, VirtualKeyCode, WindowEvent};
 
 // Enable validation layers only in debug mode
 
@@ -420,7 +420,7 @@ fn main() {
                 format.format == default_format
                     && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
             })
-            .unwrap_or(formats.first().expect("Failed to get first surface format"))
+            .unwrap_or_else(|| formats.first().expect("Failed to get first surface format"))
     };
 
     // Choose the swapchain surface present mode
@@ -531,6 +531,9 @@ fn main() {
         })
         .collect::<Vec<_>>();
 
+    // Define the entry point for shaders
+    let entry_point_name = CString::new("main").unwrap();
+
     // Create the vertex shader module
     let mut vertex_shader_file = std::fs::File::open("shaders/shader.vert.spv").unwrap();
     let vertex_shader_source = ash::util::read_spv(&mut vertex_shader_file).unwrap();
@@ -542,6 +545,11 @@ fn main() {
             .create_shader_module(&vertex_shader_create_info, None)
             .unwrap()
     };
+    let vertex_shader_state_info = vk::PipelineShaderStageCreateInfo::builder()
+        .stage(vk::ShaderStageFlags::VERTEX)
+        .module(vertex_shader_module)
+        .name(&entry_point_name)
+        .build();
 
     // Create the fragment shader module
     let mut fragment_shader_file = std::fs::File::open("shaders/shader.frag.spv").unwrap();
@@ -554,6 +562,11 @@ fn main() {
             .create_shader_module(&fragment_shader_create_info, None)
             .unwrap()
     };
+    let fragment_shader_state_info = vk::PipelineShaderStageCreateInfo::builder()
+        .stage(vk::ShaderStageFlags::FRAGMENT)
+        .module(fragment_shader_module)
+        .name(&entry_point_name)
+        .build();
 
     // Build vertex input creation info
     let vertex_input_create_info = vk::PipelineVertexInputStateCreateInfo::builder()
@@ -568,31 +581,377 @@ fn main() {
         .primitive_restart_enable(false)
         .build();
 
+    // Create a viewport
+    let viewport = vk::Viewport {
+        x: 0.0,
+        y: 0.0,
+        width: extent.width as _,
+        height: extent.height as _,
+        min_depth: 0.0,
+        max_depth: 1.0,
+    };
+
+    // Create a stencil
+    let scissor = vk::Rect2D {
+        offset: vk::Offset2D { x: 0, y: 0 },
+        extent,
+    };
+
+    // Build the viewport info using the viewport and stencil
+    let viewport_create_info = vk::PipelineViewportStateCreateInfo::builder()
+        .viewports(&[viewport])
+        .scissors(&[scissor])
+        .build();
+
+    // Build the rasterizer info
+    let rasterizer_create_info = vk::PipelineRasterizationStateCreateInfo::builder()
+        .depth_clamp_enable(false)
+        .rasterizer_discard_enable(false)
+        .polygon_mode(vk::PolygonMode::FILL)
+        .line_width(1.0)
+        .cull_mode(vk::CullModeFlags::BACK)
+        .front_face(vk::FrontFace::CLOCKWISE)
+        .depth_bias_enable(false)
+        .depth_bias_constant_factor(0.0)
+        .depth_bias_clamp(0.0)
+        .depth_bias_slope_factor(0.0)
+        .build();
+
+    // Create the multisampling info for the pipline
+    let multisampling_create_info = vk::PipelineMultisampleStateCreateInfo::builder()
+        .sample_shading_enable(false)
+        .rasterization_samples(vk::SampleCountFlags::TYPE_1)
+        .min_sample_shading(1.0)
+        // .sample_mask()
+        .alpha_to_coverage_enable(false)
+        .alpha_to_one_enable(false)
+        .build();
+
+    // Create the color blend attachment
+    let color_blend_attachment = vk::PipelineColorBlendAttachmentState::builder()
+        .color_write_mask(vk::ColorComponentFlags::all())
+        .blend_enable(false)
+        .src_color_blend_factor(vk::BlendFactor::ONE)
+        .dst_color_blend_factor(vk::BlendFactor::ZERO)
+        .color_blend_op(vk::BlendOp::ADD)
+        .src_alpha_blend_factor(vk::BlendFactor::ONE)
+        .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
+        .alpha_blend_op(vk::BlendOp::ADD)
+        .build();
+
+    // Build the color blending info using the color blend attachment
+    let color_blending_info = vk::PipelineColorBlendStateCreateInfo::builder()
+        .logic_op_enable(false)
+        .logic_op(vk::LogicOp::COPY)
+        .attachments(&[color_blend_attachment])
+        .blend_constants([0.0, 0.0, 0.0, 0.0])
+        .build();
+
+    // Build the pipeline layout info
+    let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
+        // .set_layouts() // needed for uniforms in shaders
+        // .push_constant_ranges()
+        .build();
+
+    // Create the pipeline layout
+    let pipeline_layout = unsafe {
+        logical_device
+            .create_pipeline_layout(&pipeline_layout_info, None)
+            .unwrap()
+    };
+
+    // Create a render pass
+    let attachment_description = vk::AttachmentDescription::builder()
+        .format(surface_format.format)
+        .samples(vk::SampleCountFlags::TYPE_1)
+        .load_op(vk::AttachmentLoadOp::CLEAR)
+        .store_op(vk::AttachmentStoreOp::STORE)
+        .initial_layout(vk::ImageLayout::UNDEFINED)
+        .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+        .build();
+
+    let attachment_reference = vk::AttachmentReference::builder()
+        .attachment(0)
+        .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+        .build();
+
+    let subpass_description = vk::SubpassDescription::builder()
+        .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+        .color_attachments(&[attachment_reference])
+        .build();
+
+    let subpass_dependency = vk::SubpassDependency::builder()
+        .src_subpass(vk::SUBPASS_EXTERNAL)
+        .dst_subpass(0)
+        .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+        .src_access_mask(vk::AccessFlags::empty())
+        .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+        .dst_access_mask(
+            vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+        )
+        .build();
+
+    let render_pass_info = vk::RenderPassCreateInfo::builder()
+        .attachments(&[attachment_description])
+        .subpasses(&[subpass_description])
+        .dependencies(&[subpass_dependency])
+        .build();
+
+    let render_pass = unsafe {
+        logical_device
+            .create_render_pass(&render_pass_info, None)
+            .unwrap()
+    };
+
+    // Create the pipeline info
+    let pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
+        .stages(&[vertex_shader_state_info, fragment_shader_state_info])
+        .vertex_input_state(&vertex_input_create_info)
+        .input_assembly_state(&input_assembly_create_info)
+        .viewport_state(&viewport_create_info)
+        .rasterization_state(&rasterizer_create_info)
+        .multisample_state(&multisampling_create_info)
+        //.depth_stencil_state() // not using depth/stencil tests
+        .color_blend_state(&color_blending_info)
+        //.dynamic_state // no dynamic states
+        .layout(pipeline_layout)
+        .render_pass(render_pass)
+        .subpass(0)
+        .build();
+
+    // Create the pipeline
+    let pipeline = unsafe {
+        logical_device
+            .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_info], None)
+            .unwrap()[0]
+    };
+
     // Delete shader modules
     unsafe {
         logical_device.destroy_shader_module(vertex_shader_module, None);
         logical_device.destroy_shader_module(fragment_shader_module, None);
     };
 
+    // Create one framebuffer for each image in the swapchain
+    let framebuffers = image_views
+        .as_slice()
+        .iter()
+        .map(|view| [*view])
+        .map(|attachments| {
+            let framebuffer_info = vk::FramebufferCreateInfo::builder()
+                .render_pass(render_pass)
+                .attachments(&attachments)
+                .width(extent.width)
+                .height(extent.height)
+                .layers(1)
+                .build();
+            unsafe {
+                logical_device
+                    .create_framebuffer(&framebuffer_info, None)
+                    .unwrap()
+            }
+        })
+        .collect::<Vec<_>>();
+
+    // Build the command pool info
+    let command_pool_info = vk::CommandPoolCreateInfo::builder()
+        .queue_family_index(graphics_family_index.unwrap())
+        .flags(vk::CommandPoolCreateFlags::empty())
+        .build();
+
+    // Create the command pool
+    let command_pool = unsafe {
+        logical_device
+            .create_command_pool(&command_pool_info, None)
+            .unwrap()
+    };
+
+    // Build the command buffer allocation info
+    let allocate_info = vk::CommandBufferAllocateInfo::builder()
+        .command_pool(command_pool)
+        .level(vk::CommandBufferLevel::PRIMARY)
+        .command_buffer_count(framebuffers.len() as _)
+        .build();
+
+    // Allocate one command buffer per swapchain image
+    let command_buffers = unsafe {
+        logical_device
+            .allocate_command_buffers(&allocate_info)
+            .unwrap()
+    };
+
+    command_buffers
+        .iter()
+        .zip(framebuffers.iter())
+        .for_each(|(buffer, framebuffer)| {
+            let buffer = *buffer;
+
+            // Begin the command buffer
+            {
+                let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+                    .flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE)
+                    .build();
+                unsafe {
+                    logical_device
+                        .begin_command_buffer(buffer, &command_buffer_begin_info)
+                        .unwrap()
+                };
+            }
+
+            // Begin the render pass
+            {
+                let clear_values = [vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [0.0, 0.0, 0.0, 1.0],
+                    },
+                }];
+
+                let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+                    .render_pass(render_pass)
+                    .framebuffer(*framebuffer)
+                    .render_area(vk::Rect2D {
+                        offset: vk::Offset2D { x: 0, y: 0 },
+                        extent,
+                    })
+                    .clear_values(&clear_values)
+                    .build();
+
+                unsafe {
+                    logical_device.cmd_begin_render_pass(
+                        buffer,
+                        &render_pass_begin_info,
+                        vk::SubpassContents::INLINE,
+                    )
+                };
+            }
+
+            // Bind pipeline
+            unsafe {
+                logical_device.cmd_bind_pipeline(buffer, vk::PipelineBindPoint::GRAPHICS, pipeline)
+            };
+
+            // Draw
+            unsafe {
+                logical_device.cmd_draw(buffer, 3, 1, 0, 0);
+            }
+
+            // End render pass
+            unsafe { logical_device.cmd_end_render_pass(buffer) };
+
+            // End command buffer
+            unsafe { logical_device.end_command_buffer(buffer).unwrap() };
+        });
+
+    // Create the image available semaphore
+    let image_available_semaphore = {
+        let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
+        unsafe {
+            logical_device
+                .create_semaphore(&semaphore_info, None)
+                .unwrap()
+        }
+    };
+
+    // Create the render finished semaphore
+    let render_finished_semaphore = {
+        let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
+        unsafe {
+            logical_device
+                .create_semaphore(&semaphore_info, None)
+                .unwrap()
+        }
+    };
+
     // Run the main loop
-    // event_loop.run_forever(|event| match event {
-    //     Event::WindowEvent { event, .. } => match event {
-    //         WindowEvent::KeyboardInput { input, .. } => {
-    //             if let Some(VirtualKeyCode::Escape) = input.virtual_keycode {
-    //                 ControlFlow::Break
-    //             } else {
-    //                 ControlFlow::Continue
-    //             }
-    //         }
-    //         WindowEvent::CloseRequested => ControlFlow::Break,
-    //         _ => ControlFlow::Continue,
-    //     },
-    //     _ => ControlFlow::Continue,
-    // });
+    log::debug!("Running application.");
+    let mut should_stop = false;
+    loop {
+        event_loop.poll_events(|event| match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            }
+            | Event::WindowEvent {
+                event:
+                    WindowEvent::KeyboardInput {
+                        input:
+                            winit::KeyboardInput {
+                                virtual_keycode: Some(VirtualKeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } => should_stop = true,
+            _ => {}
+        });
+
+        if should_stop {
+            break;
+        }
+
+        log::trace!("Drawing frame.");
+
+        // Acqure the next image from the swapchain
+        let image_index = unsafe {
+            swapchain
+                .acquire_next_image(
+                    swapchain_khr,
+                    std::u64::MAX,
+                    image_available_semaphore,
+                    vk::Fence::null(),
+                )
+                .unwrap()
+                .0
+        };
+
+        // Submit the command buffer
+        {
+            let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+            let submit_info = vk::SubmitInfo::builder()
+                .wait_semaphores(&[image_available_semaphore])
+                .wait_dst_stage_mask(&wait_stages)
+                .command_buffers(&[command_buffers[image_index as usize]])
+                .signal_semaphores(&[render_finished_semaphore])
+                .build();
+
+            unsafe {
+                logical_device
+                    .queue_submit(graphics_queue, &[submit_info], vk::Fence::null())
+                    .unwrap()
+            };
+        }
+
+        // Present the rendered image
+        {
+            let present_info = vk::PresentInfoKHR::builder()
+                .wait_semaphores(&[render_finished_semaphore])
+                .swapchains(&[swapchain_khr])
+                .image_indices(&[image_index])
+                .build();
+
+            unsafe {
+                swapchain
+                    .queue_present(present_queue, &present_info)
+                    .unwrap()
+            };
+        }
+    }
+
+    unsafe { logical_device.device_wait_idle().unwrap() };
 
     // Free objects
     log::debug!("Dropping application");
     unsafe {
+        logical_device.destroy_semaphore(render_finished_semaphore, None);
+        logical_device.destroy_semaphore(image_available_semaphore, None);
+        logical_device.destroy_command_pool(command_pool, None);
+        framebuffers
+            .iter()
+            .for_each(|f| logical_device.destroy_framebuffer(*f, None));
+        logical_device.destroy_pipeline(pipeline, None);
+        logical_device.destroy_pipeline_layout(pipeline_layout, None);
+        logical_device.destroy_render_pass(render_pass, None);
         image_views
             .iter()
             .for_each(|v| logical_device.destroy_image_view(*v, None));
