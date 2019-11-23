@@ -906,7 +906,7 @@ fn main() {
                 event: WindowEvent::Resized(LogicalSize { width, height }),
                 ..
             } => {
-                // Handle resizing by recreating the swapchain
+                // TODO: Handle resizing by recreating the swapchain
             }
             _ => {}
         });
