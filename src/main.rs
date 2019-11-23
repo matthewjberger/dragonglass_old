@@ -28,15 +28,36 @@ pub const REQUIRED_LAYERS: [&str; 1] = ["VK_LAYER_LUNARG_standard_validation"];
 
 // Setup the callback for the debug utils extension
 unsafe extern "system" fn vulkan_debug_callback(
-    _: DebugUtilsMessageSeverityFlagsEXT,
-    _: DebugUtilsMessageTypeFlagsEXT,
+    flags: DebugUtilsMessageSeverityFlagsEXT,
+    type_flags: DebugUtilsMessageTypeFlagsEXT,
     p_callback_data: *const DebugUtilsMessengerCallbackDataEXT,
     _: *mut c_void,
 ) -> Bool32 {
-    log::debug!(
-        "Validation layer: {:?}",
+    let type_flag = if type_flags == DebugUtilsMessageTypeFlagsEXT::GENERAL {
+        "General"
+    } else if type_flags == DebugUtilsMessageTypeFlagsEXT::PERFORMANCE {
+        "Performance"
+    } else if type_flags == DebugUtilsMessageTypeFlagsEXT::VALIDATION {
+        "Validation"
+    } else {
+        unreachable!()
+    };
+
+    let message = format!(
+        "[{}] {:?}",
+        type_flag,
         CStr::from_ptr((*p_callback_data).p_message)
     );
+
+    if flags == DebugUtilsMessageSeverityFlagsEXT::ERROR {
+        log::error!("{}", message);
+    } else if flags == DebugUtilsMessageSeverityFlagsEXT::INFO {
+        log::info!("{}", message);
+    } else if flags == DebugUtilsMessageSeverityFlagsEXT::WARNING {
+        log::warn!("{}", message);
+    } else if flags == DebugUtilsMessageSeverityFlagsEXT::VERBOSE {
+        // log::debug!("{}", message);
+    }
     vk::FALSE
 }
 
@@ -575,6 +596,7 @@ fn main() {
         image_views
             .iter()
             .for_each(|v| logical_device.destroy_image_view(*v, None));
+        swapchain.destroy_swapchain(swapchain_khr, None);
         logical_device.destroy_device(None);
         surface.destroy_surface(surface_khr, None);
         if let Some(messenger) = messenger {
