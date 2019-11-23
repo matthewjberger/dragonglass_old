@@ -14,7 +14,7 @@ use std::{
     ffi::{CStr, CString},
     os::raw::c_void,
 };
-use winit::{Event, EventsLoop, VirtualKeyCode, WindowEvent};
+use winit::{dpi::LogicalSize, Event, EventsLoop, VirtualKeyCode, WindowEvent};
 
 // Enable validation layers only in debug mode
 
@@ -902,6 +902,12 @@ fn main() {
                     },
                 ..
             } => should_stop = true,
+            Event::WindowEvent {
+                event: WindowEvent::Resized(LogicalSize { width, height }),
+                ..
+            } => {
+                // Handle resizing by recreating the swapchain
+            }
             _ => {}
         });
 
