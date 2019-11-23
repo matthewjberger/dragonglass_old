@@ -26,6 +26,9 @@ pub const ENABLE_VALIDATION_LAYERS: bool = false;
 
 pub const REQUIRED_LAYERS: [&str; 1] = ["VK_LAYER_LUNARG_standard_validation"];
 
+// The maximum number of flames that can be rendered simultaneously
+pub const MAX_FRAMES_IN_FLIGHT: u32 = 2;
+
 // Setup the callback for the debug utils extension
 unsafe extern "system" fn vulkan_debug_callback(
     flags: DebugUtilsMessageSeverityFlagsEXT,
@@ -842,25 +845,41 @@ fn main() {
             unsafe { logical_device.end_command_buffer(buffer).unwrap() };
         });
 
-    // Create the image available semaphore
-    let image_available_semaphore = {
-        let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
-        unsafe {
-            logical_device
-                .create_semaphore(&semaphore_info, None)
-                .unwrap()
-        }
-    };
+    // Create semaphores
+    let mut image_available_semaphores = Vec::new();
+    let mut render_finished_semaphores = Vec::new();
+    let mut in_flight_fences = Vec::new();
+    for _ in 0..MAX_FRAMES_IN_FLIGHT {
+        let image_available_semaphore = {
+            let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
+            unsafe {
+                logical_device
+                    .create_semaphore(&semaphore_info, None)
+                    .unwrap()
+            }
+        };
+        image_available_semaphores.push(image_available_semaphore);
 
-    // Create the render finished semaphore
-    let render_finished_semaphore = {
-        let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
-        unsafe {
-            logical_device
-                .create_semaphore(&semaphore_info, None)
-                .unwrap()
-        }
-    };
+        let render_finished_semaphore = {
+            let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
+            unsafe {
+                logical_device
+                    .create_semaphore(&semaphore_info, None)
+                    .unwrap()
+            }
+        };
+        render_finished_semaphores.push(render_finished_semaphore);
+
+        let in_flight_fence = {
+            let fence_info = vk::FenceCreateInfo::builder()
+                .flags(vk::FenceCreateFlags::SIGNALED)
+                .build();
+            unsafe { logical_device.create_fence(&fence_info, None).unwrap() }
+        };
+        in_flight_fences.push(in_flight_fence);
+    }
+
+    let mut current_frame = 0;
 
     // Run the main loop
     log::debug!("Running application.");
@@ -890,7 +909,18 @@ fn main() {
             break;
         }
 
-        log::trace!("Drawing frame.");
+        let image_available_semaphore = image_available_semaphores[current_frame];
+
+        let render_finished_semaphore = render_finished_semaphores[current_frame];
+
+        let in_flight_fence = in_flight_fences[current_frame];
+
+        unsafe {
+            logical_device
+                .wait_for_fences(&[in_flight_fence], true, std::u64::MAX)
+                .unwrap();
+            logical_device.reset_fences(&[in_flight_fence]).unwrap();
+        }
 
         // Acqure the next image from the swapchain
         let image_index = unsafe {
@@ -917,7 +947,7 @@ fn main() {
 
             unsafe {
                 logical_device
-                    .queue_submit(graphics_queue, &[submit_info], vk::Fence::null())
+                    .queue_submit(graphics_queue, &[submit_info], in_flight_fence)
                     .unwrap()
             };
         }
@@ -936,6 +966,8 @@ fn main() {
                     .unwrap()
             };
         }
+
+        current_frame += (1 + current_frame) % MAX_FRAMES_IN_FLIGHT as usize;
     }
 
     unsafe { logical_device.device_wait_idle().unwrap() };
@@ -943,8 +975,15 @@ fn main() {
     // Free objects
     log::debug!("Dropping application");
     unsafe {
-        logical_device.destroy_semaphore(render_finished_semaphore, None);
-        logical_device.destroy_semaphore(image_available_semaphore, None);
+        in_flight_fences
+            .iter()
+            .for_each(|fence| logical_device.destroy_fence(*fence, None));
+        render_finished_semaphores
+            .iter()
+            .for_each(|semaphore| logical_device.destroy_semaphore(*semaphore, None));
+        image_available_semaphores
+            .iter()
+            .for_each(|semaphore| logical_device.destroy_semaphore(*semaphore, None));
         logical_device.destroy_command_pool(command_pool, None);
         framebuffers
             .iter()
