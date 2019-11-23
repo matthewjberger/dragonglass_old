@@ -56,7 +56,7 @@ unsafe extern "system" fn vulkan_debug_callback(
     } else if flags == DebugUtilsMessageSeverityFlagsEXT::WARNING {
         log::warn!("{}", message);
     } else if flags == DebugUtilsMessageSeverityFlagsEXT::VERBOSE {
-        // log::debug!("{}", message);
+        log::trace!("{}", message);
     }
     vk::FALSE
 }
