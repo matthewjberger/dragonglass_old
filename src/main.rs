@@ -12,6 +12,7 @@ use ash::{
 };
 use std::{
     ffi::{CStr, CString},
+    mem,
     os::raw::c_void,
 };
 use winit::{dpi::LogicalSize, Event, EventsLoop, VirtualKeyCode, WindowEvent};
@@ -127,6 +128,53 @@ const APPLICATION_VERSION: u32 = vk_make_version!(1, 0, 0);
 const API_VERSION: u32 = vk_make_version!(1, 0, 0);
 const ENGINE_VERSION: u32 = vk_make_version!(1, 0, 0);
 const ENGINE_NAME: &str = "Sepia Engine";
+
+#[derive(Debug, Copy, Clone)]
+struct Vertex {
+    position: [f32; 2],
+    color: [f32; 3],
+}
+
+impl Vertex {
+    fn get_binding_description() -> vk::VertexInputBindingDescription {
+        vk::VertexInputBindingDescription::builder()
+            .binding(0)
+            .stride(mem::size_of::<Vertex>() as _)
+            .input_rate(vk::VertexInputRate::VERTEX)
+            .build()
+    }
+
+    fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 2] {
+        let position_description = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(0)
+            .format(vk::Format::R32G32_SFLOAT)
+            .offset(0)
+            .build();
+        let color_description = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(1)
+            .format(vk::Format::R32G32B32_SFLOAT)
+            .offset(8)
+            .build();
+        [position_description, color_description]
+    }
+}
+
+const VERTICES: [Vertex; 3] = [
+    Vertex {
+        position: [0.0, -0.5],
+        color: [1.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [0.5, 0.5],
+        color: [0.0, 1.0, 0.0],
+    },
+    Vertex {
+        position: [-0.5, 0.5],
+        color: [0.0, 0.0, 1.0],
+    },
+];
 
 fn main() {
     env_logger::init();
@@ -295,6 +343,10 @@ fn main() {
     log::debug!("Selected physical device: {:?}", unsafe {
         CStr::from_ptr(props.device_name.as_ptr())
     });
+
+    // Get the memory properties of the physical device
+    let memory_properties =
+        unsafe { instance.get_physical_device_memory_properties(physical_device) };
 
     // Find the index of the graphics and present queue families
     let (graphics_family_index, present_family_index) = {
@@ -573,9 +625,8 @@ fn main() {
 
     // Build vertex input creation info
     let vertex_input_create_info = vk::PipelineVertexInputStateCreateInfo::builder()
-        // Will need these when shader has vertices that aren't hard-coded
-        //.vertex_binding_descriptions()
-        //.vertex_attribute_descriptions()
+        .vertex_binding_descriptions(&[Vertex::get_binding_description()])
+        .vertex_attribute_descriptions(&Vertex::get_attribute_descriptions())
         .build();
 
     // Build input assembly creation info
@@ -769,6 +820,86 @@ fn main() {
             .unwrap()
     };
 
+    // Build the vertex buffer creation info
+    let vertex_buffer_info = vk::BufferCreateInfo::builder()
+        .size((VERTICES.len() * mem::size_of::<Vertex>() as usize) as _)
+        .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
+        .sharing_mode(vk::SharingMode::EXCLUSIVE)
+        .build();
+
+    // Create the vertex buffer
+    let vertex_buffer = unsafe {
+        logical_device
+            .create_buffer(&vertex_buffer_info, None)
+            .unwrap()
+    };
+
+    // Get the buffer's memory requirements
+    let memory_requirements =
+        unsafe { logical_device.get_buffer_memory_requirements(vertex_buffer) };
+
+    // Specify the required memory properties
+    let required_properties =
+        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
+
+    // Determine the buffer's memory type
+    let mut memory_type = 0;
+    let mut found_memory_type = false;
+    for index in 0..memory_properties.memory_type_count {
+        if memory_requirements.memory_type_bits & (1 << index) != 0
+            && memory_properties.memory_types[index as usize]
+                .property_flags
+                .contains(required_properties)
+        {
+            memory_type = index;
+            found_memory_type = true;
+        }
+    }
+    if !found_memory_type {
+        panic!("Failed to find suitable memory type.")
+    }
+
+    // Create the vertex buffer allocation info
+    let vertex_buffer_allocation_info = vk::MemoryAllocateInfo::builder()
+        .allocation_size(memory_requirements.size)
+        .memory_type_index(memory_type)
+        .build();
+
+    // Allocate memory for the buffer
+    let vertex_buffer_memory = unsafe {
+        logical_device
+            .allocate_memory(&vertex_buffer_allocation_info, None)
+            .unwrap()
+    };
+
+    unsafe {
+        // Bind the buffer memory for mapping
+        logical_device
+            .bind_buffer_memory(vertex_buffer, vertex_buffer_memory, 0)
+            .unwrap();
+
+        // Map the entire buffer buffer
+        let data_pointer = logical_device
+            .map_memory(
+                vertex_buffer_memory,
+                0,
+                vertex_buffer_info.size,
+                vk::MemoryMapFlags::empty(),
+            )
+            .unwrap();
+
+        // Upload aligned vertex data to the mapped buffer
+        let mut align = ash::util::Align::new(
+            data_pointer,
+            mem::align_of::<u32>() as _,
+            memory_requirements.size,
+        );
+        align.copy_from_slice(&VERTICES);
+
+        // Unmap the buffer memory
+        logical_device.unmap_memory(vertex_buffer_memory);
+    }
+
     // Build the command buffer allocation info
     let allocate_info = vk::CommandBufferAllocateInfo::builder()
         .command_pool(command_pool)
@@ -787,7 +918,7 @@ fn main() {
         .iter()
         .zip(framebuffers.iter())
         .for_each(|(buffer, framebuffer)| {
-            let buffer = *buffer;
+            let command_buffer = *buffer;
 
             // Begin the command buffer
             {
@@ -796,7 +927,7 @@ fn main() {
                     .build();
                 unsafe {
                     logical_device
-                        .begin_command_buffer(buffer, &command_buffer_begin_info)
+                        .begin_command_buffer(command_buffer, &command_buffer_begin_info)
                         .unwrap()
                 };
             }
@@ -821,7 +952,7 @@ fn main() {
 
                 unsafe {
                     logical_device.cmd_begin_render_pass(
-                        buffer,
+                        command_buffer,
                         &render_pass_begin_info,
                         vk::SubpassContents::INLINE,
                     )
@@ -830,19 +961,26 @@ fn main() {
 
             // Bind pipeline
             unsafe {
-                logical_device.cmd_bind_pipeline(buffer, vk::PipelineBindPoint::GRAPHICS, pipeline)
+                logical_device.cmd_bind_pipeline(
+                    command_buffer,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    pipeline,
+                )
+            };
+
+            // Bind vertex buffer
+            unsafe {
+                logical_device.cmd_bind_vertex_buffers(command_buffer, 0, &[vertex_buffer], &[0])
             };
 
             // Draw
-            unsafe {
-                logical_device.cmd_draw(buffer, 3, 1, 0, 0);
-            }
+            unsafe { logical_device.cmd_draw(command_buffer, 3, 1, 0, 0) };
 
             // End render pass
-            unsafe { logical_device.cmd_end_render_pass(buffer) };
+            unsafe { logical_device.cmd_end_render_pass(command_buffer) };
 
             // End command buffer
-            unsafe { logical_device.end_command_buffer(buffer).unwrap() };
+            unsafe { logical_device.end_command_buffer(command_buffer).unwrap() };
         });
 
     // Create semaphores
@@ -903,7 +1041,11 @@ fn main() {
                 ..
             } => should_stop = true,
             Event::WindowEvent {
-                event: WindowEvent::Resized(LogicalSize { width, height }),
+                event:
+                    WindowEvent::Resized(LogicalSize {
+                        width: _width,
+                        height: _height,
+                    }),
                 ..
             } => {
                 // TODO: Handle resizing by recreating the swapchain
@@ -990,6 +1132,8 @@ fn main() {
         image_available_semaphores
             .iter()
             .for_each(|semaphore| logical_device.destroy_semaphore(*semaphore, None));
+        logical_device.destroy_buffer(vertex_buffer, None);
+        logical_device.free_memory(vertex_buffer_memory, None);
         logical_device.destroy_command_pool(command_pool, None);
         framebuffers
             .iter()
