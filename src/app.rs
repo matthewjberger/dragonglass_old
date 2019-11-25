@@ -1,26 +1,14 @@
-use ash::{
-    extensions::{
-        ext::DebugUtils,
-        khr::{Surface, Swapchain},
-    },
-    version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
-    vk, vk_make_version,
-};
-use std::{
-    ffi::{CStr, CString},
-    mem,
-};
 use winit::{dpi::LogicalSize, Event, EventsLoop, VirtualKeyCode, Window, WindowEvent};
 
 pub struct App {
-    pub event_loop: EventsLoop,
-    pub window: Window,
+    event_loop: EventsLoop,
+    window: Window,
 }
 
 impl App {
     pub fn new(width: u32, height: u32, title: &str) -> Self {
         // Initialize the window
-        let mut event_loop = EventsLoop::new();
+        let event_loop = EventsLoop::new();
         let window = winit::WindowBuilder::new()
             .with_title(title)
             .with_dimensions((width, height).into())
@@ -73,5 +61,9 @@ impl App {
 
             handler();
         }
+    }
+
+    pub fn window(&mut self) -> &mut Window {
+        &mut self.window
     }
 }

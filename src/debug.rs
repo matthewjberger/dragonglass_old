@@ -18,7 +18,7 @@ pub const ENABLE_VALIDATION_LAYERS: bool = false;
 pub const REQUIRED_LAYERS: [&str; 1] = ["VK_LAYER_LUNARG_standard_validation"];
 
 // Setup the callback for the debug utils extension
-pub unsafe extern "system" fn vulkan_debug_callback(
+unsafe extern "system" fn vulkan_debug_callback(
     flags: DebugUtilsMessageSeverityFlagsEXT,
     type_flags: DebugUtilsMessageTypeFlagsEXT,
     p_callback_data: *const DebugUtilsMessengerCallbackDataEXT,
