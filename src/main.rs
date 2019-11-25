@@ -12,18 +12,17 @@ use std::{
 };
 use winit::{dpi::LogicalSize, Event, EventsLoop, VirtualKeyCode, WindowEvent};
 
+mod app;
 mod debug;
 mod surface;
 mod vertex;
 
+use app::App;
 use vertex::Vertex;
 
 // The maximum number of frames that can be rendered simultaneously
 pub const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 
-const WINDOW_TITLE: &str = "Vulkan Tutorial";
-const WINDOW_WIDTH: u32 = 800;
-const WINDOW_HEIGHT: u32 = 600;
 const APPLICATION_VERSION: u32 = vk_make_version!(1, 0, 0);
 const API_VERSION: u32 = vk_make_version!(1, 0, 0);
 const ENGINE_VERSION: u32 = vk_make_version!(1, 0, 0);
@@ -42,7 +41,7 @@ fn main() {
     let entry = ash::Entry::new().expect("Failed to create entry");
 
     // Create the application info
-    let app_name = CString::new(WINDOW_TITLE).expect("Failed to create CString");
+    let app_name = CString::new("Vulkan Tutorial").expect("Failed to create CString");
     let engine_name = CString::new(ENGINE_NAME).expect("Failed to create CString");
     let app_info = vk::ApplicationInfo::builder()
         .application_name(&app_name)
@@ -106,17 +105,12 @@ fn main() {
     };
 
     // Initialize the window
-    let mut event_loop = EventsLoop::new();
-    let window = winit::WindowBuilder::new()
-        .with_title(WINDOW_TITLE)
-        .with_dimensions((WINDOW_WIDTH, WINDOW_HEIGHT).into())
-        .build(&event_loop)
-        .expect("Failed to create window.");
+    let mut app = App::new(800, 600, "Vulkan Tutorial");
 
     // Create the window surface
     let surface = Surface::new(&entry, &instance);
     let surface_khr = unsafe {
-        surface::create_surface(&entry, &instance, &window)
+        surface::create_surface(&entry, &instance, &app.window)
             .expect("Failed to create window surface!")
     };
 
@@ -333,8 +327,8 @@ fn main() {
     } else {
         let min = capabilities.min_image_extent;
         let max = capabilities.max_image_extent;
-        let width = WINDOW_WIDTH.min(max.width).max(min.width);
-        let height = WINDOW_HEIGHT.min(max.height).max(min.height);
+        let width = 800.min(max.width).max(min.width);
+        let height = 600.min(max.height).max(min.height);
         vk::Extent2D { width, height }
     };
 
@@ -1006,44 +1000,7 @@ fn main() {
 
     let mut current_frame = 0;
 
-    // Run the main loop
-    log::debug!("Running application.");
-    let mut should_stop = false;
-    loop {
-        event_loop.poll_events(|event| match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            }
-            | Event::WindowEvent {
-                event:
-                    WindowEvent::KeyboardInput {
-                        input:
-                            winit::KeyboardInput {
-                                virtual_keycode: Some(VirtualKeyCode::Escape),
-                                ..
-                            },
-                        ..
-                    },
-                ..
-            } => should_stop = true,
-            Event::WindowEvent {
-                event:
-                    WindowEvent::Resized(LogicalSize {
-                        width: _width,
-                        height: _height,
-                    }),
-                ..
-            } => {
-                // TODO: Handle resizing by recreating the swapchain
-            }
-            _ => {}
-        });
-
-        if should_stop {
-            break;
-        }
-
+    app.run(|| {
         let image_available_semaphore = image_available_semaphores[current_frame];
 
         let render_finished_semaphore = render_finished_semaphores[current_frame];
@@ -1103,7 +1060,7 @@ fn main() {
         }
 
         current_frame += (1 + current_frame) % MAX_FRAMES_IN_FLIGHT as usize;
-    }
+    });
 
     unsafe { logical_device.device_wait_idle().unwrap() };
 
