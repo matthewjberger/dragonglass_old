@@ -4,122 +4,22 @@ use ash::{
         khr::{Surface, Swapchain},
     },
     version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
-    vk::{
-        self, Bool32, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
-        DebugUtilsMessengerCallbackDataEXT,
-    },
-    vk_make_version,
+    vk, vk_make_version,
 };
 use std::{
     ffi::{CStr, CString},
     mem,
-    os::raw::c_void,
 };
 use winit::{dpi::LogicalSize, Event, EventsLoop, VirtualKeyCode, WindowEvent};
 
-// Enable validation layers only in debug mode
+mod debug;
+mod surface;
+mod vertex;
 
-#[cfg(debug_assertions)]
-pub const ENABLE_VALIDATION_LAYERS: bool = true;
+use vertex::Vertex;
 
-#[cfg(not(debug_assertions))]
-pub const ENABLE_VALIDATION_LAYERS: bool = false;
-
-pub const REQUIRED_LAYERS: [&str; 1] = ["VK_LAYER_LUNARG_standard_validation"];
-
-// The maximum number of flames that can be rendered simultaneously
+// The maximum number of frames that can be rendered simultaneously
 pub const MAX_FRAMES_IN_FLIGHT: u32 = 2;
-
-// Setup the callback for the debug utils extension
-unsafe extern "system" fn vulkan_debug_callback(
-    flags: DebugUtilsMessageSeverityFlagsEXT,
-    type_flags: DebugUtilsMessageTypeFlagsEXT,
-    p_callback_data: *const DebugUtilsMessengerCallbackDataEXT,
-    _: *mut c_void,
-) -> Bool32 {
-    let type_flag = if type_flags == DebugUtilsMessageTypeFlagsEXT::GENERAL {
-        "General"
-    } else if type_flags == DebugUtilsMessageTypeFlagsEXT::PERFORMANCE {
-        "Performance"
-    } else if type_flags == DebugUtilsMessageTypeFlagsEXT::VALIDATION {
-        "Validation"
-    } else {
-        unreachable!()
-    };
-
-    let message = format!(
-        "[{}] {:?}",
-        type_flag,
-        CStr::from_ptr((*p_callback_data).p_message)
-    );
-
-    if flags == DebugUtilsMessageSeverityFlagsEXT::ERROR {
-        log::error!("{}", message);
-    } else if flags == DebugUtilsMessageSeverityFlagsEXT::INFO {
-        log::info!("{}", message);
-    } else if flags == DebugUtilsMessageSeverityFlagsEXT::WARNING {
-        log::warn!("{}", message);
-    } else if flags == DebugUtilsMessageSeverityFlagsEXT::VERBOSE {
-        log::trace!("{}", message);
-    }
-    vk::FALSE
-}
-
-// Determine required surface extensions based on platform
-
-#[cfg(target_os = "windows")]
-pub fn required_extension_names() -> Vec<*const i8> {
-    use ash::extensions::khr::Win32Surface;
-    vec![Surface::name().as_ptr(), Win32Surface::name().as_ptr()]
-}
-
-#[cfg(target_os = "linux")]
-pub fn required_extension_names() -> Vec<*const i8> {
-    use ash::extensions::khr::XlibSurface;
-    vec![Surface::name().as_ptr(), XlibSurface::name().as_ptr()]
-}
-
-#[cfg(target_os = "windows")]
-unsafe fn create_surface<E: EntryV1_0, I: InstanceV1_0>(
-    entry: &E,
-    instance: &I,
-    window: &winit::Window,
-) -> Result<vk::SurfaceKHR, vk::Result> {
-    use ash::extensions::khr::Win32Surface;
-    use std::ptr;
-    use winapi::{shared::windef::HWND, um::libloaderapi::GetModuleHandleW};
-    use winit::os::windows::WindowExt;
-
-    let hwnd = window.get_hwnd() as HWND;
-    let hinstance = GetModuleHandleW(ptr::null()) as *const c_void;
-    let win32_create_info = vk::Win32SurfaceCreateInfoKHR {
-        s_type: vk::StructureType::WIN32_SURFACE_CREATE_INFO_KHR,
-        p_next: ptr::null(),
-        flags: Default::default(),
-        hinstance,
-        hwnd: hwnd as *const c_void,
-    };
-    let win32_surface_loader = Win32Surface::new(entry, instance);
-    win32_surface_loader.create_win32_surface(&win32_create_info, None)
-}
-
-#[cfg(target_os = "linux")]
-unsafe fn create_surface<E: EntryV1_0, I: InstanceV1_0>(
-    entry: &E,
-    instance: &I,
-    window: &winit::Window,
-) -> Result<vk::SurfaceKHR, vk::Result> {
-    use ash::extensions::khr::XlibSurface;
-    use winit::os::unix::WindowExt;
-    let x11_display = window.get_xlib_display().unwrap();
-    let x11_window = window.get_xlib_window().unwrap();
-    let x11_create_info = vk::XlibSurfaceCreateInfoKHR::builder()
-        .window(x11_window)
-        .dpy(x11_display as *mut vk::Display);
-
-    let xlib_surface_loader = XlibSurface::new(entry, instance);
-    xlib_surface_loader.create_xlib_surface(&x11_create_info, None)
-}
 
 const WINDOW_TITLE: &str = "Vulkan Tutorial";
 const WINDOW_WIDTH: u32 = 800;
@@ -129,55 +29,14 @@ const API_VERSION: u32 = vk_make_version!(1, 0, 0);
 const ENGINE_VERSION: u32 = vk_make_version!(1, 0, 0);
 const ENGINE_NAME: &str = "Sepia Engine";
 
-#[derive(Debug, Copy, Clone)]
-struct Vertex {
-    position: [f32; 2],
-    color: [f32; 3],
-}
-
-impl Vertex {
-    fn get_binding_description() -> vk::VertexInputBindingDescription {
-        vk::VertexInputBindingDescription::builder()
-            .binding(0)
-            .stride(mem::size_of::<Vertex>() as _)
-            .input_rate(vk::VertexInputRate::VERTEX)
-            .build()
-    }
-
-    fn get_attribute_descriptions() -> [vk::VertexInputAttributeDescription; 2] {
-        let position_description = vk::VertexInputAttributeDescription::builder()
-            .binding(0)
-            .location(0)
-            .format(vk::Format::R32G32_SFLOAT)
-            .offset(0)
-            .build();
-        let color_description = vk::VertexInputAttributeDescription::builder()
-            .binding(0)
-            .location(1)
-            .format(vk::Format::R32G32B32_SFLOAT)
-            .offset(8)
-            .build();
-        [position_description, color_description]
-    }
-}
-
-const VERTICES: [Vertex; 3] = [
-    Vertex {
-        position: [0.0, -0.5],
-        color: [1.0, 0.0, 0.0],
-    },
-    Vertex {
-        position: [0.5, 0.5],
-        color: [0.0, 1.0, 0.0],
-    },
-    Vertex {
-        position: [-0.5, 0.5],
-        color: [0.0, 0.0, 1.0],
-    },
-];
-
 fn main() {
     env_logger::init();
+
+    let vertices: [Vertex; 3] = [
+        Vertex::new([0.0, -0.5], [1.0, 0.0, 0.0]),
+        Vertex::new([0.5, 0.5], [0.0, 1.0, 0.0]),
+        Vertex::new([-0.5, 0.5], [0.0, 0.0, 1.0]),
+    ];
 
     // Load the Vulkan library
     let entry = ash::Entry::new().expect("Failed to create entry");
@@ -194,11 +53,11 @@ fn main() {
         .build();
 
     // Determine required extension names
-    let mut instance_extension_names = required_extension_names();
+    let mut instance_extension_names = surface::surface_extension_names();
 
     // If validation layers are enabled
     // add the Debug Utils extension name to the list of required extension names
-    if ENABLE_VALIDATION_LAYERS {
+    if debug::ENABLE_VALIDATION_LAYERS {
         instance_extension_names.push(DebugUtils::name().as_ptr());
     }
     // Create the instance creation info
@@ -207,7 +66,7 @@ fn main() {
         .enabled_extension_names(&instance_extension_names);
 
     // Determine the required layer names
-    let layer_names = REQUIRED_LAYERS
+    let layer_names = debug::REQUIRED_LAYERS
         .iter()
         .map(|name| CString::new(*name).expect("Failed to build CString"))
         .collect::<Vec<_>>();
@@ -218,9 +77,9 @@ fn main() {
         .map(|name| name.as_ptr())
         .collect::<Vec<_>>();
 
-    if ENABLE_VALIDATION_LAYERS {
+    if debug::ENABLE_VALIDATION_LAYERS {
         // Check if the required validation layers are supported
-        for required in REQUIRED_LAYERS.iter() {
+        for required in debug::REQUIRED_LAYERS.iter() {
             let found = entry
                 .enumerate_instance_layer_properties()
                 .expect("Couldn't enumerate instance layer properties")
@@ -257,18 +116,19 @@ fn main() {
     // Create the window surface
     let surface = Surface::new(&entry, &instance);
     let surface_khr = unsafe {
-        create_surface(&entry, &instance, &window).expect("Failed to create window surface!")
+        surface::create_surface(&entry, &instance, &window)
+            .expect("Failed to create window surface!")
     };
 
     // Setup the debug messenger
     let mut debug_utils: Option<DebugUtils> = None;
-    let messenger = if ENABLE_VALIDATION_LAYERS {
+    let messenger = if debug::ENABLE_VALIDATION_LAYERS {
         debug_utils = Some(DebugUtils::new(&entry, &instance));
         let create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
             .flags(vk::DebugUtilsMessengerCreateFlagsEXT::all())
             .message_severity(vk::DebugUtilsMessageSeverityFlagsEXT::all())
             .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
-            .pfn_user_callback(Some(vulkan_debug_callback))
+            .pfn_user_callback(Some(debug::vulkan_debug_callback))
             .build();
         unsafe {
             Some(
@@ -412,7 +272,7 @@ fn main() {
         .enabled_extension_names(&device_extensions)
         .enabled_features(&device_features);
 
-    if ENABLE_VALIDATION_LAYERS {
+    if debug::ENABLE_VALIDATION_LAYERS {
         // Add the validation layers to the list of enabled layers if validation layers are enabled
         device_create_info_builder =
             device_create_info_builder.enabled_layer_names(&layer_name_ptrs)
@@ -833,7 +693,7 @@ fn main() {
             .unwrap()
     };
 
-    let buffer_size = VERTICES.len() * mem::size_of::<Vertex>() as usize;
+    let buffer_size = vertices.len() * mem::size_of::<Vertex>() as usize;
 
     //--- BEGIN STAGING BUFFER
 
@@ -911,7 +771,7 @@ fn main() {
             mem::align_of::<u32>() as _,
             staging_buffer_memory_requirements.size,
         );
-        align.copy_from_slice(&VERTICES);
+        align.copy_from_slice(&vertices);
 
         // Unmap the buffer memory
         logical_device.unmap_memory(staging_buffer_memory);
