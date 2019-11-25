@@ -121,27 +121,7 @@ fn main() {
     };
 
     // Setup the debug messenger
-    let mut debug_utils: Option<DebugUtils> = None;
-    let messenger = if debug::ENABLE_VALIDATION_LAYERS {
-        debug_utils = Some(DebugUtils::new(&entry, &instance));
-        let create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
-            .flags(vk::DebugUtilsMessengerCreateFlagsEXT::all())
-            .message_severity(vk::DebugUtilsMessageSeverityFlagsEXT::all())
-            .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
-            .pfn_user_callback(Some(debug::vulkan_debug_callback))
-            .build();
-        unsafe {
-            Some(
-                debug_utils
-                    .as_mut()
-                    .unwrap()
-                    .create_debug_utils_messenger(&create_info, None)
-                    .expect("Failed to create debug utils messenger"),
-            )
-        }
-    } else {
-        None
-    };
+    let debug_messenger = debug::setup_debug_messenger(&entry, &instance);
 
     // Pick a physical device
     let devices = unsafe {
@@ -1155,8 +1135,7 @@ fn main() {
         swapchain.destroy_swapchain(swapchain_khr, None);
         logical_device.destroy_device(None);
         surface.destroy_surface(surface_khr, None);
-        if let Some(messenger) = messenger {
-            let debug_utils = debug_utils.take().unwrap();
+        if let Some((debug_utils, messenger)) = debug_messenger {
             debug_utils.destroy_debug_utils_messenger(messenger, None);
         }
         instance.destroy_instance(None);
