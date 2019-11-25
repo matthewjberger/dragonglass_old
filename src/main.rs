@@ -820,10 +820,111 @@ fn main() {
             .unwrap()
     };
 
+    // Build the transient command pool info
+    let transient_command_pool_info = vk::CommandPoolCreateInfo::builder()
+        .queue_family_index(graphics_family_index.unwrap())
+        .flags(vk::CommandPoolCreateFlags::TRANSIENT)
+        .build();
+
+    // Create the command pool
+    let transient_command_pool = unsafe {
+        logical_device
+            .create_command_pool(&transient_command_pool_info, None)
+            .unwrap()
+    };
+
+    let buffer_size = VERTICES.len() * mem::size_of::<Vertex>() as usize;
+
+    //--- BEGIN STAGING BUFFER
+
+    // Build the staging buffer creation info
+    let staging_buffer_info = vk::BufferCreateInfo::builder()
+        .size(buffer_size as _)
+        .usage(vk::BufferUsageFlags::TRANSFER_SRC)
+        .sharing_mode(vk::SharingMode::EXCLUSIVE)
+        .build();
+
+    // Create the staging buffer
+    let staging_buffer = unsafe {
+        logical_device
+            .create_buffer(&staging_buffer_info, None)
+            .unwrap()
+    };
+
+    // Get the buffer's memory requirements
+    let staging_buffer_memory_requirements =
+        unsafe { logical_device.get_buffer_memory_requirements(staging_buffer) };
+
+    // Specify the required memory properties
+    let required_properties =
+        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
+
+    // Determine the buffer's memory type
+    let mut memory_type = 0;
+    let mut found_memory_type = false;
+    for index in 0..memory_properties.memory_type_count {
+        if staging_buffer_memory_requirements.memory_type_bits & (1 << index) != 0
+            && memory_properties.memory_types[index as usize]
+                .property_flags
+                .contains(required_properties)
+        {
+            memory_type = index;
+            found_memory_type = true;
+        }
+    }
+    if !found_memory_type {
+        panic!("Failed to find suitable memory type.")
+    }
+
+    // Create the staging buffer allocation info
+    let staging_buffer_allocation_info = vk::MemoryAllocateInfo::builder()
+        .allocation_size(staging_buffer_memory_requirements.size)
+        .memory_type_index(memory_type)
+        .build();
+
+    // Allocate memory for the buffer
+    let staging_buffer_memory = unsafe {
+        logical_device
+            .allocate_memory(&staging_buffer_allocation_info, None)
+            .unwrap()
+    };
+
+    unsafe {
+        // Bind the buffer memory for mapping
+        logical_device
+            .bind_buffer_memory(staging_buffer, staging_buffer_memory, 0)
+            .unwrap();
+
+        // Map the entire buffer buffer
+        let data_pointer = logical_device
+            .map_memory(
+                staging_buffer_memory,
+                0,
+                staging_buffer_info.size,
+                vk::MemoryMapFlags::empty(),
+            )
+            .unwrap();
+
+        // Upload aligned staging data to the mapped buffer
+        let mut align = ash::util::Align::new(
+            data_pointer,
+            mem::align_of::<u32>() as _,
+            staging_buffer_memory_requirements.size,
+        );
+        align.copy_from_slice(&VERTICES);
+
+        // Unmap the buffer memory
+        logical_device.unmap_memory(staging_buffer_memory);
+    }
+
+    //--- END STAGING BUFFER
+
+    //--- BEGIN VERTEX BUFFER
+
     // Build the vertex buffer creation info
     let vertex_buffer_info = vk::BufferCreateInfo::builder()
-        .size((VERTICES.len() * mem::size_of::<Vertex>() as usize) as _)
-        .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
+        .size(buffer_size as _)
+        .usage(vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER)
         .sharing_mode(vk::SharingMode::EXCLUSIVE)
         .build();
 
@@ -839,8 +940,7 @@ fn main() {
         unsafe { logical_device.get_buffer_memory_requirements(vertex_buffer) };
 
     // Specify the required memory properties
-    let required_properties =
-        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
+    let required_properties = vk::MemoryPropertyFlags::DEVICE_LOCAL;
 
     // Determine the buffer's memory type
     let mut memory_type = 0;
@@ -872,33 +972,80 @@ fn main() {
             .unwrap()
     };
 
+    // Bind the buffer memory for mapping
     unsafe {
-        // Bind the buffer memory for mapping
         logical_device
             .bind_buffer_memory(vertex_buffer, vertex_buffer_memory, 0)
-            .unwrap();
-
-        // Map the entire buffer buffer
-        let data_pointer = logical_device
-            .map_memory(
-                vertex_buffer_memory,
-                0,
-                vertex_buffer_info.size,
-                vk::MemoryMapFlags::empty(),
-            )
-            .unwrap();
-
-        // Upload aligned vertex data to the mapped buffer
-        let mut align = ash::util::Align::new(
-            data_pointer,
-            mem::align_of::<u32>() as _,
-            memory_requirements.size,
-        );
-        align.copy_from_slice(&VERTICES);
-
-        // Unmap the buffer memory
-        logical_device.unmap_memory(vertex_buffer_memory);
+            .unwrap()
     }
+
+    {
+        // Allocate a command buffer using the command pool
+        let command_buffer = {
+            let allocation_info = vk::CommandBufferAllocateInfo::builder()
+                .level(vk::CommandBufferLevel::PRIMARY)
+                .command_pool(command_pool)
+                .command_buffer_count(1)
+                .build();
+
+            unsafe {
+                logical_device
+                    .allocate_command_buffers(&allocation_info)
+                    .unwrap()[0]
+            }
+        };
+
+        // Begin recording
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
+            .build();
+        unsafe {
+            logical_device
+                .begin_command_buffer(command_buffer, &begin_info)
+                .unwrap()
+        };
+
+        // Define the region for the buffer copy
+        let region = vk::BufferCopy {
+            src_offset: 0,
+            dst_offset: 0,
+            size: buffer_size as _,
+        };
+
+        // Copy the bytes of the staging buffer to the vertex buffer
+        unsafe {
+            logical_device.cmd_copy_buffer(command_buffer, staging_buffer, vertex_buffer, &[region])
+        };
+
+        // End command buffer recording
+        unsafe { logical_device.end_command_buffer(command_buffer).unwrap() };
+
+        // Build the submission info
+        let submit_info = vk::SubmitInfo::builder()
+            .command_buffers(&[command_buffer])
+            .build();
+
+        // Submit the command buffer
+        unsafe {
+            logical_device
+                .queue_submit(graphics_queue, &[submit_info], vk::Fence::null())
+                .unwrap()
+        };
+
+        // Wait for the command buffer to be executed
+        unsafe { logical_device.queue_wait_idle(graphics_queue).unwrap() };
+
+        // Free the command buffer
+        unsafe { logical_device.free_command_buffers(command_pool, &[command_buffer]) };
+    }
+
+    // Free the staging buffer
+    unsafe { logical_device.destroy_buffer(staging_buffer, None) };
+
+    // Free the staging buffer memory
+    unsafe { logical_device.free_memory(staging_buffer_memory, None) };
+
+    //--- END VERTEX BUFFER
 
     // Build the command buffer allocation info
     let allocate_info = vk::CommandBufferAllocateInfo::builder()
@@ -1135,6 +1282,7 @@ fn main() {
         logical_device.destroy_buffer(vertex_buffer, None);
         logical_device.free_memory(vertex_buffer_memory, None);
         logical_device.destroy_command_pool(command_pool, None);
+        logical_device.destroy_command_pool(transient_command_pool, None);
         framebuffers
             .iter()
             .for_each(|f| logical_device.destroy_framebuffer(*f, None));
