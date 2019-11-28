@@ -1,6 +1,6 @@
 use ash::{
     extensions::khr::{Surface, Swapchain},
-    version::{DeviceV1_0, InstanceV1_0},
+    version::DeviceV1_0,
     vk,
 };
 use std::{ffi::CString, mem};
@@ -32,94 +32,23 @@ fn main() {
 
     let mut app = App::new(800, 600, "Vulkan Tutorial");
     let context = VulkanContext::new(app.window());
-    let instance = context.instance();
-    let physical_device = context.physical_device();
-    let surface = context.surface();
-    let surface_khr = context.surface_khr();
 
-    // Get the memory properties of the physical device
-    let memory_properties =
-        unsafe { instance.get_physical_device_memory_properties(physical_device) };
-
-    let (graphics_queue_family_index, present_queue_family_index) = context.queue_family_indices();
-
-    // Need to dedup since the graphics family and presentation family
-    // can have the same queue family index and
-    // Vulkan does not allow passing an array containing duplicated family
-    // indices.
-    let mut queue_family_indices = vec![
-        graphics_queue_family_index.expect("Failed to find a graphics queue"),
-        present_queue_family_index.expect("Failed to find a present queue"),
-    ];
-    queue_family_indices.dedup();
-
-    // Build an array of DeviceQueueCreateInfo,
-    // one for each different family index
-    let queue_create_infos = queue_family_indices
-        .iter()
-        .map(|index| {
-            vk::DeviceQueueCreateInfo::builder()
-                .queue_family_index(*index)
-                .queue_priorities(&[1.0f32])
-                .build()
-        })
-        .collect::<Vec<_>>();
-
-    // Specify device extensions
-    let device_extensions = [Swapchain::name().as_ptr()];
-
-    // Get the features of the physical device
-    let device_features = vk::PhysicalDeviceFeatures::builder().build();
-
-    // Create the device creation info using the queue creation info and available features
-    let mut device_create_info_builder = vk::DeviceCreateInfo::builder()
-        .queue_create_infos(&queue_create_infos)
-        .enabled_extension_names(&device_extensions)
-        .enabled_features(&device_features);
-
-    ////// Delete this
-    // Determine the required layer names
-    let layer_names = debug::REQUIRED_LAYERS
-        .iter()
-        .map(|name| CString::new(*name).expect("Failed to build CString"))
-        .collect::<Vec<_>>();
-
-    // Determine required layer name pointers
-    let layer_name_ptrs = layer_names
-        .iter()
-        .map(|name| name.as_ptr())
-        .collect::<Vec<_>>();
-    //////
-
-    if debug::ENABLE_VALIDATION_LAYERS {
-        // Add the validation layers to the list of enabled layers if validation layers are enabled
-        device_create_info_builder =
-            device_create_info_builder.enabled_layer_names(layer_name_ptrs.as_slice())
-    }
-
-    let device_create_info = device_create_info_builder.build();
-
-    // Create the logical device using the physical device and device creation info
-    let logical_device = unsafe {
-        instance
-            .create_device(physical_device, &device_create_info, None)
-            .expect("Failed to create logical device.")
-    };
+    let logical_device = context.logical_device();
+    let graphics_queue_family_index = context.graphics_queue_family_index();
+    let present_queue_family_index = context.present_queue_family_index();
 
     // Retrieve the graphics and present queues from the logical device using the graphics queue family index
-    let graphics_queue =
-        unsafe { logical_device.get_device_queue(graphics_queue_family_index.unwrap(), 0) };
-    let present_queue =
-        unsafe { logical_device.get_device_queue(present_queue_family_index.unwrap(), 0) };
+    let graphics_queue = unsafe { logical_device.get_device_queue(graphics_queue_family_index, 0) };
+    let present_queue = unsafe { logical_device.get_device_queue(present_queue_family_index, 0) };
 
     let (swapchain, swapchain_khr, swapchain_properties, images) = create_swapchain(
-        &instance,
-        physical_device,
+        context.instance(),
+        context.physical_device(),
         &logical_device,
-        &surface,
-        surface_khr,
-        graphics_queue_family_index.unwrap(),
-        present_queue_family_index.unwrap(),
+        &context.surface(),
+        context.surface_khr(),
+        graphics_queue_family_index,
+        present_queue_family_index,
     );
     let swapchain_khr_arr = [swapchain_khr];
     let image_views = create_image_views(&logical_device, &swapchain_properties, &images);
@@ -136,14 +65,14 @@ fn main() {
     // Create the command pool
     let command_pool = create_command_pool(
         &logical_device,
-        graphics_queue_family_index.unwrap(),
+        graphics_queue_family_index,
         vk::CommandPoolCreateFlags::empty(),
     );
 
     // Build the transient command pool info
     let transient_command_pool = create_command_pool(
         &logical_device,
-        graphics_queue_family_index.unwrap(),
+        graphics_queue_family_index,
         vk::CommandPoolCreateFlags::TRANSIENT,
     );
 
@@ -151,7 +80,7 @@ fn main() {
     let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
         &logical_device,
         (vertices.len() * mem::size_of::<Vertex>() as usize) as _,
-        &memory_properties,
+        context.physical_device_memory_properties(),
         command_pool,
         graphics_queue,
         &vertices,
@@ -564,8 +493,6 @@ fn create_swapchain(
         preferred
     };
 
-    let queue_family_indices = [graphics_queue_family_index, present_queue_family_index];
-
     // Build the swapchain creation info
     let swapchain_create_info = {
         let mut builder = vk::SwapchainCreateInfoKHR::builder()
@@ -576,6 +503,10 @@ fn create_swapchain(
             .image_extent(extent)
             .image_array_layers(1)
             .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT);
+
+        let mut queue_family_indices =
+            vec![graphics_queue_family_index, present_queue_family_index];
+        queue_family_indices.dedup();
 
         builder = if graphics_queue_family_index != present_queue_family_index {
             builder
@@ -788,6 +719,83 @@ fn create_semaphores_and_fences(
     )
 }
 
+fn determine_memory_type(
+    buffer_memory_requirements: vk::MemoryRequirements,
+    physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
+    required_properties: vk::MemoryPropertyFlags,
+) -> u32 {
+    // Determine the buffer's memory type
+    let mut memory_type = 0;
+    let mut found_memory_type = false;
+    for index in 0..physical_device_memory_properties.memory_type_count {
+        if buffer_memory_requirements.memory_type_bits & (1 << index) != 0
+            && physical_device_memory_properties.memory_types[index as usize]
+                .property_flags
+                .contains(required_properties)
+        {
+            memory_type = index;
+            found_memory_type = true;
+        }
+    }
+    if !found_memory_type {
+        panic!("Failed to find suitable memory type.")
+    }
+    memory_type
+}
+
+fn create_buffer(
+    logical_device: &ash::Device,
+    size: ash::vk::DeviceSize,
+    usage: vk::BufferUsageFlags,
+    physical_device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
+) -> (vk::Buffer, vk::DeviceMemory) {
+    // Build the staging buffer creation info
+    let buffer_info = vk::BufferCreateInfo::builder()
+        .size(size)
+        .usage(usage)
+        .sharing_mode(vk::SharingMode::EXCLUSIVE)
+        .build();
+
+    // Create the staging buffer
+    let buffer = unsafe { logical_device.create_buffer(&buffer_info, None).unwrap() };
+
+    // Get the buffer's memory requirements
+    let buffer_memory_requirements =
+        unsafe { logical_device.get_buffer_memory_requirements(buffer) };
+
+    // Specify the required memory properties
+    let required_properties =
+        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
+
+    let memory_type = determine_memory_type(
+        buffer_memory_requirements,
+        physical_device_memory_properties,
+        required_properties,
+    );
+
+    // Create the staging buffer allocation info
+    let buffer_allocation_info = vk::MemoryAllocateInfo::builder()
+        .allocation_size(buffer_memory_requirements.size)
+        .memory_type_index(memory_type)
+        .build();
+
+    // Allocate memory for the buffer
+    let buffer_memory = unsafe {
+        logical_device
+            .allocate_memory(&buffer_allocation_info, None)
+            .unwrap()
+    };
+
+    unsafe {
+        // Bind the buffer memory for mapping
+        logical_device
+            .bind_buffer_memory(buffer, buffer_memory, 0)
+            .unwrap();
+    }
+
+    (buffer, buffer_memory)
+}
+
 fn create_vertex_buffer<T: Copy>(
     logical_device: &ash::Device,
     buffer_size: ash::vk::DeviceSize,
@@ -796,149 +804,39 @@ fn create_vertex_buffer<T: Copy>(
     graphics_queue: vk::Queue,
     vertices: &[T],
 ) -> (vk::Buffer, vk::DeviceMemory) {
-    //--- BEGIN STAGING BUFFER
-
-    // Build the staging buffer creation info
-    let staging_buffer_info = vk::BufferCreateInfo::builder()
-        .size(buffer_size as _)
-        .usage(vk::BufferUsageFlags::TRANSFER_SRC)
-        .sharing_mode(vk::SharingMode::EXCLUSIVE)
-        .build();
-
-    // Create the staging buffer
-    let staging_buffer = unsafe {
-        logical_device
-            .create_buffer(&staging_buffer_info, None)
-            .unwrap()
-    };
-
-    // Get the buffer's memory requirements
-    let staging_buffer_memory_requirements =
-        unsafe { logical_device.get_buffer_memory_requirements(staging_buffer) };
-
-    // Specify the required memory properties
-    let required_properties =
-        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
-
-    // Determine the buffer's memory type
-    let mut memory_type = 0;
-    let mut found_memory_type = false;
-    for index in 0..physical_device_memory_properties.memory_type_count {
-        if staging_buffer_memory_requirements.memory_type_bits & (1 << index) != 0
-            && physical_device_memory_properties.memory_types[index as usize]
-                .property_flags
-                .contains(required_properties)
-        {
-            memory_type = index;
-            found_memory_type = true;
-        }
-    }
-    if !found_memory_type {
-        panic!("Failed to find suitable memory type.")
-    }
-
-    // Create the staging buffer allocation info
-    let staging_buffer_allocation_info = vk::MemoryAllocateInfo::builder()
-        .allocation_size(staging_buffer_memory_requirements.size)
-        .memory_type_index(memory_type)
-        .build();
-
-    // Allocate memory for the buffer
-    let staging_buffer_memory = unsafe {
-        logical_device
-            .allocate_memory(&staging_buffer_allocation_info, None)
-            .unwrap()
-    };
+    let (staging_buffer, staging_buffer_memory) = create_buffer(
+        &logical_device,
+        buffer_size,
+        vk::BufferUsageFlags::TRANSFER_SRC,
+        physical_device_memory_properties,
+    );
 
     unsafe {
-        // Bind the buffer memory for mapping
-        logical_device
-            .bind_buffer_memory(staging_buffer, staging_buffer_memory, 0)
-            .unwrap();
-
         // Map the entire buffer buffer
         let data_pointer = logical_device
             .map_memory(
                 staging_buffer_memory,
                 0,
-                staging_buffer_info.size,
+                buffer_size as _,
                 vk::MemoryMapFlags::empty(),
             )
             .unwrap();
 
         // Upload aligned staging data to the mapped buffer
-        let mut align = ash::util::Align::new(
-            data_pointer,
-            mem::align_of::<u32>() as _,
-            staging_buffer_memory_requirements.size,
-        );
+        let mut align =
+            ash::util::Align::new(data_pointer, mem::align_of::<u32>() as _, buffer_size as _);
         align.copy_from_slice(&vertices);
 
         // Unmap the buffer memory
         logical_device.unmap_memory(staging_buffer_memory);
     }
 
-    //--- END STAGING BUFFER
-
-    //--- BEGIN VERTEX BUFFER
-
-    // Build the vertex buffer creation info
-    let vertex_buffer_info = vk::BufferCreateInfo::builder()
-        .size(buffer_size as _)
-        .usage(vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER)
-        .sharing_mode(vk::SharingMode::EXCLUSIVE)
-        .build();
-
-    // Create the vertex buffer
-    let vertex_buffer = unsafe {
-        logical_device
-            .create_buffer(&vertex_buffer_info, None)
-            .unwrap()
-    };
-
-    // Get the buffer's memory requirements
-    let memory_requirements =
-        unsafe { logical_device.get_buffer_memory_requirements(vertex_buffer) };
-
-    // Specify the required memory properties
-    let required_properties = vk::MemoryPropertyFlags::DEVICE_LOCAL;
-
-    // Determine the buffer's memory type
-    let mut memory_type = 0;
-    let mut found_memory_type = false;
-    for index in 0..physical_device_memory_properties.memory_type_count {
-        if memory_requirements.memory_type_bits & (1 << index) != 0
-            && physical_device_memory_properties.memory_types[index as usize]
-                .property_flags
-                .contains(required_properties)
-        {
-            memory_type = index;
-            found_memory_type = true;
-        }
-    }
-    if !found_memory_type {
-        panic!("Failed to find suitable memory type.")
-    }
-
-    // Create the vertex buffer allocation info
-    let vertex_buffer_allocation_info = vk::MemoryAllocateInfo::builder()
-        .allocation_size(memory_requirements.size)
-        .memory_type_index(memory_type)
-        .build();
-
-    // Allocate memory for the buffer
-    let vertex_buffer_memory = unsafe {
-        logical_device
-            .allocate_memory(&vertex_buffer_allocation_info, None)
-            .unwrap()
-    };
-
-    // Bind the buffer memory for mapping
-    unsafe {
-        logical_device
-            .bind_buffer_memory(vertex_buffer, vertex_buffer_memory, 0)
-            .unwrap()
-    }
+    let (vertex_buffer, vertex_buffer_memory) = create_buffer(
+        &logical_device,
+        buffer_size,
+        vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,
+        physical_device_memory_properties,
+    );
 
     {
         // Allocate a command buffer using the command pool
@@ -1003,13 +901,13 @@ fn create_vertex_buffer<T: Copy>(
         unsafe { logical_device.free_command_buffers(command_pool, &command_buffers) };
     }
 
-    // Free the staging buffer
-    unsafe { logical_device.destroy_buffer(staging_buffer, None) };
+    unsafe {
+        // Free the staging buffer
+        logical_device.destroy_buffer(staging_buffer, None);
 
-    // Free the staging buffer memory
-    unsafe { logical_device.free_memory(staging_buffer_memory, None) };
-
-    //--- END VERTEX BUFFER
+        // Free the staging buffer memory
+        logical_device.free_memory(staging_buffer_memory, None)
+    };
 
     (vertex_buffer, vertex_buffer_memory)
 }
