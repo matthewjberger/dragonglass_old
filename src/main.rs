@@ -33,68 +33,63 @@ fn main() {
     let mut app = App::new(800, 600, "Vulkan Tutorial");
     let context = VulkanContext::new(app.window());
 
-    let logical_device = context.logical_device();
-    let graphics_queue_family_index = context.graphics_queue_family_index();
-    let present_queue_family_index = context.present_queue_family_index();
+    let graphics_queue = unsafe {
+        context
+            .logical_device()
+            .get_device_queue(context.graphics_queue_family_index(), 0)
+    };
 
-    // Retrieve the graphics and present queues from the logical device using the graphics queue family index
-    let graphics_queue = unsafe { logical_device.get_device_queue(graphics_queue_family_index, 0) };
-    let present_queue = unsafe { logical_device.get_device_queue(present_queue_family_index, 0) };
+    let present_queue = unsafe {
+        context
+            .logical_device()
+            .get_device_queue(context.present_queue_family_index(), 0)
+    };
 
     let (swapchain, swapchain_khr, swapchain_properties, images) = create_swapchain(
         context.instance(),
         context.physical_device(),
-        &logical_device,
+        context.logical_device(),
         &context.surface(),
         context.surface_khr(),
-        graphics_queue_family_index,
-        present_queue_family_index,
+        context.graphics_queue_family_index(),
+        context.present_queue_family_index(),
     );
     let swapchain_khr_arr = [swapchain_khr];
-    let image_views = create_image_views(&logical_device, &swapchain_properties, &images);
-    let render_pass = create_render_pass(&logical_device, &swapchain_properties);
+    let image_views = create_image_views(context.logical_device(), &swapchain_properties, &images);
+    let render_pass = create_render_pass(context.logical_device(), &swapchain_properties);
     let (pipeline, pipeline_layout) =
-        create_pipeline(&logical_device, &swapchain_properties, render_pass);
+        create_pipeline(context.logical_device(), &swapchain_properties, render_pass);
     let framebuffers = create_framebuffers(
-        &logical_device,
+        context.logical_device(),
         image_views.as_slice(),
         &swapchain_properties,
         render_pass,
     );
 
-    // Create the command pool
     let command_pool = create_command_pool(
-        &logical_device,
-        graphics_queue_family_index,
+        context.logical_device(),
+        context.graphics_queue_family_index(),
         vk::CommandPoolCreateFlags::empty(),
     );
 
-    // Build the transient command pool info
     let transient_command_pool = create_command_pool(
-        &logical_device,
-        graphics_queue_family_index,
+        context.logical_device(),
+        context.graphics_queue_family_index(),
         vk::CommandPoolCreateFlags::TRANSIENT,
     );
 
-    // TODO: Create vertex buffer
     let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
-        &logical_device,
+        context.logical_device(),
         (vertices.len() * mem::size_of::<Vertex>() as usize) as _,
         context.physical_device_memory_properties(),
         command_pool,
         graphics_queue,
         &vertices,
     );
-    // logical_device: &ash::Device,
-    // buffer_size: ash::vk::DeviceSize,
-    // physical_device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
-    // command_pool: ash::vk::CommandPool,
-    // graphics_queue: vk::Queue,
-    // vertices: &[T],
-
     let vertex_buffers = [vertex_buffer];
+
     let command_buffers = create_command_buffers(
-        &logical_device,
+        context.logical_device(),
         command_pool,
         &framebuffers,
         render_pass,
@@ -104,7 +99,7 @@ fn main() {
     );
 
     let (image_available_semaphores, render_finished_semaphores, in_flight_fences) =
-        create_semaphores_and_fences(&logical_device);
+        create_semaphores_and_fences(context.logical_device());
 
     let mut current_frame = 0;
 
@@ -119,10 +114,14 @@ fn main() {
         let in_flight_fences = [in_flight_fence];
 
         unsafe {
-            logical_device
+            context
+                .logical_device()
                 .wait_for_fences(&in_flight_fences, true, std::u64::MAX)
                 .unwrap();
-            logical_device.reset_fences(&in_flight_fences).unwrap();
+            context
+                .logical_device()
+                .reset_fences(&in_flight_fences)
+                .unwrap();
         }
 
         // Acqure the next image from the swapchain
@@ -151,7 +150,8 @@ fn main() {
         let submit_info_arr = [submit_info];
 
         unsafe {
-            logical_device
+            context
+                .logical_device()
                 .queue_submit(graphics_queue, &submit_info_arr, in_flight_fence)
                 .unwrap()
         };
@@ -172,35 +172,45 @@ fn main() {
         current_frame += (1 + current_frame) % MAX_FRAMES_IN_FLIGHT as usize;
     });
 
-    unsafe { logical_device.device_wait_idle().unwrap() };
+    unsafe { context.logical_device().device_wait_idle().unwrap() };
 
     // Free objects
     log::debug!("Dropping application");
     unsafe {
         in_flight_fences
             .iter()
-            .for_each(|fence| logical_device.destroy_fence(*fence, None));
+            .for_each(|fence| context.logical_device().destroy_fence(*fence, None));
         render_finished_semaphores
             .iter()
-            .for_each(|semaphore| logical_device.destroy_semaphore(*semaphore, None));
+            .for_each(|semaphore| context.logical_device().destroy_semaphore(*semaphore, None));
         image_available_semaphores
             .iter()
-            .for_each(|semaphore| logical_device.destroy_semaphore(*semaphore, None));
-        logical_device.destroy_buffer(vertex_buffer, None);
-        logical_device.free_memory(vertex_buffer_memory, None);
-        logical_device.destroy_command_pool(command_pool, None);
-        logical_device.destroy_command_pool(transient_command_pool, None);
+            .for_each(|semaphore| context.logical_device().destroy_semaphore(*semaphore, None));
+        context.logical_device().destroy_buffer(vertex_buffer, None);
+        context
+            .logical_device()
+            .free_memory(vertex_buffer_memory, None);
+        context
+            .logical_device()
+            .destroy_command_pool(command_pool, None);
+        context
+            .logical_device()
+            .destroy_command_pool(transient_command_pool, None);
         framebuffers
             .iter()
-            .for_each(|f| logical_device.destroy_framebuffer(*f, None));
-        logical_device.destroy_pipeline(pipeline, None);
-        logical_device.destroy_pipeline_layout(pipeline_layout, None);
-        logical_device.destroy_render_pass(render_pass, None);
+            .for_each(|f| context.logical_device().destroy_framebuffer(*f, None));
+        context.logical_device().destroy_pipeline(pipeline, None);
+        context
+            .logical_device()
+            .destroy_pipeline_layout(pipeline_layout, None);
+        context
+            .logical_device()
+            .destroy_render_pass(render_pass, None);
         image_views
             .iter()
-            .for_each(|v| logical_device.destroy_image_view(*v, None));
+            .for_each(|v| context.logical_device().destroy_image_view(*v, None));
         swapchain.destroy_swapchain(swapchain_khr, None);
-        logical_device.destroy_device(None);
+        context.logical_device().destroy_device(None);
     }
 }
 
