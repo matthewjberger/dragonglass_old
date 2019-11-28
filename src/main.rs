@@ -147,340 +147,35 @@ fn main() {
         vk::CommandPoolCreateFlags::TRANSIENT,
     );
 
-    let buffer_size = vertices.len() * mem::size_of::<Vertex>() as usize;
+    // TODO: Create vertex buffer
+    let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
+        &logical_device,
+        (vertices.len() * mem::size_of::<Vertex>() as usize) as _,
+        &memory_properties,
+        command_pool,
+        graphics_queue,
+        &vertices,
+    );
+    // logical_device: &ash::Device,
+    // buffer_size: ash::vk::DeviceSize,
+    // physical_device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
+    // command_pool: ash::vk::CommandPool,
+    // graphics_queue: vk::Queue,
+    // vertices: &[T],
 
-    //--- BEGIN STAGING BUFFER
-
-    // Build the staging buffer creation info
-    let staging_buffer_info = vk::BufferCreateInfo::builder()
-        .size(buffer_size as _)
-        .usage(vk::BufferUsageFlags::TRANSFER_SRC)
-        .sharing_mode(vk::SharingMode::EXCLUSIVE)
-        .build();
-
-    // Create the staging buffer
-    let staging_buffer = unsafe {
-        logical_device
-            .create_buffer(&staging_buffer_info, None)
-            .unwrap()
-    };
-
-    // Get the buffer's memory requirements
-    let staging_buffer_memory_requirements =
-        unsafe { logical_device.get_buffer_memory_requirements(staging_buffer) };
-
-    // Specify the required memory properties
-    let required_properties =
-        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
-
-    // Determine the buffer's memory type
-    let mut memory_type = 0;
-    let mut found_memory_type = false;
-    for index in 0..memory_properties.memory_type_count {
-        if staging_buffer_memory_requirements.memory_type_bits & (1 << index) != 0
-            && memory_properties.memory_types[index as usize]
-                .property_flags
-                .contains(required_properties)
-        {
-            memory_type = index;
-            found_memory_type = true;
-        }
-    }
-    if !found_memory_type {
-        panic!("Failed to find suitable memory type.")
-    }
-
-    // Create the staging buffer allocation info
-    let staging_buffer_allocation_info = vk::MemoryAllocateInfo::builder()
-        .allocation_size(staging_buffer_memory_requirements.size)
-        .memory_type_index(memory_type)
-        .build();
-
-    // Allocate memory for the buffer
-    let staging_buffer_memory = unsafe {
-        logical_device
-            .allocate_memory(&staging_buffer_allocation_info, None)
-            .unwrap()
-    };
-
-    unsafe {
-        // Bind the buffer memory for mapping
-        logical_device
-            .bind_buffer_memory(staging_buffer, staging_buffer_memory, 0)
-            .unwrap();
-
-        // Map the entire buffer buffer
-        let data_pointer = logical_device
-            .map_memory(
-                staging_buffer_memory,
-                0,
-                staging_buffer_info.size,
-                vk::MemoryMapFlags::empty(),
-            )
-            .unwrap();
-
-        // Upload aligned staging data to the mapped buffer
-        let mut align = ash::util::Align::new(
-            data_pointer,
-            mem::align_of::<u32>() as _,
-            staging_buffer_memory_requirements.size,
-        );
-        align.copy_from_slice(&vertices);
-
-        // Unmap the buffer memory
-        logical_device.unmap_memory(staging_buffer_memory);
-    }
-
-    //--- END STAGING BUFFER
-
-    //--- BEGIN VERTEX BUFFER
-
-    // Build the vertex buffer creation info
-    let vertex_buffer_info = vk::BufferCreateInfo::builder()
-        .size(buffer_size as _)
-        .usage(vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER)
-        .sharing_mode(vk::SharingMode::EXCLUSIVE)
-        .build();
-
-    // Create the vertex buffer
-    let vertex_buffer = unsafe {
-        logical_device
-            .create_buffer(&vertex_buffer_info, None)
-            .unwrap()
-    };
     let vertex_buffers = [vertex_buffer];
+    let command_buffers = create_command_buffers(
+        &logical_device,
+        command_pool,
+        &framebuffers,
+        render_pass,
+        pipeline,
+        &swapchain_properties,
+        &vertex_buffers,
+    );
 
-    // Get the buffer's memory requirements
-    let memory_requirements =
-        unsafe { logical_device.get_buffer_memory_requirements(vertex_buffer) };
-
-    // Specify the required memory properties
-    let required_properties = vk::MemoryPropertyFlags::DEVICE_LOCAL;
-
-    // Determine the buffer's memory type
-    let mut memory_type = 0;
-    let mut found_memory_type = false;
-    for index in 0..memory_properties.memory_type_count {
-        if memory_requirements.memory_type_bits & (1 << index) != 0
-            && memory_properties.memory_types[index as usize]
-                .property_flags
-                .contains(required_properties)
-        {
-            memory_type = index;
-            found_memory_type = true;
-        }
-    }
-    if !found_memory_type {
-        panic!("Failed to find suitable memory type.")
-    }
-
-    // Create the vertex buffer allocation info
-    let vertex_buffer_allocation_info = vk::MemoryAllocateInfo::builder()
-        .allocation_size(memory_requirements.size)
-        .memory_type_index(memory_type)
-        .build();
-
-    // Allocate memory for the buffer
-    let vertex_buffer_memory = unsafe {
-        logical_device
-            .allocate_memory(&vertex_buffer_allocation_info, None)
-            .unwrap()
-    };
-
-    // Bind the buffer memory for mapping
-    unsafe {
-        logical_device
-            .bind_buffer_memory(vertex_buffer, vertex_buffer_memory, 0)
-            .unwrap()
-    }
-
-    {
-        // Allocate a command buffer using the command pool
-        let command_buffer = {
-            let allocation_info = vk::CommandBufferAllocateInfo::builder()
-                .level(vk::CommandBufferLevel::PRIMARY)
-                .command_pool(command_pool)
-                .command_buffer_count(1)
-                .build();
-
-            unsafe {
-                logical_device
-                    .allocate_command_buffers(&allocation_info)
-                    .unwrap()[0]
-            }
-        };
-        let command_buffers = [command_buffer];
-
-        // Begin recording
-        let begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
-            .build();
-        unsafe {
-            logical_device
-                .begin_command_buffer(command_buffer, &begin_info)
-                .unwrap()
-        };
-
-        // Define the region for the buffer copy
-        let region = vk::BufferCopy {
-            src_offset: 0,
-            dst_offset: 0,
-            size: buffer_size as _,
-        };
-        let regions = [region];
-
-        // Copy the bytes of the staging buffer to the vertex buffer
-        unsafe {
-            logical_device.cmd_copy_buffer(command_buffer, staging_buffer, vertex_buffer, &regions)
-        };
-
-        // End command buffer recording
-        unsafe { logical_device.end_command_buffer(command_buffer).unwrap() };
-
-        // Build the submission info
-        let submit_info = vk::SubmitInfo::builder()
-            .command_buffers(&command_buffers)
-            .build();
-        let submit_info_arr = [submit_info];
-
-        // Submit the command buffer
-        unsafe {
-            logical_device
-                .queue_submit(graphics_queue, &submit_info_arr, vk::Fence::null())
-                .unwrap()
-        };
-
-        // Wait for the command buffer to be executed
-        unsafe { logical_device.queue_wait_idle(graphics_queue).unwrap() };
-
-        // Free the command buffer
-        unsafe { logical_device.free_command_buffers(command_pool, &command_buffers) };
-    }
-
-    // Free the staging buffer
-    unsafe { logical_device.destroy_buffer(staging_buffer, None) };
-
-    // Free the staging buffer memory
-    unsafe { logical_device.free_memory(staging_buffer_memory, None) };
-
-    //--- END VERTEX BUFFER
-
-    // Build the command buffer allocation info
-    let allocate_info = vk::CommandBufferAllocateInfo::builder()
-        .command_pool(command_pool)
-        .level(vk::CommandBufferLevel::PRIMARY)
-        .command_buffer_count(framebuffers.len() as _)
-        .build();
-
-    // Allocate one command buffer per swapchain image
-    let command_buffers = unsafe {
-        logical_device
-            .allocate_command_buffers(&allocate_info)
-            .unwrap()
-    };
-
-    command_buffers
-        .iter()
-        .zip(framebuffers.iter())
-        .for_each(|(buffer, framebuffer)| {
-            let command_buffer = *buffer;
-
-            // Begin the command buffer
-            {
-                let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
-                    .flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE)
-                    .build();
-                unsafe {
-                    logical_device
-                        .begin_command_buffer(command_buffer, &command_buffer_begin_info)
-                        .unwrap()
-                };
-            }
-
-            // Begin the render pass
-            {
-                let clear_values = [vk::ClearValue {
-                    color: vk::ClearColorValue {
-                        float32: [0.0, 0.0, 0.0, 1.0],
-                    },
-                }];
-
-                let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
-                    .render_pass(render_pass)
-                    .framebuffer(*framebuffer)
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent: swapchain_properties.extent,
-                    })
-                    .clear_values(&clear_values)
-                    .build();
-
-                unsafe {
-                    logical_device.cmd_begin_render_pass(
-                        command_buffer,
-                        &render_pass_begin_info,
-                        vk::SubpassContents::INLINE,
-                    )
-                };
-            }
-
-            // Bind pipeline
-            unsafe {
-                logical_device.cmd_bind_pipeline(
-                    command_buffer,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    pipeline,
-                )
-            };
-
-            // Bind vertex buffer
-            unsafe {
-                logical_device.cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &[0])
-            };
-
-            // Draw
-            unsafe { logical_device.cmd_draw(command_buffer, 3, 1, 0, 0) };
-
-            // End render pass
-            unsafe { logical_device.cmd_end_render_pass(command_buffer) };
-
-            // End command buffer
-            unsafe { logical_device.end_command_buffer(command_buffer).unwrap() };
-        });
-
-    // Create semaphores
-    let mut image_available_semaphores = Vec::new();
-    let mut render_finished_semaphores = Vec::new();
-    let mut in_flight_fences = Vec::new();
-    for _ in 0..MAX_FRAMES_IN_FLIGHT {
-        let image_available_semaphore = {
-            let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
-            unsafe {
-                logical_device
-                    .create_semaphore(&semaphore_info, None)
-                    .unwrap()
-            }
-        };
-        image_available_semaphores.push(image_available_semaphore);
-
-        let render_finished_semaphore = {
-            let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
-            unsafe {
-                logical_device
-                    .create_semaphore(&semaphore_info, None)
-                    .unwrap()
-            }
-        };
-        render_finished_semaphores.push(render_finished_semaphore);
-
-        let in_flight_fence = {
-            let fence_info = vk::FenceCreateInfo::builder()
-                .flags(vk::FenceCreateFlags::SIGNALED)
-                .build();
-            unsafe { logical_device.create_fence(&fence_info, None).unwrap() }
-        };
-        in_flight_fences.push(in_flight_fence);
-    }
+    let (image_available_semaphores, render_finished_semaphores, in_flight_fences) =
+        create_semaphores_and_fences(&logical_device);
 
     let mut current_frame = 0;
 
@@ -926,9 +621,8 @@ fn create_image_views(
     swapchain_properties: &SwapchainProperties,
     images: &[vk::Image],
 ) -> Vec<vk::ImageView> {
-    // Create the swapchain image views
     images
-        .into_iter()
+        .iter()
         .map(|image| {
             let create_info = vk::ImageViewCreateInfo::builder()
                 .image(*image)
@@ -956,4 +650,366 @@ fn create_image_views(
             }
         })
         .collect::<Vec<_>>()
+}
+
+fn create_command_buffers(
+    logical_device: &ash::Device,
+    command_pool: ash::vk::CommandPool,
+    framebuffers: &[ash::vk::Framebuffer],
+    render_pass: vk::RenderPass,
+    pipeline: vk::Pipeline,
+    swapchain_properties: &SwapchainProperties,
+    vertex_buffers: &[vk::Buffer],
+) -> Vec<ash::vk::CommandBuffer> {
+    // Build the command buffer allocation info
+    let allocate_info = vk::CommandBufferAllocateInfo::builder()
+        .command_pool(command_pool)
+        .level(vk::CommandBufferLevel::PRIMARY)
+        .command_buffer_count(framebuffers.len() as _)
+        .build();
+
+    // Allocate one command buffer per swapchain image
+    let command_buffers = unsafe {
+        logical_device
+            .allocate_command_buffers(&allocate_info)
+            .unwrap()
+    };
+
+    command_buffers
+        .iter()
+        .zip(framebuffers.iter())
+        .for_each(|(buffer, framebuffer)| {
+            let command_buffer = *buffer;
+
+            // Begin the command buffer
+            {
+                let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+                    .flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE)
+                    .build();
+                unsafe {
+                    logical_device
+                        .begin_command_buffer(command_buffer, &command_buffer_begin_info)
+                        .unwrap()
+                };
+            }
+
+            // Begin the render pass
+            {
+                let clear_values = [vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [0.0, 0.0, 0.0, 1.0],
+                    },
+                }];
+
+                let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+                    .render_pass(render_pass)
+                    .framebuffer(*framebuffer)
+                    .render_area(vk::Rect2D {
+                        offset: vk::Offset2D { x: 0, y: 0 },
+                        extent: swapchain_properties.extent,
+                    })
+                    .clear_values(&clear_values)
+                    .build();
+
+                unsafe {
+                    logical_device.cmd_begin_render_pass(
+                        command_buffer,
+                        &render_pass_begin_info,
+                        vk::SubpassContents::INLINE,
+                    )
+                };
+            }
+
+            // Bind pipeline
+            unsafe {
+                logical_device.cmd_bind_pipeline(
+                    command_buffer,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    pipeline,
+                );
+
+                // Bind vertex buffer
+                logical_device.cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &[0]);
+
+                // Draw
+                logical_device.cmd_draw(command_buffer, 3, 1, 0, 0);
+
+                // End render pass
+                logical_device.cmd_end_render_pass(command_buffer);
+
+                // End command buffer
+                logical_device.end_command_buffer(command_buffer).unwrap();
+            };
+        });
+
+    command_buffers
+}
+
+fn create_semaphores_and_fences(
+    logical_device: &ash::Device,
+) -> (Vec<vk::Semaphore>, Vec<vk::Semaphore>, Vec<vk::Fence>) {
+    let mut image_available_semaphores = Vec::new();
+    let mut render_finished_semaphores = Vec::new();
+    let mut in_flight_fences = Vec::new();
+    for _ in 0..MAX_FRAMES_IN_FLIGHT {
+        let image_available_semaphore = {
+            let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
+            unsafe {
+                logical_device
+                    .create_semaphore(&semaphore_info, None)
+                    .unwrap()
+            }
+        };
+        image_available_semaphores.push(image_available_semaphore);
+
+        let render_finished_semaphore = {
+            let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
+            unsafe {
+                logical_device
+                    .create_semaphore(&semaphore_info, None)
+                    .unwrap()
+            }
+        };
+        render_finished_semaphores.push(render_finished_semaphore);
+
+        let in_flight_fence = {
+            let fence_info = vk::FenceCreateInfo::builder()
+                .flags(vk::FenceCreateFlags::SIGNALED)
+                .build();
+            unsafe { logical_device.create_fence(&fence_info, None).unwrap() }
+        };
+        in_flight_fences.push(in_flight_fence);
+    }
+
+    (
+        image_available_semaphores,
+        render_finished_semaphores,
+        in_flight_fences,
+    )
+}
+
+fn create_vertex_buffer<T: Copy>(
+    logical_device: &ash::Device,
+    buffer_size: ash::vk::DeviceSize,
+    physical_device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
+    command_pool: ash::vk::CommandPool,
+    graphics_queue: vk::Queue,
+    vertices: &[T],
+) -> (vk::Buffer, vk::DeviceMemory) {
+    //--- BEGIN STAGING BUFFER
+
+    // Build the staging buffer creation info
+    let staging_buffer_info = vk::BufferCreateInfo::builder()
+        .size(buffer_size as _)
+        .usage(vk::BufferUsageFlags::TRANSFER_SRC)
+        .sharing_mode(vk::SharingMode::EXCLUSIVE)
+        .build();
+
+    // Create the staging buffer
+    let staging_buffer = unsafe {
+        logical_device
+            .create_buffer(&staging_buffer_info, None)
+            .unwrap()
+    };
+
+    // Get the buffer's memory requirements
+    let staging_buffer_memory_requirements =
+        unsafe { logical_device.get_buffer_memory_requirements(staging_buffer) };
+
+    // Specify the required memory properties
+    let required_properties =
+        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
+
+    // Determine the buffer's memory type
+    let mut memory_type = 0;
+    let mut found_memory_type = false;
+    for index in 0..physical_device_memory_properties.memory_type_count {
+        if staging_buffer_memory_requirements.memory_type_bits & (1 << index) != 0
+            && physical_device_memory_properties.memory_types[index as usize]
+                .property_flags
+                .contains(required_properties)
+        {
+            memory_type = index;
+            found_memory_type = true;
+        }
+    }
+    if !found_memory_type {
+        panic!("Failed to find suitable memory type.")
+    }
+
+    // Create the staging buffer allocation info
+    let staging_buffer_allocation_info = vk::MemoryAllocateInfo::builder()
+        .allocation_size(staging_buffer_memory_requirements.size)
+        .memory_type_index(memory_type)
+        .build();
+
+    // Allocate memory for the buffer
+    let staging_buffer_memory = unsafe {
+        logical_device
+            .allocate_memory(&staging_buffer_allocation_info, None)
+            .unwrap()
+    };
+
+    unsafe {
+        // Bind the buffer memory for mapping
+        logical_device
+            .bind_buffer_memory(staging_buffer, staging_buffer_memory, 0)
+            .unwrap();
+
+        // Map the entire buffer buffer
+        let data_pointer = logical_device
+            .map_memory(
+                staging_buffer_memory,
+                0,
+                staging_buffer_info.size,
+                vk::MemoryMapFlags::empty(),
+            )
+            .unwrap();
+
+        // Upload aligned staging data to the mapped buffer
+        let mut align = ash::util::Align::new(
+            data_pointer,
+            mem::align_of::<u32>() as _,
+            staging_buffer_memory_requirements.size,
+        );
+        align.copy_from_slice(&vertices);
+
+        // Unmap the buffer memory
+        logical_device.unmap_memory(staging_buffer_memory);
+    }
+
+    //--- END STAGING BUFFER
+
+    //--- BEGIN VERTEX BUFFER
+
+    // Build the vertex buffer creation info
+    let vertex_buffer_info = vk::BufferCreateInfo::builder()
+        .size(buffer_size as _)
+        .usage(vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER)
+        .sharing_mode(vk::SharingMode::EXCLUSIVE)
+        .build();
+
+    // Create the vertex buffer
+    let vertex_buffer = unsafe {
+        logical_device
+            .create_buffer(&vertex_buffer_info, None)
+            .unwrap()
+    };
+
+    // Get the buffer's memory requirements
+    let memory_requirements =
+        unsafe { logical_device.get_buffer_memory_requirements(vertex_buffer) };
+
+    // Specify the required memory properties
+    let required_properties = vk::MemoryPropertyFlags::DEVICE_LOCAL;
+
+    // Determine the buffer's memory type
+    let mut memory_type = 0;
+    let mut found_memory_type = false;
+    for index in 0..physical_device_memory_properties.memory_type_count {
+        if memory_requirements.memory_type_bits & (1 << index) != 0
+            && physical_device_memory_properties.memory_types[index as usize]
+                .property_flags
+                .contains(required_properties)
+        {
+            memory_type = index;
+            found_memory_type = true;
+        }
+    }
+    if !found_memory_type {
+        panic!("Failed to find suitable memory type.")
+    }
+
+    // Create the vertex buffer allocation info
+    let vertex_buffer_allocation_info = vk::MemoryAllocateInfo::builder()
+        .allocation_size(memory_requirements.size)
+        .memory_type_index(memory_type)
+        .build();
+
+    // Allocate memory for the buffer
+    let vertex_buffer_memory = unsafe {
+        logical_device
+            .allocate_memory(&vertex_buffer_allocation_info, None)
+            .unwrap()
+    };
+
+    // Bind the buffer memory for mapping
+    unsafe {
+        logical_device
+            .bind_buffer_memory(vertex_buffer, vertex_buffer_memory, 0)
+            .unwrap()
+    }
+
+    {
+        // Allocate a command buffer using the command pool
+        let command_buffer = {
+            let allocation_info = vk::CommandBufferAllocateInfo::builder()
+                .level(vk::CommandBufferLevel::PRIMARY)
+                .command_pool(command_pool)
+                .command_buffer_count(1)
+                .build();
+
+            unsafe {
+                logical_device
+                    .allocate_command_buffers(&allocation_info)
+                    .unwrap()[0]
+            }
+        };
+        let command_buffers = [command_buffer];
+
+        // Begin recording
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
+            .build();
+        unsafe {
+            logical_device
+                .begin_command_buffer(command_buffer, &begin_info)
+                .unwrap()
+        };
+
+        // Define the region for the buffer copy
+        let region = vk::BufferCopy {
+            src_offset: 0,
+            dst_offset: 0,
+            size: buffer_size as _,
+        };
+        let regions = [region];
+
+        // Copy the bytes of the staging buffer to the vertex buffer
+        unsafe {
+            logical_device.cmd_copy_buffer(command_buffer, staging_buffer, vertex_buffer, &regions)
+        };
+
+        // End command buffer recording
+        unsafe { logical_device.end_command_buffer(command_buffer).unwrap() };
+
+        // Build the submission info
+        let submit_info = vk::SubmitInfo::builder()
+            .command_buffers(&command_buffers)
+            .build();
+        let submit_info_arr = [submit_info];
+
+        // Submit the command buffer
+        unsafe {
+            logical_device
+                .queue_submit(graphics_queue, &submit_info_arr, vk::Fence::null())
+                .unwrap()
+        };
+
+        // Wait for the command buffer to be executed
+        unsafe { logical_device.queue_wait_idle(graphics_queue).unwrap() };
+
+        // Free the command buffer
+        unsafe { logical_device.free_command_buffers(command_pool, &command_buffers) };
+    }
+
+    // Free the staging buffer
+    unsafe { logical_device.destroy_buffer(staging_buffer, None) };
+
+    // Free the staging buffer memory
+    unsafe { logical_device.free_memory(staging_buffer_memory, None) };
+
+    //--- END VERTEX BUFFER
+
+    (vertex_buffer, vertex_buffer_memory)
 }
