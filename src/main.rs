@@ -1,7 +1,7 @@
 use ash::{
-    extensions::khr::Swapchain,
+    extensions::khr::{Surface, Swapchain},
     version::{DeviceV1_0, InstanceV1_0},
-    vk, Device,
+    vk,
 };
 use std::{ffi::CString, mem};
 
@@ -41,15 +41,15 @@ fn main() {
     let memory_properties =
         unsafe { instance.get_physical_device_memory_properties(physical_device) };
 
-    let (graphics_family_index, present_family_index) = context.queue_family_indices();
+    let (graphics_queue_family_index, present_queue_family_index) = context.queue_family_indices();
 
     // Need to dedup since the graphics family and presentation family
     // can have the same queue family index and
     // Vulkan does not allow passing an array containing duplicated family
     // indices.
     let mut queue_family_indices = vec![
-        graphics_family_index.expect("Failed to find a graphics queue"),
-        present_family_index.expect("Failed to find a present queue"),
+        graphics_queue_family_index.expect("Failed to find a graphics queue"),
+        present_queue_family_index.expect("Failed to find a present queue"),
     ];
     queue_family_indices.dedup();
 
@@ -108,114 +108,24 @@ fn main() {
 
     // Retrieve the graphics and present queues from the logical device using the graphics queue family index
     let graphics_queue =
-        unsafe { logical_device.get_device_queue(graphics_family_index.unwrap(), 0) };
+        unsafe { logical_device.get_device_queue(graphics_queue_family_index.unwrap(), 0) };
     let present_queue =
-        unsafe { logical_device.get_device_queue(present_family_index.unwrap(), 0) };
+        unsafe { logical_device.get_device_queue(present_queue_family_index.unwrap(), 0) };
 
-    let swapchain_support_details =
-        SwapchainSupportDetails::new(physical_device, surface, surface_khr);
-    let capabilities = &swapchain_support_details.capabilities;
-
-    let swapchain_properties = swapchain_support_details.suitable_properties([800, 600]);
-    let surface_format = swapchain_properties.format;
-    let present_mode = swapchain_properties.present_mode;
-    let extent = swapchain_properties.extent;
-
-    // Choose the number of images to use in the swapchain
-    let image_count = {
-        let max = capabilities.max_image_count;
-        let mut preferred = capabilities.min_image_count + 1;
-        if max > 0 && preferred > max {
-            preferred = max;
-        }
-        preferred
-    };
-
-    log::debug!(
-        "Creating swapchain.\n\tFormat: {:?}\n\tColorSpace: {:?}\n\tPresentMode: {:?}\n\tExtent: {:?}\n\tImageCount: {}",
-        surface_format.format,
-        surface_format.color_space,
-        present_mode,
-        extent,
-        image_count
+    let (swapchain, swapchain_khr, swapchain_properties, images) = create_swapchain(
+        &instance,
+        physical_device,
+        &logical_device,
+        &surface,
+        surface_khr,
+        graphics_queue_family_index.unwrap(),
+        present_queue_family_index.unwrap(),
     );
-
-    // Build the swapchain creation info
-    let swapchain_create_info = {
-        let mut builder = vk::SwapchainCreateInfoKHR::builder()
-            .surface(surface_khr)
-            .min_image_count(image_count)
-            .image_format(surface_format.format)
-            .image_color_space(surface_format.color_space)
-            .image_extent(extent)
-            .image_array_layers(1)
-            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT);
-
-        builder = match (graphics_family_index, present_family_index) {
-            (Some(graphics), Some(present)) if graphics != present => builder
-                .image_sharing_mode(vk::SharingMode::CONCURRENT)
-                .queue_family_indices(&queue_family_indices),
-            (Some(_), Some(_)) => builder.image_sharing_mode(vk::SharingMode::EXCLUSIVE),
-            _ => panic!(),
-        };
-
-        builder
-            .pre_transform(capabilities.current_transform)
-            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(present_mode)
-            .clipped(true)
-            .build()
-    };
-
-    // Create the swapchain using the swapchain creation info
-    let swapchain = Swapchain::new(instance, &logical_device);
-    let swapchain_khr = unsafe {
-        swapchain
-            .create_swapchain(&swapchain_create_info, None)
-            .unwrap()
-    };
     let swapchain_khr_arr = [swapchain_khr];
-
-    // Get the swapchain images
-    let images = unsafe { swapchain.get_swapchain_images(swapchain_khr).unwrap() };
-
-    // Create the swapchain image views
-    let image_views = images
-        .into_iter()
-        .map(|image| {
-            let create_info = vk::ImageViewCreateInfo::builder()
-                .image(image)
-                .view_type(vk::ImageViewType::TYPE_2D)
-                .format(surface_format.format)
-                .components(vk::ComponentMapping {
-                    r: vk::ComponentSwizzle::IDENTITY,
-                    g: vk::ComponentSwizzle::IDENTITY,
-                    b: vk::ComponentSwizzle::IDENTITY,
-                    a: vk::ComponentSwizzle::IDENTITY,
-                })
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .build();
-
-            unsafe {
-                logical_device
-                    .create_image_view(&create_info, None)
-                    .unwrap()
-            }
-        })
-        .collect::<Vec<_>>();
-
+    let image_views = create_image_views(&logical_device, &swapchain_properties, &images);
     let render_pass = create_render_pass(&logical_device, &swapchain_properties);
-
     let (pipeline, pipeline_layout) =
         create_pipeline(&logical_device, &swapchain_properties, render_pass);
-
-    // Create one framebuffer for each image in the swapchain
     let framebuffers = create_framebuffers(
         &logical_device,
         image_views.as_slice(),
@@ -226,14 +136,14 @@ fn main() {
     // Create the command pool
     let command_pool = create_command_pool(
         &logical_device,
-        graphics_family_index.unwrap(),
+        graphics_queue_family_index.unwrap(),
         vk::CommandPoolCreateFlags::empty(),
     );
 
     // Build the transient command pool info
     let transient_command_pool = create_command_pool(
         &logical_device,
-        graphics_family_index.unwrap(),
+        graphics_queue_family_index.unwrap(),
         vk::CommandPoolCreateFlags::TRANSIENT,
     );
 
@@ -500,7 +410,7 @@ fn main() {
                     .framebuffer(*framebuffer)
                     .render_area(vk::Rect2D {
                         offset: vk::Offset2D { x: 0, y: 0 },
-                        extent,
+                        extent: swapchain_properties.extent,
                     })
                     .clear_values(&clear_values)
                     .build();
@@ -671,7 +581,7 @@ fn main() {
 }
 
 fn create_render_pass(
-    logical_device: &Device,
+    logical_device: &ash::Device,
     swapchain_properties: &SwapchainProperties,
 ) -> vk::RenderPass {
     let attachment_description = vk::AttachmentDescription::builder()
@@ -722,7 +632,7 @@ fn create_render_pass(
 }
 
 fn create_pipeline(
-    logical_device: &Device,
+    logical_device: &ash::Device,
     swapchain_properties: &SwapchainProperties,
     render_pass: vk::RenderPass,
 ) -> (vk::Pipeline, vk::PipelineLayout) {
@@ -883,7 +793,7 @@ fn create_pipeline(
 }
 
 fn create_command_pool(
-    logical_device: &Device,
+    logical_device: &ash::Device,
     graphics_queue_family_index: u32,
     flags: vk::CommandPoolCreateFlags,
 ) -> vk::CommandPool {
@@ -900,7 +810,7 @@ fn create_command_pool(
 }
 
 fn create_framebuffers(
-    logical_device: &Device,
+    logical_device: &ash::Device,
     image_views: &[vk::ImageView],
     swapchain_properties: &SwapchainProperties,
     render_pass: vk::RenderPass,
@@ -920,6 +830,128 @@ fn create_framebuffers(
             unsafe {
                 logical_device
                     .create_framebuffer(&framebuffer_info, None)
+                    .unwrap()
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
+fn create_swapchain(
+    instance: &ash::Instance,
+    physical_device: ash::vk::PhysicalDevice,
+    logical_device: &ash::Device,
+    surface: &Surface,
+    surface_khr: ash::vk::SurfaceKHR,
+    graphics_queue_family_index: u32,
+    present_queue_family_index: u32,
+) -> (
+    Swapchain,
+    vk::SwapchainKHR,
+    SwapchainProperties,
+    Vec<vk::Image>,
+) {
+    let swapchain_support_details =
+        SwapchainSupportDetails::new(physical_device, surface, surface_khr);
+    let capabilities = &swapchain_support_details.capabilities;
+
+    let swapchain_properties = swapchain_support_details.suitable_properties([800, 600]);
+    let surface_format = swapchain_properties.format;
+    let present_mode = swapchain_properties.present_mode;
+    let extent = swapchain_properties.extent;
+
+    // Choose the number of images to use in the swapchain
+    let image_count = {
+        let max = capabilities.max_image_count;
+        let mut preferred = capabilities.min_image_count + 1;
+        if max > 0 && preferred > max {
+            preferred = max;
+        }
+        preferred
+    };
+
+    let queue_family_indices = [graphics_queue_family_index, present_queue_family_index];
+
+    // Build the swapchain creation info
+    let swapchain_create_info = {
+        let mut builder = vk::SwapchainCreateInfoKHR::builder()
+            .surface(surface_khr)
+            .min_image_count(image_count)
+            .image_format(surface_format.format)
+            .image_color_space(surface_format.color_space)
+            .image_extent(extent)
+            .image_array_layers(1)
+            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT);
+
+        builder = if graphics_queue_family_index != present_queue_family_index {
+            builder
+                .image_sharing_mode(vk::SharingMode::CONCURRENT)
+                .queue_family_indices(&queue_family_indices)
+        } else {
+            builder.image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+        };
+
+        builder
+            .pre_transform(capabilities.current_transform)
+            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+            .present_mode(present_mode)
+            .clipped(true)
+            .build()
+    };
+
+    // Create the swapchain using the swapchain creation info
+    let swapchain = Swapchain::new(instance, logical_device);
+    let swapchain_khr = unsafe {
+        swapchain
+            .create_swapchain(&swapchain_create_info, None)
+            .unwrap()
+    };
+
+    log::debug!(
+        "Creating swapchain.\n\tFormat: {:?}\n\tColorSpace: {:?}\n\tPresentMode: {:?}\n\tExtent: {:?}\n\tImageCount: {}",
+        surface_format.format,
+        surface_format.color_space,
+        present_mode,
+        extent,
+        image_count
+    );
+
+    // Get the swapchain images
+    let images = unsafe { swapchain.get_swapchain_images(swapchain_khr).unwrap() };
+
+    (swapchain, swapchain_khr, swapchain_properties, images)
+}
+
+fn create_image_views(
+    logical_device: &ash::Device,
+    swapchain_properties: &SwapchainProperties,
+    images: &[vk::Image],
+) -> Vec<vk::ImageView> {
+    // Create the swapchain image views
+    images
+        .into_iter()
+        .map(|image| {
+            let create_info = vk::ImageViewCreateInfo::builder()
+                .image(*image)
+                .view_type(vk::ImageViewType::TYPE_2D)
+                .format(swapchain_properties.format.format)
+                .components(vk::ComponentMapping {
+                    r: vk::ComponentSwizzle::IDENTITY,
+                    g: vk::ComponentSwizzle::IDENTITY,
+                    b: vk::ComponentSwizzle::IDENTITY,
+                    a: vk::ComponentSwizzle::IDENTITY,
+                })
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                })
+                .build();
+
+            unsafe {
+                logical_device
+                    .create_image_view(&create_info, None)
                     .unwrap()
             }
         })

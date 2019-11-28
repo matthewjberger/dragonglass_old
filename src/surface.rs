@@ -3,7 +3,6 @@ use ash::{
     version::{EntryV1_0, InstanceV1_0},
     vk,
 };
-use std::ffi::c_void;
 
 #[cfg(target_os = "windows")]
 pub fn surface_extension_names() -> Vec<*const i8> {
