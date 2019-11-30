@@ -24,11 +24,14 @@ pub const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 fn main() {
     env_logger::init();
 
-    let vertices: [Vertex; 3] = [
-        Vertex::new([0.0, -0.5], [1.0, 0.0, 0.0]),
-        Vertex::new([0.5, 0.5], [0.0, 1.0, 0.0]),
-        Vertex::new([-0.5, 0.5], [0.0, 0.0, 1.0]),
+    let vertices: [Vertex; 4] = [
+        Vertex::new([-0.5, -0.5], [1.0, 0.0, 0.0]),
+        Vertex::new([0.5, -0.5], [0.0, 1.0, 0.0]),
+        Vertex::new([0.5, 0.5], [0.0, 0.0, 1.0]),
+        Vertex::new([-0.5, 0.5], [1.0, 1.0, 1.0]),
     ];
+
+    let indices: [u32; 6] = [0, 1, 2, 2, 3, 0];
 
     let mut app = App::new(800, 600, "Vulkan Tutorial");
     let context = VulkanContext::new(app.window());
@@ -83,9 +86,19 @@ fn main() {
         context.physical_device_memory_properties(),
         command_pool,
         graphics_queue,
+        vk::BufferUsageFlags::VERTEX_BUFFER,
         &vertices,
     );
     let vertex_buffers = [vertex_buffer];
+
+    let (index_buffer, index_buffer_memory) = create_device_local_buffer(
+        context.logical_device(),
+        context.physical_device_memory_properties(),
+        command_pool,
+        graphics_queue,
+        vk::BufferUsageFlags::INDEX_BUFFER,
+        &indices,
+    );
 
     let command_buffers = create_command_buffers(
         context.logical_device(),
@@ -95,6 +108,8 @@ fn main() {
         pipeline,
         &swapchain_properties,
         &vertex_buffers,
+        &index_buffer,
+        indices.len() as u32,
     );
 
     let (image_available_semaphores, render_finished_semaphores, in_flight_fences) =
@@ -189,6 +204,10 @@ fn main() {
         context
             .logical_device()
             .free_memory(vertex_buffer_memory, None);
+        context.logical_device().destroy_buffer(index_buffer, None);
+        context
+            .logical_device()
+            .free_memory(index_buffer_memory, None);
         context
             .logical_device()
             .destroy_command_pool(command_pool, None);
@@ -600,6 +619,8 @@ fn create_command_buffers(
     pipeline: vk::Pipeline,
     swapchain_properties: &SwapchainProperties,
     vertex_buffers: &[vk::Buffer],
+    index_buffer: &vk::Buffer,
+    number_of_indices: u32,
 ) -> Vec<ash::vk::CommandBuffer> {
     // Build the command buffer allocation info
     let allocate_info = vk::CommandBufferAllocateInfo::builder()
@@ -671,8 +692,17 @@ fn create_command_buffers(
                 // Bind vertex buffer
                 logical_device.cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &[0]);
 
+                // Bind index buffer
+                logical_device.cmd_bind_index_buffer(
+                    command_buffer,
+                    *index_buffer,
+                    0,
+                    vk::IndexType::UINT32,
+                );
+
                 // Draw
-                logical_device.cmd_draw(command_buffer, 3, 1, 0, 0);
+                // logical_device.cmd_draw(command_buffer, 3, 1, 0, 0);
+                logical_device.cmd_draw_indexed(command_buffer, number_of_indices, 1, 0, 0, 0);
 
                 // End render pass
                 logical_device.cmd_end_render_pass(command_buffer);
@@ -810,9 +840,10 @@ fn create_device_local_buffer<T: Copy>(
     physical_device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
     command_pool: ash::vk::CommandPool,
     graphics_queue: vk::Queue,
+    usage_flags: vk::BufferUsageFlags,
     vertices: &[T],
 ) -> (vk::Buffer, vk::DeviceMemory) {
-    let buffer_size = (vertices.len() * mem::size_of::<Vertex>() as usize) as ash::vk::DeviceSize;
+    let buffer_size = (vertices.len() * mem::size_of::<T>() as usize) as ash::vk::DeviceSize;
 
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         &logical_device,
@@ -844,7 +875,7 @@ fn create_device_local_buffer<T: Copy>(
     let (vertex_buffer, vertex_buffer_memory) = create_buffer(
         &logical_device,
         buffer_size,
-        vk::BufferUsageFlags::TRANSFER_DST | vk::BufferUsageFlags::VERTEX_BUFFER,
+        vk::BufferUsageFlags::TRANSFER_DST | usage_flags,
         physical_device_memory_properties,
     );
 
