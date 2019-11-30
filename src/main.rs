@@ -4,7 +4,7 @@ use ash::{
     vk,
 };
 use nalgebra_glm as glm;
-use std::{ffi::CString, mem};
+use std::{ffi::CString, mem, time::Instant};
 
 mod app;
 mod context;
@@ -159,6 +159,7 @@ fn main() {
         create_semaphores_and_fences(context.logical_device());
 
     let mut current_frame = 0;
+    let start_time = Instant::now();
 
     app.run(|| {
         let image_available_semaphore = image_available_semaphores[current_frame];
@@ -200,6 +201,7 @@ fn main() {
             image_index,
             swapchain_properties,
             &uniform_buffer_memory_list,
+            start_time,
         );
 
         // Submit the command buffer
@@ -434,7 +436,7 @@ fn create_pipeline(
         .rasterizer_discard_enable(false)
         .polygon_mode(vk::PolygonMode::FILL)
         .line_width(1.0)
-        .cull_mode(vk::CullModeFlags::BACK)
+        .cull_mode(vk::CullModeFlags::NONE)
         .front_face(vk::FrontFace::CLOCKWISE)
         .depth_bias_enable(false)
         .depth_bias_constant_factor(0.0)
@@ -1112,13 +1114,22 @@ fn update_uniform_buffers(
     current_image: u32,
     swapchain_properties: SwapchainProperties,
     buffer_memory_list: &[vk::DeviceMemory],
+    start_time: Instant,
 ) {
+    let elapsed_time = start_time.elapsed();
+    let elapsed_time =
+        elapsed_time.as_secs() as f32 + (elapsed_time.subsec_millis() as f32) / 1_000 as f32;
+
     let aspect_ratio =
         swapchain_properties.extent.width as f32 / swapchain_properties.extent.height as f32;
     let ubo = UniformBufferObject {
-        model: glm::Mat4::identity(),
+        model: glm::rotate(
+            &glm::Mat4::identity(),
+            (elapsed_time * 90.0).to_radians(),
+            &glm::vec3(0.0, 1.0, 0.0),
+        ),
         view: glm::look_at(
-            &glm::vec3(2.0, 2.0, 2.0),
+            &glm::vec3(0.0, 0.0, 2.0),
             &glm::vec3(0.0, 0.0, 0.0),
             &glm::vec3(0.0, 1.0, 0.0),
         ), // TODO: Make Z the up axis
