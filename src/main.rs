@@ -3,6 +3,7 @@ use ash::{
     version::DeviceV1_0,
     vk,
 };
+use nalgebra_glm as glm;
 use std::{ffi::CString, mem};
 
 mod app;
@@ -21,6 +22,25 @@ use vertex::Vertex;
 // The maximum number of frames that can be rendered simultaneously
 pub const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 
+#[derive(Debug, Clone, Copy)]
+struct UniformBufferObject {
+    model: glm::Mat4,
+    view: glm::Mat4,
+    projection: glm::Mat4,
+}
+
+impl UniformBufferObject {
+    fn get_descriptor_set_layout_bindings() -> [vk::DescriptorSetLayoutBinding; 1] {
+        let ubo_layout_binding = vk::DescriptorSetLayoutBinding::builder()
+            .binding(0)
+            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::VERTEX)
+            .build();
+        [ubo_layout_binding]
+    }
+}
+
 fn main() {
     env_logger::init();
 
@@ -31,7 +51,7 @@ fn main() {
         Vertex::new([-0.5, 0.5], [1.0, 1.0, 1.0]),
     ];
 
-    let indices: [u32; 6] = [0, 1, 2, 2, 3, 0];
+    let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
 
     let mut app = App::new(800, 600, "Vulkan Tutorial");
     let context = VulkanContext::new(app.window());
@@ -60,8 +80,13 @@ fn main() {
     let swapchain_khr_arr = [swapchain_khr];
     let image_views = create_image_views(context.logical_device(), &swapchain_properties, &images);
     let render_pass = create_render_pass(context.logical_device(), &swapchain_properties);
-    let (pipeline, pipeline_layout) =
-        create_pipeline(context.logical_device(), &swapchain_properties, render_pass);
+    let descriptor_set_layout = create_descriptor_set_layout(context.logical_device());
+    let (pipeline, pipeline_layout) = create_pipeline(
+        context.logical_device(),
+        &swapchain_properties,
+        render_pass,
+        descriptor_set_layout,
+    );
     let framebuffers = create_framebuffers(
         context.logical_device(),
         image_views.as_slice(),
@@ -81,7 +106,7 @@ fn main() {
         vk::CommandPoolCreateFlags::TRANSIENT,
     );
 
-    let (vertex_buffer, vertex_buffer_memory) = create_device_local_buffer(
+    let (vertex_buffer, vertex_buffer_memory) = create_device_local_buffer::<u32, _>(
         context.logical_device(),
         context.physical_device_memory_properties(),
         command_pool,
@@ -91,7 +116,7 @@ fn main() {
     );
     let vertex_buffers = [vertex_buffer];
 
-    let (index_buffer, index_buffer_memory) = create_device_local_buffer(
+    let (index_buffer, index_buffer_memory) = create_device_local_buffer::<u16, _>(
         context.logical_device(),
         context.physical_device_memory_properties(),
         command_pool,
@@ -100,15 +125,33 @@ fn main() {
         &indices,
     );
 
+    // TODO: Create a uniform buffer
+
+    let number_of_images = images.len();
+    let (uniform_buffers, uniform_buffer_memory_list) = create_uniform_buffers(
+        context.logical_device(),
+        context.physical_device_memory_properties(),
+        number_of_images,
+    );
+    let descriptor_pool = create_descriptor_pool(context.logical_device(), number_of_images as _);
+    let descriptor_sets = create_descriptor_sets(
+        context.logical_device(),
+        descriptor_pool,
+        descriptor_set_layout,
+        &uniform_buffers,
+    );
+
     let command_buffers = create_command_buffers(
         context.logical_device(),
         command_pool,
         &framebuffers,
         render_pass,
         pipeline,
+        pipeline_layout,
+        &descriptor_sets,
         &swapchain_properties,
         &vertex_buffers,
-        &index_buffer,
+        index_buffer,
         indices.len() as u32,
     );
 
@@ -151,6 +194,13 @@ fn main() {
                 .0
         };
         let image_indices = [image_index];
+
+        update_uniform_buffers(
+            context.logical_device(),
+            image_index,
+            swapchain_properties,
+            &uniform_buffer_memory_list,
+        );
 
         // Submit the command buffer
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
@@ -200,6 +250,12 @@ fn main() {
         image_available_semaphores
             .iter()
             .for_each(|semaphore| context.logical_device().destroy_semaphore(*semaphore, None));
+        uniform_buffer_memory_list
+            .iter()
+            .for_each(|m| context.logical_device().free_memory(*m, None));
+        uniform_buffers
+            .iter()
+            .for_each(|b| context.logical_device().destroy_buffer(*b, None));
         context.logical_device().destroy_buffer(vertex_buffer, None);
         context
             .logical_device()
@@ -228,6 +284,12 @@ fn main() {
             .iter()
             .for_each(|v| context.logical_device().destroy_image_view(*v, None));
         swapchain.destroy_swapchain(swapchain_khr, None);
+        context
+            .logical_device()
+            .destroy_descriptor_pool(descriptor_pool, None);
+        context
+            .logical_device()
+            .destroy_descriptor_set_layout(descriptor_set_layout, None);
         context.logical_device().destroy_device(None);
     }
 }
@@ -283,10 +345,24 @@ fn create_render_pass(
     }
 }
 
+fn create_descriptor_set_layout(logical_device: &ash::Device) -> vk::DescriptorSetLayout {
+    let bindings = UniformBufferObject::get_descriptor_set_layout_bindings();
+    let layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
+        .bindings(&bindings)
+        .build();
+
+    unsafe {
+        logical_device
+            .create_descriptor_set_layout(&layout_info, None)
+            .unwrap()
+    }
+}
+
 fn create_pipeline(
     logical_device: &ash::Device,
     swapchain_properties: &SwapchainProperties,
     render_pass: vk::RenderPass,
+    descriptor_set_layout: vk::DescriptorSetLayout,
 ) -> (vk::Pipeline, vk::PipelineLayout) {
     // Define the entry point for shaders
     let entry_point_name = &CString::new("main").unwrap();
@@ -398,8 +474,9 @@ fn create_pipeline(
         .build();
 
     // Build the pipeline layout info
+    let descriptor_set_layouts = [descriptor_set_layout];
     let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
-        // .set_layouts() // needed for uniforms in shaders
+        .set_layouts(&descriptor_set_layouts) // needed for uniforms in shaders
         // .push_constant_ranges()
         .build();
 
@@ -617,9 +694,11 @@ fn create_command_buffers(
     framebuffers: &[ash::vk::Framebuffer],
     render_pass: vk::RenderPass,
     pipeline: vk::Pipeline,
+    pipeline_layout: vk::PipelineLayout,
+    descriptor_sets: &[vk::DescriptorSet],
     swapchain_properties: &SwapchainProperties,
     vertex_buffers: &[vk::Buffer],
-    index_buffer: &vk::Buffer,
+    index_buffer: vk::Buffer,
     number_of_indices: u32,
 ) -> Vec<ash::vk::CommandBuffer> {
     // Build the command buffer allocation info
@@ -638,9 +717,10 @@ fn create_command_buffers(
 
     command_buffers
         .iter()
-        .zip(framebuffers.iter())
-        .for_each(|(buffer, framebuffer)| {
+        .enumerate()
+        .for_each(|(index, buffer)| {
             let command_buffer = *buffer;
+            let framebuffer = framebuffers[index];
 
             // Begin the command buffer
             {
@@ -664,7 +744,7 @@ fn create_command_buffers(
 
                 let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
                     .render_pass(render_pass)
-                    .framebuffer(*framebuffer)
+                    .framebuffer(framebuffer)
                     .render_area(vk::Rect2D {
                         offset: vk::Offset2D { x: 0, y: 0 },
                         extent: swapchain_properties.extent,
@@ -690,14 +770,31 @@ fn create_command_buffers(
                 );
 
                 // Bind vertex buffer
-                logical_device.cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &[0]);
+                let offsets = [0];
+                logical_device.cmd_bind_vertex_buffers(
+                    command_buffer,
+                    0,
+                    &vertex_buffers,
+                    &offsets,
+                );
 
                 // Bind index buffer
                 logical_device.cmd_bind_index_buffer(
                     command_buffer,
-                    *index_buffer,
+                    index_buffer,
                     0,
-                    vk::IndexType::UINT32,
+                    vk::IndexType::UINT16,
+                );
+
+                // Bind descriptor sets
+                let null = [];
+                logical_device.cmd_bind_descriptor_sets(
+                    command_buffer,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    pipeline_layout,
+                    0,
+                    &descriptor_sets[index..=index],
+                    &null,
                 );
 
                 // Draw
@@ -786,7 +883,8 @@ fn create_buffer(
     size: ash::vk::DeviceSize,
     usage: vk::BufferUsageFlags,
     physical_device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
-) -> (vk::Buffer, vk::DeviceMemory) {
+    required_properties: vk::MemoryPropertyFlags,
+) -> (vk::Buffer, vk::DeviceMemory, vk::DeviceSize) {
     // Build the staging buffer creation info
     let buffer_info = vk::BufferCreateInfo::builder()
         .size(size)
@@ -800,10 +898,6 @@ fn create_buffer(
     // Get the buffer's memory requirements
     let buffer_memory_requirements =
         unsafe { logical_device.get_buffer_memory_requirements(buffer) };
-
-    // Specify the required memory properties
-    let required_properties =
-        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT;
 
     let memory_type = determine_memory_type(
         buffer_memory_requirements,
@@ -831,10 +925,10 @@ fn create_buffer(
             .unwrap();
     }
 
-    (buffer, buffer_memory)
+    (buffer, buffer_memory, buffer_memory_requirements.size)
 }
 
-fn create_device_local_buffer<T: Copy>(
+fn create_device_local_buffer<A, T: Copy>(
     logical_device: &ash::Device,
     physical_device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
     command_pool: ash::vk::CommandPool,
@@ -844,11 +938,12 @@ fn create_device_local_buffer<T: Copy>(
 ) -> (vk::Buffer, vk::DeviceMemory) {
     let buffer_size = (vertices.len() * mem::size_of::<T>() as usize) as ash::vk::DeviceSize;
 
-    let (staging_buffer, staging_buffer_memory) = create_buffer(
+    let (staging_buffer, staging_buffer_memory, staging_memory_size) = create_buffer(
         &logical_device,
         buffer_size,
         vk::BufferUsageFlags::TRANSFER_SRC,
         physical_device_memory_properties,
+        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
     );
 
     unsafe {
@@ -863,19 +958,23 @@ fn create_device_local_buffer<T: Copy>(
             .unwrap();
 
         // Upload aligned staging data to the mapped buffer
-        let mut align =
-            ash::util::Align::new(data_pointer, mem::align_of::<u32>() as _, buffer_size as _);
+        let mut align = ash::util::Align::new(
+            data_pointer,
+            mem::align_of::<A>() as _,
+            staging_memory_size as _,
+        );
         align.copy_from_slice(&vertices);
 
         // Unmap the buffer memory
         logical_device.unmap_memory(staging_buffer_memory);
     }
 
-    let (vertex_buffer, vertex_buffer_memory) = create_buffer(
+    let (vertex_buffer, vertex_buffer_memory, _) = create_buffer(
         &logical_device,
         buffer_size,
         vk::BufferUsageFlags::TRANSFER_DST | usage_flags,
         physical_device_memory_properties,
+        vk::MemoryPropertyFlags::DEVICE_LOCAL,
     );
 
     copy_buffer(
@@ -982,4 +1081,135 @@ fn copy_buffer(
             };
         },
     );
+}
+
+fn create_uniform_buffers(
+    logical_device: &ash::Device,
+    physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
+    count: usize,
+) -> (Vec<vk::Buffer>, Vec<vk::DeviceMemory>) {
+    let size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
+    let mut buffers = Vec::new();
+    let mut memory_list = Vec::new();
+
+    for _ in 0..count {
+        let (buffer, memory, _) = create_buffer(
+            logical_device,
+            size,
+            vk::BufferUsageFlags::UNIFORM_BUFFER,
+            physical_device_memory_properties,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        );
+        buffers.push(buffer);
+        memory_list.push(memory);
+    }
+
+    (buffers, memory_list)
+}
+
+fn update_uniform_buffers(
+    logical_device: &ash::Device,
+    current_image: u32,
+    swapchain_properties: SwapchainProperties,
+    buffer_memory_list: &[vk::DeviceMemory],
+) {
+    let aspect_ratio =
+        swapchain_properties.extent.width as f32 / swapchain_properties.extent.height as f32;
+    let ubo = UniformBufferObject {
+        model: glm::Mat4::identity(),
+        view: glm::look_at(
+            &glm::vec3(2.0, 2.0, 2.0),
+            &glm::vec3(0.0, 0.0, 0.0),
+            &glm::vec3(0.0, 1.0, 0.0),
+        ), // TODO: Make Z the up axis
+        projection: glm::perspective(aspect_ratio, 90_f32.to_radians(), 0.1_f32, 1000_f32),
+    };
+
+    let ubos = [ubo];
+
+    let buffer_memory = buffer_memory_list[current_image as usize];
+    let buffer_memory_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
+
+    unsafe {
+        let data_pointer = logical_device
+            .map_memory(
+                buffer_memory,
+                0,
+                buffer_memory_size,
+                vk::MemoryMapFlags::empty(),
+            )
+            .unwrap();
+        let mut align = ash::util::Align::new(
+            data_pointer,
+            mem::align_of::<f32>() as _,
+            buffer_memory_size,
+        );
+        align.copy_from_slice(&ubos);
+        logical_device.unmap_memory(buffer_memory);
+    }
+}
+
+fn create_descriptor_pool(logical_device: &ash::Device, size: u32) -> vk::DescriptorPool {
+    let pool_size = vk::DescriptorPoolSize {
+        ty: vk::DescriptorType::UNIFORM_BUFFER,
+        descriptor_count: size,
+    };
+    let pool_sizes = [pool_size];
+
+    let pool_info = vk::DescriptorPoolCreateInfo::builder()
+        .pool_sizes(&pool_sizes)
+        .max_sets(size)
+        .build();
+
+    unsafe {
+        logical_device
+            .create_descriptor_pool(&pool_info, None)
+            .unwrap()
+    }
+}
+
+fn create_descriptor_sets(
+    logical_device: &ash::Device,
+    pool: vk::DescriptorPool,
+    layout: vk::DescriptorSetLayout,
+    uniform_buffers: &[vk::Buffer],
+) -> Vec<vk::DescriptorSet> {
+    let layouts = (0..uniform_buffers.len())
+        .map(|_| layout)
+        .collect::<Vec<_>>();
+    let allocation_info = vk::DescriptorSetAllocateInfo::builder()
+        .descriptor_pool(pool)
+        .set_layouts(&layouts)
+        .build();
+    let descriptor_sets = unsafe {
+        logical_device
+            .allocate_descriptor_sets(&allocation_info)
+            .unwrap()
+    };
+
+    descriptor_sets
+        .iter()
+        .zip(uniform_buffers.iter())
+        .for_each(|(set, buffer)| {
+            let buffer_info = vk::DescriptorBufferInfo::builder()
+                .buffer(*buffer)
+                .offset(0)
+                .range(mem::size_of::<UniformBufferObject>() as vk::DeviceSize)
+                .build();
+            let buffer_infos = [buffer_info];
+
+            let descriptor_write = vk::WriteDescriptorSet::builder()
+                .dst_set(*set)
+                .dst_binding(0)
+                .dst_array_element(0)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                .buffer_info(&buffer_infos)
+                .build();
+            let descriptor_writes = [descriptor_write];
+            let null = [];
+
+            unsafe { logical_device.update_descriptor_sets(&descriptor_writes, &null) }
+        });
+
+    descriptor_sets
 }
