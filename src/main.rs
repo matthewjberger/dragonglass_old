@@ -78,9 +78,8 @@ fn main() {
         vk::CommandPoolCreateFlags::TRANSIENT,
     );
 
-    let (vertex_buffer, vertex_buffer_memory) = create_vertex_buffer(
+    let (vertex_buffer, vertex_buffer_memory) = create_device_local_buffer(
         context.logical_device(),
-        (vertices.len() * mem::size_of::<Vertex>() as usize) as _,
         context.physical_device_memory_properties(),
         command_pool,
         graphics_queue,
@@ -806,14 +805,15 @@ fn create_buffer(
     (buffer, buffer_memory)
 }
 
-fn create_vertex_buffer<T: Copy>(
+fn create_device_local_buffer<T: Copy>(
     logical_device: &ash::Device,
-    buffer_size: ash::vk::DeviceSize,
     physical_device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
     command_pool: ash::vk::CommandPool,
     graphics_queue: vk::Queue,
     vertices: &[T],
 ) -> (vk::Buffer, vk::DeviceMemory) {
+    let buffer_size = (vertices.len() * mem::size_of::<Vertex>() as usize) as ash::vk::DeviceSize;
+
     let (staging_buffer, staging_buffer_memory) = create_buffer(
         &logical_device,
         buffer_size,
@@ -822,7 +822,7 @@ fn create_vertex_buffer<T: Copy>(
     );
 
     unsafe {
-        // Map the entire buffer buffer
+        // Map the entire buffer
         let data_pointer = logical_device
             .map_memory(
                 staging_buffer_memory,
@@ -848,68 +848,14 @@ fn create_vertex_buffer<T: Copy>(
         physical_device_memory_properties,
     );
 
-    {
-        // Allocate a command buffer using the command pool
-        let command_buffer = {
-            let allocation_info = vk::CommandBufferAllocateInfo::builder()
-                .level(vk::CommandBufferLevel::PRIMARY)
-                .command_pool(command_pool)
-                .command_buffer_count(1)
-                .build();
-
-            unsafe {
-                logical_device
-                    .allocate_command_buffers(&allocation_info)
-                    .unwrap()[0]
-            }
-        };
-        let command_buffers = [command_buffer];
-
-        // Begin recording
-        let begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
-            .build();
-        unsafe {
-            logical_device
-                .begin_command_buffer(command_buffer, &begin_info)
-                .unwrap()
-        };
-
-        // Define the region for the buffer copy
-        let region = vk::BufferCopy {
-            src_offset: 0,
-            dst_offset: 0,
-            size: buffer_size as _,
-        };
-        let regions = [region];
-
-        // Copy the bytes of the staging buffer to the vertex buffer
-        unsafe {
-            logical_device.cmd_copy_buffer(command_buffer, staging_buffer, vertex_buffer, &regions)
-        };
-
-        // End command buffer recording
-        unsafe { logical_device.end_command_buffer(command_buffer).unwrap() };
-
-        // Build the submission info
-        let submit_info = vk::SubmitInfo::builder()
-            .command_buffers(&command_buffers)
-            .build();
-        let submit_info_arr = [submit_info];
-
-        // Submit the command buffer
-        unsafe {
-            logical_device
-                .queue_submit(graphics_queue, &submit_info_arr, vk::Fence::null())
-                .unwrap()
-        };
-
-        // Wait for the command buffer to be executed
-        unsafe { logical_device.queue_wait_idle(graphics_queue).unwrap() };
-
-        // Free the command buffer
-        unsafe { logical_device.free_command_buffers(command_pool, &command_buffers) };
-    }
+    copy_buffer(
+        logical_device,
+        command_pool,
+        graphics_queue,
+        staging_buffer,
+        vertex_buffer,
+        buffer_size,
+    );
 
     unsafe {
         // Free the staging buffer
@@ -920,4 +866,90 @@ fn create_vertex_buffer<T: Copy>(
     };
 
     (vertex_buffer, vertex_buffer_memory)
+}
+
+fn execute_command_once<F: FnOnce(vk::CommandBuffer)>(
+    logical_device: &ash::Device,
+    command_pool: vk::CommandPool,
+    queue: vk::Queue,
+    executor: F,
+) {
+    // Allocate a command buffer using the command pool
+    let command_buffer = {
+        let allocation_info = vk::CommandBufferAllocateInfo::builder()
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_pool(command_pool)
+            .command_buffer_count(1)
+            .build();
+
+        unsafe {
+            logical_device
+                .allocate_command_buffers(&allocation_info)
+                .unwrap()[0]
+        }
+    };
+    let command_buffers = [command_buffer];
+
+    // Begin recording
+    let begin_info = vk::CommandBufferBeginInfo::builder()
+        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
+        .build();
+    unsafe {
+        logical_device
+            .begin_command_buffer(command_buffer, &begin_info)
+            .unwrap()
+    };
+
+    executor(command_buffer);
+
+    // End command buffer recording
+    unsafe { logical_device.end_command_buffer(command_buffer).unwrap() };
+
+    // Build the submission info
+    let submit_info = vk::SubmitInfo::builder()
+        .command_buffers(&command_buffers)
+        .build();
+    let submit_info_arr = [submit_info];
+
+    unsafe {
+        // Submit the command buffer
+        logical_device
+            .queue_submit(queue, &submit_info_arr, vk::Fence::null())
+            .unwrap();
+
+        // Wait for the command buffer to be executed
+        logical_device.queue_wait_idle(queue).unwrap();
+
+        // Free the command buffer
+        logical_device.free_command_buffers(command_pool, &command_buffers);
+    };
+}
+
+fn copy_buffer(
+    logical_device: &ash::Device,
+    command_pool: vk::CommandPool,
+    transfer_queue: vk::Queue,
+    source: vk::Buffer,
+    destination: vk::Buffer,
+    buffer_size: vk::DeviceSize,
+) {
+    execute_command_once(
+        logical_device,
+        command_pool,
+        transfer_queue,
+        |command_buffer| {
+            // Define the region for the buffer copy
+            let region = vk::BufferCopy {
+                src_offset: 0,
+                dst_offset: 0,
+                size: buffer_size as _,
+            };
+            let regions = [region];
+
+            // Copy the bytes of the staging buffer to the vertex buffer
+            unsafe {
+                logical_device.cmd_copy_buffer(command_buffer, source, destination, &regions)
+            };
+        },
+    );
 }
