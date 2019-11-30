@@ -701,7 +701,6 @@ fn create_command_buffers(
                 );
 
                 // Draw
-                // logical_device.cmd_draw(command_buffer, 3, 1, 0, 0);
                 logical_device.cmd_draw_indexed(command_buffer, number_of_indices, 1, 0, 0, 0);
 
                 // End render pass
