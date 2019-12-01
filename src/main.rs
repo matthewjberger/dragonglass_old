@@ -1,12 +1,9 @@
-use ash::{
-    extensions::khr::{Surface, Swapchain},
-    version::DeviceV1_0,
-    vk,
-};
+use ash::{version::DeviceV1_0, vk};
 use nalgebra_glm as glm;
-use std::{ffi::CString, mem, time::Instant};
+use std::{mem, time::Instant};
 
 mod app;
+mod buffer;
 mod context;
 mod debug;
 mod shader;
@@ -15,31 +12,14 @@ mod swapchain;
 mod vertex;
 
 use app::App;
+use buffer::{create_buffer, create_device_local_buffer};
 use context::VulkanContext;
-use swapchain::{SwapchainProperties, SwapchainSupportDetails};
+use std::sync::Arc;
+use swapchain::{SwapchainProperties, UniformBufferObject, VulkanSwapchain};
 use vertex::Vertex;
 
 // The maximum number of frames that can be rendered simultaneously
 pub const MAX_FRAMES_IN_FLIGHT: u32 = 2;
-
-#[derive(Debug, Clone, Copy)]
-struct UniformBufferObject {
-    model: glm::Mat4,
-    view: glm::Mat4,
-    projection: glm::Mat4,
-}
-
-impl UniformBufferObject {
-    fn get_descriptor_set_layout_bindings() -> [vk::DescriptorSetLayoutBinding; 1] {
-        let ubo_layout_binding = vk::DescriptorSetLayoutBinding::builder()
-            .binding(0)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::VERTEX)
-            .build();
-        [ubo_layout_binding]
-    }
-}
 
 fn main() {
     env_logger::init();
@@ -54,7 +34,7 @@ fn main() {
     let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
 
     let mut app = App::new(800, 600, "Vulkan Tutorial");
-    let context = VulkanContext::new(app.window());
+    let context = Arc::new(VulkanContext::new(app.window()));
 
     let graphics_queue = unsafe {
         context
@@ -68,31 +48,8 @@ fn main() {
             .get_device_queue(context.present_queue_family_index(), 0)
     };
 
-    let (swapchain, swapchain_khr, swapchain_properties, images) = create_swapchain(
-        context.instance(),
-        context.physical_device(),
-        context.logical_device(),
-        &context.surface(),
-        context.surface_khr(),
-        context.graphics_queue_family_index(),
-        context.present_queue_family_index(),
-    );
-    let swapchain_khr_arr = [swapchain_khr];
-    let image_views = create_image_views(context.logical_device(), &swapchain_properties, &images);
-    let render_pass = create_render_pass(context.logical_device(), &swapchain_properties);
-    let descriptor_set_layout = create_descriptor_set_layout(context.logical_device());
-    let (pipeline, pipeline_layout) = create_pipeline(
-        context.logical_device(),
-        &swapchain_properties,
-        render_pass,
-        descriptor_set_layout,
-    );
-    let framebuffers = create_framebuffers(
-        context.logical_device(),
-        image_views.as_slice(),
-        &swapchain_properties,
-        render_pass,
-    );
+    // TODO: create vulkanswapchain
+    let vulkan_swapchain = VulkanSwapchain::new(context.clone());
 
     let command_pool = create_command_pool(
         context.logical_device(),
@@ -109,7 +66,7 @@ fn main() {
     let (vertex_buffer, vertex_buffer_memory) = create_device_local_buffer::<u32, _>(
         context.logical_device(),
         context.physical_device_memory_properties(),
-        command_pool,
+        transient_command_pool,
         graphics_queue,
         vk::BufferUsageFlags::VERTEX_BUFFER,
         &vertices,
@@ -119,37 +76,34 @@ fn main() {
     let (index_buffer, index_buffer_memory) = create_device_local_buffer::<u16, _>(
         context.logical_device(),
         context.physical_device_memory_properties(),
-        command_pool,
+        transient_command_pool,
         graphics_queue,
         vk::BufferUsageFlags::INDEX_BUFFER,
         &indices,
     );
 
-    // TODO: Create a uniform buffer
-
-    let number_of_images = images.len();
     let (uniform_buffers, uniform_buffer_memory_list) = create_uniform_buffers(
         context.logical_device(),
         context.physical_device_memory_properties(),
-        number_of_images,
+        vulkan_swapchain.images.len(),
     );
-    let descriptor_pool = create_descriptor_pool(context.logical_device(), number_of_images as _);
+
     let descriptor_sets = create_descriptor_sets(
         context.logical_device(),
-        descriptor_pool,
-        descriptor_set_layout,
+        vulkan_swapchain.descriptor_pool,
+        vulkan_swapchain.descriptor_set_layout,
         &uniform_buffers,
     );
 
     let command_buffers = create_command_buffers(
         context.logical_device(),
         command_pool,
-        &framebuffers,
-        render_pass,
-        pipeline,
-        pipeline_layout,
+        &vulkan_swapchain.framebuffers,
+        vulkan_swapchain.render_pass,
+        vulkan_swapchain.pipeline,
+        vulkan_swapchain.pipeline_layout,
         &descriptor_sets,
-        &swapchain_properties,
+        &vulkan_swapchain.swapchain_properties,
         &vertex_buffers,
         index_buffer,
         indices.len() as u32,
@@ -160,6 +114,8 @@ fn main() {
 
     let mut current_frame = 0;
     let start_time = Instant::now();
+
+    let swapchain_khr_arr = [vulkan_swapchain.swapchain_khr];
 
     app.run(|| {
         let image_available_semaphore = image_available_semaphores[current_frame];
@@ -184,9 +140,10 @@ fn main() {
 
         // Acqure the next image from the swapchain
         let image_index = unsafe {
-            swapchain
+            vulkan_swapchain
+                .swapchain
                 .acquire_next_image(
-                    swapchain_khr,
+                    vulkan_swapchain.swapchain_khr,
                     std::u64::MAX,
                     image_available_semaphore,
                     vk::Fence::null(),
@@ -199,7 +156,7 @@ fn main() {
         update_uniform_buffers(
             context.logical_device(),
             image_index,
-            swapchain_properties,
+            vulkan_swapchain.swapchain_properties,
             &uniform_buffer_memory_list,
             start_time,
         );
@@ -230,7 +187,8 @@ fn main() {
             .build();
 
         unsafe {
-            swapchain
+            vulkan_swapchain
+                .swapchain
                 .queue_present(present_queue, &present_info)
                 .unwrap()
         };
@@ -272,255 +230,7 @@ fn main() {
         context
             .logical_device()
             .destroy_command_pool(transient_command_pool, None);
-        framebuffers
-            .iter()
-            .for_each(|f| context.logical_device().destroy_framebuffer(*f, None));
-        context.logical_device().destroy_pipeline(pipeline, None);
-        context
-            .logical_device()
-            .destroy_pipeline_layout(pipeline_layout, None);
-        context
-            .logical_device()
-            .destroy_render_pass(render_pass, None);
-        image_views
-            .iter()
-            .for_each(|v| context.logical_device().destroy_image_view(*v, None));
-        swapchain.destroy_swapchain(swapchain_khr, None);
-        context
-            .logical_device()
-            .destroy_descriptor_pool(descriptor_pool, None);
-        context
-            .logical_device()
-            .destroy_descriptor_set_layout(descriptor_set_layout, None);
-        context.logical_device().destroy_device(None);
     }
-}
-
-fn create_render_pass(
-    logical_device: &ash::Device,
-    swapchain_properties: &SwapchainProperties,
-) -> vk::RenderPass {
-    let attachment_description = vk::AttachmentDescription::builder()
-        .format(swapchain_properties.format.format)
-        .samples(vk::SampleCountFlags::TYPE_1)
-        .load_op(vk::AttachmentLoadOp::CLEAR)
-        .store_op(vk::AttachmentStoreOp::STORE)
-        .initial_layout(vk::ImageLayout::UNDEFINED)
-        .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-        .build();
-    let attachment_descriptions = [attachment_description];
-
-    let attachment_reference = vk::AttachmentReference::builder()
-        .attachment(0)
-        .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-        .build();
-    let attachment_references = [attachment_reference];
-
-    let subpass_description = vk::SubpassDescription::builder()
-        .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-        .color_attachments(&attachment_references)
-        .build();
-    let subpass_descriptions = [subpass_description];
-
-    let subpass_dependency = vk::SubpassDependency::builder()
-        .src_subpass(vk::SUBPASS_EXTERNAL)
-        .dst_subpass(0)
-        .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-        .src_access_mask(vk::AccessFlags::empty())
-        .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-        .dst_access_mask(
-            vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-        )
-        .build();
-    let subpass_dependencies = [subpass_dependency];
-
-    let render_pass_info = vk::RenderPassCreateInfo::builder()
-        .attachments(&attachment_descriptions)
-        .subpasses(&subpass_descriptions)
-        .dependencies(&subpass_dependencies)
-        .build();
-
-    unsafe {
-        logical_device
-            .create_render_pass(&render_pass_info, None)
-            .unwrap()
-    }
-}
-
-fn create_descriptor_set_layout(logical_device: &ash::Device) -> vk::DescriptorSetLayout {
-    let bindings = UniformBufferObject::get_descriptor_set_layout_bindings();
-    let layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
-        .bindings(&bindings)
-        .build();
-
-    unsafe {
-        logical_device
-            .create_descriptor_set_layout(&layout_info, None)
-            .unwrap()
-    }
-}
-
-fn create_pipeline(
-    logical_device: &ash::Device,
-    swapchain_properties: &SwapchainProperties,
-    render_pass: vk::RenderPass,
-    descriptor_set_layout: vk::DescriptorSetLayout,
-) -> (vk::Pipeline, vk::PipelineLayout) {
-    // Define the entry point for shaders
-    let entry_point_name = &CString::new("main").unwrap();
-
-    // Create the vertex shader module
-    let vertex_shader_module =
-        shader::create_shader_from_file("shaders/shader.vert.spv", logical_device);
-
-    let vertex_shader_state_info = vk::PipelineShaderStageCreateInfo::builder()
-        .stage(vk::ShaderStageFlags::VERTEX)
-        .module(vertex_shader_module)
-        .name(entry_point_name)
-        .build();
-
-    // Create the fragment shader module
-    let fragment_shader_module =
-        shader::create_shader_from_file("shaders/shader.frag.spv", logical_device);
-
-    let fragment_shader_state_info = vk::PipelineShaderStageCreateInfo::builder()
-        .stage(vk::ShaderStageFlags::FRAGMENT)
-        .module(fragment_shader_module)
-        .name(entry_point_name)
-        .build();
-
-    let shader_state_info = [vertex_shader_state_info, fragment_shader_state_info];
-
-    let descriptions = [Vertex::get_binding_description()];
-    let attributes = Vertex::get_attribute_descriptions();
-
-    // Build vertex input creation info
-    let vertex_input_create_info = vk::PipelineVertexInputStateCreateInfo::builder()
-        .vertex_binding_descriptions(&descriptions)
-        .vertex_attribute_descriptions(&attributes)
-        .build();
-
-    // Build input assembly creation info
-    let input_assembly_create_info = vk::PipelineInputAssemblyStateCreateInfo::builder()
-        .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
-        .primitive_restart_enable(false)
-        .build();
-
-    // Create a viewport
-    let viewport = vk::Viewport {
-        x: 0.0,
-        y: 0.0,
-        width: swapchain_properties.extent.width as _,
-        height: swapchain_properties.extent.height as _,
-        min_depth: 0.0,
-        max_depth: 1.0,
-    };
-    let viewports = [viewport];
-
-    // Create a stencil
-    let scissor = vk::Rect2D {
-        offset: vk::Offset2D { x: 0, y: 0 },
-        extent: swapchain_properties.extent,
-    };
-    let scissors = [scissor];
-
-    // Build the viewport info using the viewport and stencil
-    let viewport_create_info = vk::PipelineViewportStateCreateInfo::builder()
-        .viewports(&viewports)
-        .scissors(&scissors)
-        .build();
-
-    // Build the rasterizer info
-    let rasterizer_create_info = vk::PipelineRasterizationStateCreateInfo::builder()
-        .depth_clamp_enable(false)
-        .rasterizer_discard_enable(false)
-        .polygon_mode(vk::PolygonMode::FILL)
-        .line_width(1.0)
-        .cull_mode(vk::CullModeFlags::NONE)
-        .front_face(vk::FrontFace::CLOCKWISE)
-        .depth_bias_enable(false)
-        .depth_bias_constant_factor(0.0)
-        .depth_bias_clamp(0.0)
-        .depth_bias_slope_factor(0.0)
-        .build();
-
-    // Create the multisampling info for the pipline
-    let multisampling_create_info = vk::PipelineMultisampleStateCreateInfo::builder()
-        .sample_shading_enable(false)
-        .rasterization_samples(vk::SampleCountFlags::TYPE_1)
-        .min_sample_shading(1.0)
-        // .sample_mask()
-        .alpha_to_coverage_enable(false)
-        .alpha_to_one_enable(false)
-        .build();
-
-    // Create the color blend attachment
-    let color_blend_attachment = vk::PipelineColorBlendAttachmentState::builder()
-        .color_write_mask(vk::ColorComponentFlags::all())
-        .blend_enable(false)
-        .src_color_blend_factor(vk::BlendFactor::ONE)
-        .dst_color_blend_factor(vk::BlendFactor::ZERO)
-        .color_blend_op(vk::BlendOp::ADD)
-        .src_alpha_blend_factor(vk::BlendFactor::ONE)
-        .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
-        .alpha_blend_op(vk::BlendOp::ADD)
-        .build();
-    let color_blend_attachments = [color_blend_attachment];
-
-    // Build the color blending info using the color blend attachment
-    let color_blending_info = vk::PipelineColorBlendStateCreateInfo::builder()
-        .logic_op_enable(false)
-        .logic_op(vk::LogicOp::COPY)
-        .attachments(&color_blend_attachments)
-        .blend_constants([0.0, 0.0, 0.0, 0.0])
-        .build();
-
-    // Build the pipeline layout info
-    let descriptor_set_layouts = [descriptor_set_layout];
-    let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
-        .set_layouts(&descriptor_set_layouts) // needed for uniforms in shaders
-        // .push_constant_ranges()
-        .build();
-
-    // Create the pipeline layout
-    let pipeline_layout = unsafe {
-        logical_device
-            .create_pipeline_layout(&pipeline_layout_info, None)
-            .unwrap()
-    };
-
-    // Create the pipeline info
-    let pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
-        .stages(&shader_state_info)
-        .vertex_input_state(&vertex_input_create_info)
-        .input_assembly_state(&input_assembly_create_info)
-        .viewport_state(&viewport_create_info)
-        .rasterization_state(&rasterizer_create_info)
-        .multisample_state(&multisampling_create_info)
-        //.depth_stencil_state() // not using depth/stencil tests
-        .color_blend_state(&color_blending_info)
-        //.dynamic_state // no dynamic states
-        .layout(pipeline_layout)
-        .render_pass(render_pass)
-        .subpass(0)
-        .build();
-
-    let pipeline_info_arr = [pipeline_info];
-
-    // Create the pipeline
-    let pipeline = unsafe {
-        logical_device
-            .create_graphics_pipelines(vk::PipelineCache::null(), &pipeline_info_arr, None)
-            .unwrap()[0]
-    };
-
-    // Delete shader modules
-    unsafe {
-        logical_device.destroy_shader_module(vertex_shader_module, None);
-        logical_device.destroy_shader_module(fragment_shader_module, None);
-    };
-
-    (pipeline, pipeline_layout)
 }
 
 fn create_command_pool(
@@ -538,156 +248,6 @@ fn create_command_pool(
             .create_command_pool(&command_pool_info, None)
             .unwrap()
     }
-}
-
-fn create_framebuffers(
-    logical_device: &ash::Device,
-    image_views: &[vk::ImageView],
-    swapchain_properties: &SwapchainProperties,
-    render_pass: vk::RenderPass,
-) -> Vec<vk::Framebuffer> {
-    // Create one framebuffer for each image in the swapchain
-    image_views
-        .iter()
-        .map(|view| [*view])
-        .map(|attachments| {
-            let framebuffer_info = vk::FramebufferCreateInfo::builder()
-                .render_pass(render_pass)
-                .attachments(&attachments)
-                .width(swapchain_properties.extent.width)
-                .height(swapchain_properties.extent.height)
-                .layers(1)
-                .build();
-            unsafe {
-                logical_device
-                    .create_framebuffer(&framebuffer_info, None)
-                    .unwrap()
-            }
-        })
-        .collect::<Vec<_>>()
-}
-
-fn create_swapchain(
-    instance: &ash::Instance,
-    physical_device: ash::vk::PhysicalDevice,
-    logical_device: &ash::Device,
-    surface: &Surface,
-    surface_khr: ash::vk::SurfaceKHR,
-    graphics_queue_family_index: u32,
-    present_queue_family_index: u32,
-) -> (
-    Swapchain,
-    vk::SwapchainKHR,
-    SwapchainProperties,
-    Vec<vk::Image>,
-) {
-    let swapchain_support_details =
-        SwapchainSupportDetails::new(physical_device, surface, surface_khr);
-    let capabilities = &swapchain_support_details.capabilities;
-
-    let swapchain_properties = swapchain_support_details.suitable_properties([800, 600]);
-    let surface_format = swapchain_properties.format;
-    let present_mode = swapchain_properties.present_mode;
-    let extent = swapchain_properties.extent;
-
-    // Choose the number of images to use in the swapchain
-    let image_count = {
-        let max = capabilities.max_image_count;
-        let mut preferred = capabilities.min_image_count + 1;
-        if max > 0 && preferred > max {
-            preferred = max;
-        }
-        preferred
-    };
-
-    // Build the swapchain creation info
-    let swapchain_create_info = {
-        let mut builder = vk::SwapchainCreateInfoKHR::builder()
-            .surface(surface_khr)
-            .min_image_count(image_count)
-            .image_format(surface_format.format)
-            .image_color_space(surface_format.color_space)
-            .image_extent(extent)
-            .image_array_layers(1)
-            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT);
-
-        let mut queue_family_indices =
-            vec![graphics_queue_family_index, present_queue_family_index];
-        queue_family_indices.dedup();
-
-        builder = if graphics_queue_family_index != present_queue_family_index {
-            builder
-                .image_sharing_mode(vk::SharingMode::CONCURRENT)
-                .queue_family_indices(&queue_family_indices)
-        } else {
-            builder.image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-        };
-
-        builder
-            .pre_transform(capabilities.current_transform)
-            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(present_mode)
-            .clipped(true)
-            .build()
-    };
-
-    // Create the swapchain using the swapchain creation info
-    let swapchain = Swapchain::new(instance, logical_device);
-    let swapchain_khr = unsafe {
-        swapchain
-            .create_swapchain(&swapchain_create_info, None)
-            .unwrap()
-    };
-
-    log::debug!(
-        "Creating swapchain.\n\tFormat: {:?}\n\tColorSpace: {:?}\n\tPresentMode: {:?}\n\tExtent: {:?}\n\tImageCount: {}",
-        surface_format.format,
-        surface_format.color_space,
-        present_mode,
-        extent,
-        image_count
-    );
-
-    // Get the swapchain images
-    let images = unsafe { swapchain.get_swapchain_images(swapchain_khr).unwrap() };
-
-    (swapchain, swapchain_khr, swapchain_properties, images)
-}
-
-fn create_image_views(
-    logical_device: &ash::Device,
-    swapchain_properties: &SwapchainProperties,
-    images: &[vk::Image],
-) -> Vec<vk::ImageView> {
-    images
-        .iter()
-        .map(|image| {
-            let create_info = vk::ImageViewCreateInfo::builder()
-                .image(*image)
-                .view_type(vk::ImageViewType::TYPE_2D)
-                .format(swapchain_properties.format.format)
-                .components(vk::ComponentMapping {
-                    r: vk::ComponentSwizzle::IDENTITY,
-                    g: vk::ComponentSwizzle::IDENTITY,
-                    b: vk::ComponentSwizzle::IDENTITY,
-                    a: vk::ComponentSwizzle::IDENTITY,
-                })
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .build();
-
-            unsafe {
-                logical_device
-                    .create_image_view(&create_info, None)
-                    .unwrap()
-            }
-        })
-        .collect::<Vec<_>>()
 }
 
 fn create_command_buffers(
@@ -856,235 +416,6 @@ fn create_semaphores_and_fences(
     )
 }
 
-fn determine_memory_type(
-    buffer_memory_requirements: vk::MemoryRequirements,
-    physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
-    required_properties: vk::MemoryPropertyFlags,
-) -> u32 {
-    // Determine the buffer's memory type
-    let mut memory_type = 0;
-    let mut found_memory_type = false;
-    for index in 0..physical_device_memory_properties.memory_type_count {
-        if buffer_memory_requirements.memory_type_bits & (1 << index) != 0
-            && physical_device_memory_properties.memory_types[index as usize]
-                .property_flags
-                .contains(required_properties)
-        {
-            memory_type = index;
-            found_memory_type = true;
-        }
-    }
-    if !found_memory_type {
-        panic!("Failed to find suitable memory type.")
-    }
-    memory_type
-}
-
-fn create_buffer(
-    logical_device: &ash::Device,
-    size: ash::vk::DeviceSize,
-    usage: vk::BufferUsageFlags,
-    physical_device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
-    required_properties: vk::MemoryPropertyFlags,
-) -> (vk::Buffer, vk::DeviceMemory, vk::DeviceSize) {
-    // Build the staging buffer creation info
-    let buffer_info = vk::BufferCreateInfo::builder()
-        .size(size)
-        .usage(usage)
-        .sharing_mode(vk::SharingMode::EXCLUSIVE)
-        .build();
-
-    // Create the staging buffer
-    let buffer = unsafe { logical_device.create_buffer(&buffer_info, None).unwrap() };
-
-    // Get the buffer's memory requirements
-    let buffer_memory_requirements =
-        unsafe { logical_device.get_buffer_memory_requirements(buffer) };
-
-    let memory_type = determine_memory_type(
-        buffer_memory_requirements,
-        physical_device_memory_properties,
-        required_properties,
-    );
-
-    // Create the staging buffer allocation info
-    let buffer_allocation_info = vk::MemoryAllocateInfo::builder()
-        .allocation_size(buffer_memory_requirements.size)
-        .memory_type_index(memory_type)
-        .build();
-
-    // Allocate memory for the buffer
-    let buffer_memory = unsafe {
-        logical_device
-            .allocate_memory(&buffer_allocation_info, None)
-            .unwrap()
-    };
-
-    unsafe {
-        // Bind the buffer memory for mapping
-        logical_device
-            .bind_buffer_memory(buffer, buffer_memory, 0)
-            .unwrap();
-    }
-
-    (buffer, buffer_memory, buffer_memory_requirements.size)
-}
-
-fn create_device_local_buffer<A, T: Copy>(
-    logical_device: &ash::Device,
-    physical_device_memory_properties: &ash::vk::PhysicalDeviceMemoryProperties,
-    command_pool: ash::vk::CommandPool,
-    graphics_queue: vk::Queue,
-    usage_flags: vk::BufferUsageFlags,
-    vertices: &[T],
-) -> (vk::Buffer, vk::DeviceMemory) {
-    let buffer_size = (vertices.len() * mem::size_of::<T>() as usize) as ash::vk::DeviceSize;
-
-    let (staging_buffer, staging_buffer_memory, staging_memory_size) = create_buffer(
-        &logical_device,
-        buffer_size,
-        vk::BufferUsageFlags::TRANSFER_SRC,
-        physical_device_memory_properties,
-        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-    );
-
-    unsafe {
-        // Map the entire buffer
-        let data_pointer = logical_device
-            .map_memory(
-                staging_buffer_memory,
-                0,
-                buffer_size as _,
-                vk::MemoryMapFlags::empty(),
-            )
-            .unwrap();
-
-        // Upload aligned staging data to the mapped buffer
-        let mut align = ash::util::Align::new(
-            data_pointer,
-            mem::align_of::<A>() as _,
-            staging_memory_size as _,
-        );
-        align.copy_from_slice(&vertices);
-
-        // Unmap the buffer memory
-        logical_device.unmap_memory(staging_buffer_memory);
-    }
-
-    let (vertex_buffer, vertex_buffer_memory, _) = create_buffer(
-        &logical_device,
-        buffer_size,
-        vk::BufferUsageFlags::TRANSFER_DST | usage_flags,
-        physical_device_memory_properties,
-        vk::MemoryPropertyFlags::DEVICE_LOCAL,
-    );
-
-    copy_buffer(
-        logical_device,
-        command_pool,
-        graphics_queue,
-        staging_buffer,
-        vertex_buffer,
-        buffer_size,
-    );
-
-    unsafe {
-        // Free the staging buffer
-        logical_device.destroy_buffer(staging_buffer, None);
-
-        // Free the staging buffer memory
-        logical_device.free_memory(staging_buffer_memory, None)
-    };
-
-    (vertex_buffer, vertex_buffer_memory)
-}
-
-fn execute_command_once<F: FnOnce(vk::CommandBuffer)>(
-    logical_device: &ash::Device,
-    command_pool: vk::CommandPool,
-    queue: vk::Queue,
-    executor: F,
-) {
-    // Allocate a command buffer using the command pool
-    let command_buffer = {
-        let allocation_info = vk::CommandBufferAllocateInfo::builder()
-            .level(vk::CommandBufferLevel::PRIMARY)
-            .command_pool(command_pool)
-            .command_buffer_count(1)
-            .build();
-
-        unsafe {
-            logical_device
-                .allocate_command_buffers(&allocation_info)
-                .unwrap()[0]
-        }
-    };
-    let command_buffers = [command_buffer];
-
-    // Begin recording
-    let begin_info = vk::CommandBufferBeginInfo::builder()
-        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
-        .build();
-    unsafe {
-        logical_device
-            .begin_command_buffer(command_buffer, &begin_info)
-            .unwrap()
-    };
-
-    executor(command_buffer);
-
-    // End command buffer recording
-    unsafe { logical_device.end_command_buffer(command_buffer).unwrap() };
-
-    // Build the submission info
-    let submit_info = vk::SubmitInfo::builder()
-        .command_buffers(&command_buffers)
-        .build();
-    let submit_info_arr = [submit_info];
-
-    unsafe {
-        // Submit the command buffer
-        logical_device
-            .queue_submit(queue, &submit_info_arr, vk::Fence::null())
-            .unwrap();
-
-        // Wait for the command buffer to be executed
-        logical_device.queue_wait_idle(queue).unwrap();
-
-        // Free the command buffer
-        logical_device.free_command_buffers(command_pool, &command_buffers);
-    };
-}
-
-fn copy_buffer(
-    logical_device: &ash::Device,
-    command_pool: vk::CommandPool,
-    transfer_queue: vk::Queue,
-    source: vk::Buffer,
-    destination: vk::Buffer,
-    buffer_size: vk::DeviceSize,
-) {
-    execute_command_once(
-        logical_device,
-        command_pool,
-        transfer_queue,
-        |command_buffer| {
-            // Define the region for the buffer copy
-            let region = vk::BufferCopy {
-                src_offset: 0,
-                dst_offset: 0,
-                size: buffer_size as _,
-            };
-            let regions = [region];
-
-            // Copy the bytes of the staging buffer to the vertex buffer
-            unsafe {
-                logical_device.cmd_copy_buffer(command_buffer, source, destination, &regions)
-            };
-        },
-    );
-}
-
 fn create_uniform_buffers(
     logical_device: &ash::Device,
     physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
@@ -1118,7 +449,7 @@ fn update_uniform_buffers(
 ) {
     let elapsed_time = start_time.elapsed();
     let elapsed_time =
-        elapsed_time.as_secs() as f32 + (elapsed_time.subsec_millis() as f32) / 1_000 as f32;
+        elapsed_time.as_secs() as f32 + (elapsed_time.subsec_millis() as f32) / 1000_f32;
 
     let aspect_ratio =
         swapchain_properties.extent.width as f32 / swapchain_properties.extent.height as f32;
@@ -1157,25 +488,6 @@ fn update_uniform_buffers(
         );
         align.copy_from_slice(&ubos);
         logical_device.unmap_memory(buffer_memory);
-    }
-}
-
-fn create_descriptor_pool(logical_device: &ash::Device, size: u32) -> vk::DescriptorPool {
-    let pool_size = vk::DescriptorPoolSize {
-        ty: vk::DescriptorType::UNIFORM_BUFFER,
-        descriptor_count: size,
-    };
-    let pool_sizes = [pool_size];
-
-    let pool_info = vk::DescriptorPoolCreateInfo::builder()
-        .pool_sizes(&pool_sizes)
-        .max_sets(size)
-        .build();
-
-    unsafe {
-        logical_device
-            .create_descriptor_pool(&pool_info, None)
-            .unwrap()
     }
 }
 

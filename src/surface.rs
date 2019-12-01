@@ -23,7 +23,7 @@ pub unsafe fn create_surface<E: EntryV1_0, I: InstanceV1_0>(
     window: &winit::Window,
 ) -> Result<vk::SurfaceKHR, vk::Result> {
     use ash::extensions::khr::Win32Surface;
-    use std::ptr;
+    use std::{ptr, ffi::c_void};
     use winapi::{shared::windef::HWND, um::libloaderapi::GetModuleHandleW};
     use winit::os::windows::WindowExt;
 
