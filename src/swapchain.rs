@@ -548,8 +548,6 @@ impl Drop for VulkanSwapchain {
 
             logical_device.destroy_command_pool(self.command_pool, None);
             logical_device.destroy_command_pool(self.transient_command_pool, None);
-
-            logical_device.destroy_device(None);
         }
     }
 }

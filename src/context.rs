@@ -3,8 +3,7 @@ use ash::{
         ext::DebugUtils,
         khr::{Surface, Swapchain},
     },
-    version::EntryV1_0,
-    version::InstanceV1_0,
+    version::{DeviceV1_0, EntryV1_0, InstanceV1_0},
     vk::{self, DebugUtilsMessengerEXT, PhysicalDevice, SurfaceKHR},
     vk_make_version,
 };
@@ -324,6 +323,7 @@ impl Drop for VulkanContext {
     fn drop(&mut self) {
         unsafe {
             self.surface.destroy_surface(self.surface_khr, None);
+            self.logical_device.destroy_device(None);
             if let Some((debug_utils, messenger)) = &mut self.debug_messenger {
                 debug_utils.destroy_debug_utils_messenger(*messenger, None);
             }
