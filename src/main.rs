@@ -1,5 +1,6 @@
 use ash::{version::DeviceV1_0, vk};
 use std::time::Instant;
+use winit::{dpi::LogicalSize, Event, VirtualKeyCode, WindowEvent};
 
 mod app;
 mod buffer;
@@ -32,7 +33,7 @@ fn main() {
     let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
 
     let mut app = App::new(800, 600, "Vulkan Tutorial");
-    let context = Arc::new(VulkanContext::new(app.window()));
+    let context = Arc::new(VulkanContext::new(&app.window));
 
     let vulkan_swapchain = VulkanSwapchain::new(context.clone(), &vertices, &indices);
 
@@ -44,7 +45,43 @@ fn main() {
 
     let swapchain_khr_arr = [vulkan_swapchain.swapchain_khr];
 
-    app.run(|| {
+    log::debug!("Running application.");
+    let mut should_stop = false;
+    loop {
+        app.event_loop.poll_events(|event| match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            }
+            | Event::WindowEvent {
+                event:
+                    WindowEvent::KeyboardInput {
+                        input:
+                            winit::KeyboardInput {
+                                virtual_keycode: Some(VirtualKeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    },
+                ..
+            } => should_stop = true,
+            Event::WindowEvent {
+                event:
+                    WindowEvent::Resized(LogicalSize {
+                        width: _width,
+                        height: _height,
+                    }),
+                ..
+            } => {
+                // TODO: Handle resizing by recreating the swapchain
+            }
+            _ => {}
+        });
+
+        if should_stop {
+            break;
+        }
+
         let image_available_semaphore = image_available_semaphores[current_frame];
         let image_available_semaphores = [image_available_semaphore];
 
@@ -123,7 +160,7 @@ fn main() {
         };
 
         current_frame += (1 + current_frame) % MAX_FRAMES_IN_FLIGHT as usize;
-    });
+    }
 
     unsafe { context.logical_device().device_wait_idle().unwrap() };
 

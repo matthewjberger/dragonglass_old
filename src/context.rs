@@ -7,19 +7,138 @@ use ash::{
     vk::{self, DebugUtilsMessengerEXT, PhysicalDevice, SurfaceKHR},
     vk_make_version,
 };
+use snafu::{ResultExt, Snafu};
 use std::ffi::{CStr, CString};
 
-const APPLICATION_VERSION: u32 = vk_make_version!(1, 0, 0);
-const API_VERSION: u32 = vk_make_version!(1, 0, 0);
-const ENGINE_VERSION: u32 = vk_make_version!(1, 0, 0);
-const ENGINE_NAME: &str = "Sepia Engine";
-
-use crate::debug;
+use crate::debug::{self, LayerNameVec};
 use crate::surface;
 
-pub struct VulkanContext {
-    _entry: ash::Entry,
+#[derive(Debug, Snafu)]
+enum Error {
+    #[snafu(display("Failed to create entry: {}", source))]
+    EntryLoading { source: ash::LoadingError },
+
+    #[snafu(display("Failed to create instance: {}", source))]
+    InstanceCreation { source: ash::InstanceError },
+
+    #[snafu(display("Failed to create a c-string from the application name: {}", source))]
+    AppNameCreation { source: std::ffi::NulError },
+
+    #[snafu(display("Failed to create a c-string from the engine name: {}", source))]
+    EngineNameCreation { source: std::ffi::NulError },
+}
+
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+trait ApplicationDescription {
+    const APPLICATION_NAME: &'static str;
+    const APPLICATION_VERSION: u32;
+    const API_VERSION: u32;
+    const ENGINE_VERSION: u32;
+    const ENGINE_NAME: &'static str;
+}
+
+pub struct Instance {
+    entry: ash::Entry,
     instance: ash::Instance,
+}
+
+impl Instance {
+    fn new() -> Result<Self> {
+        let entry = ash::Entry::new().context(EntryLoading)?;
+        Self::check_required_layers_supported(&entry);
+        let app_info = Self::build_application_creation_info()?;
+        let instance_extensions = Self::required_instance_extension_names();
+        let layer_name_vec = Self::required_layers();
+        let layer_name_pointers = layer_name_vec.layer_name_pointers();
+        let instance_create_info = vk::InstanceCreateInfo::builder()
+            .application_info(&app_info)
+            .enabled_extension_names(&instance_extensions)
+            .enabled_layer_names(&layer_name_pointers);
+        let instance = unsafe {
+            entry
+                .create_instance(&instance_create_info, None)
+                .context(InstanceCreation)?
+        };
+        Ok(Instance { entry, instance })
+    }
+
+    pub fn entry(&self) -> &ash::Entry {
+        &self.entry
+    }
+
+    pub fn instance(&self) -> &ash::Instance {
+        &self.instance
+    }
+
+    fn build_application_creation_info() -> Result<vk::ApplicationInfo> {
+        let app_name = CString::new(Instance::APPLICATION_NAME).context(AppNameCreation)?;
+        let engine_name = CString::new(Instance::ENGINE_NAME).context(EngineNameCreation)?;
+        let app_info = vk::ApplicationInfo::builder()
+            .application_name(&app_name)
+            .engine_name(&engine_name)
+            .api_version(Instance::API_VERSION)
+            .application_version(Instance::APPLICATION_VERSION)
+            .engine_version(Instance::ENGINE_VERSION)
+            .build();
+        Ok(app_info)
+    }
+
+    fn required_instance_extension_names() -> Vec<*const i8> {
+        let mut instance_extension_names = surface::surface_extension_names();
+        if debug::ENABLE_VALIDATION_LAYERS {
+            instance_extension_names.push(DebugUtils::name().as_ptr());
+        }
+        instance_extension_names
+    }
+
+    pub fn required_layers() -> LayerNameVec {
+        let mut layer_name_vec = LayerNameVec::new();
+        if debug::ENABLE_VALIDATION_LAYERS {
+            layer_name_vec
+                .layer_names
+                .extend(debug::debug_layer_names().layer_names);
+        }
+        layer_name_vec
+    }
+
+    fn check_required_layers_supported(entry: &ash::Entry) {
+        let layer_name_vec = Self::required_layers();
+        for layer_name in layer_name_vec.layer_names.iter() {
+            let all_layers_supported = entry
+                .enumerate_instance_layer_properties()
+                .expect("Couldn't enumerate instance layer properties")
+                .iter()
+                .any(|layer| {
+                    let name = unsafe { CStr::from_ptr(layer.layer_name.as_ptr()) };
+                    let name = name.to_str().expect("Failed to get layer name pointer");
+                    (*layer_name).name() == name
+                });
+
+            if !all_layers_supported {
+                panic!("Validation layer not supported: {}", layer_name.name());
+            }
+        }
+    }
+}
+
+impl ApplicationDescription for Instance {
+    const APPLICATION_NAME: &'static str = "Vulkan Tutorial";
+    const APPLICATION_VERSION: u32 = vk_make_version!(1, 0, 0);
+    const API_VERSION: u32 = vk_make_version!(1, 0, 0);
+    const ENGINE_VERSION: u32 = vk_make_version!(1, 0, 0);
+    const ENGINE_NAME: &'static str = "Sepia Engine";
+}
+
+impl Drop for Instance {
+    fn drop(&mut self) {
+        unsafe {
+            self.instance.destroy_instance(None);
+        }
+    }
+}
+
+pub struct VulkanContext {
     physical_device: PhysicalDevice,
     physical_device_memory_properties: ash::vk::PhysicalDeviceMemoryProperties,
     logical_device: ash::Device,
@@ -28,79 +147,39 @@ pub struct VulkanContext {
     debug_messenger: Option<(DebugUtils, DebugUtilsMessengerEXT)>,
     graphics_queue_family_index: u32,
     present_queue_family_index: u32,
+    instance: Instance,
 }
 
 impl VulkanContext {
     pub fn new(window: &winit::Window) -> Self {
-        // Load the Vulkan library
-        let entry = ash::Entry::new().expect("Failed to create entry");
-
-        let app_info = Self::build_application_creation_info();
-
-        // Determine required extension names
-        let instance_extensions = Self::required_instance_extension_names();
-
-        // Create the instance creation info
-        let mut instance_create_info = vk::InstanceCreateInfo::builder()
-            .application_info(&app_info)
-            .enabled_extension_names(&instance_extensions);
-
-        // Determine the required layer names
-        let layer_names = debug::REQUIRED_LAYERS
-            .iter()
-            .map(|name| CString::new(*name).expect("Failed to build CString"))
-            .collect::<Vec<_>>();
-
-        // Determine required layer name pointers
-        let layer_name_ptrs = layer_names
-            .iter()
-            .map(|name| name.as_ptr())
-            .collect::<Vec<_>>();
-
-        if debug::ENABLE_VALIDATION_LAYERS {
-            // Check if the required validation layers are supported
-            for required in debug::REQUIRED_LAYERS.iter() {
-                let found = entry
-                    .enumerate_instance_layer_properties()
-                    .expect("Couldn't enumerate instance layer properties")
-                    .iter()
-                    .any(|layer| {
-                        let name = unsafe { CStr::from_ptr(layer.layer_name.as_ptr()) };
-                        let name = name.to_str().expect("Failed to get layer name pointer");
-                        required == &name
-                    });
-
-                if !found {
-                    panic!("Validation layer not supported: {}", required);
-                }
-            }
-
-            instance_create_info = instance_create_info.enabled_layer_names(&layer_name_ptrs);
-        }
-
-        let instance = unsafe {
-            entry
-                .create_instance(&instance_create_info, None)
-                .expect("Failed to create instance")
-        };
+        let instance = Instance::new().unwrap();
 
         // Create the window surface
-        let surface = Surface::new(&entry, &instance);
+        let surface = Surface::new(instance.entry(), instance.instance());
         let surface_khr = unsafe {
-            surface::create_surface(&entry, &instance, window)
+            surface::create_surface(instance.entry(), instance.instance(), window)
                 .expect("Failed to create window surface!")
         };
 
-        let debug_messenger = debug::setup_debug_messenger(&entry, &instance);
+        let debug_messenger = debug::setup_debug_messenger(instance.entry(), instance.instance());
 
-        let physical_device = Self::pick_physical_device(&instance, &surface, surface_khr);
+        let physical_device =
+            Self::pick_physical_device(instance.instance(), &surface, surface_khr);
 
         // Get the memory properties of the physical device
-        let physical_device_memory_properties =
-            unsafe { instance.get_physical_device_memory_properties(physical_device) };
+        let physical_device_memory_properties = unsafe {
+            instance
+                .instance()
+                .get_physical_device_memory_properties(physical_device)
+        };
 
         let (graphics_queue_family_index, present_queue_family_index) =
-            Self::find_queue_family_indices(&instance, physical_device, &surface, surface_khr);
+            Self::find_queue_family_indices(
+                instance.instance(),
+                physical_device,
+                &surface,
+                surface_khr,
+            );
 
         let (graphics_queue_family_index, present_queue_family_index) = (
             graphics_queue_family_index.expect("Failed to find a graphics queue family"),
@@ -139,10 +218,12 @@ impl VulkanContext {
             .enabled_extension_names(&device_extensions)
             .enabled_features(&device_features);
 
+        let layer_name_vec = Instance::required_layers();
+        let layer_name_pointers = layer_name_vec.layer_name_pointers();
         if debug::ENABLE_VALIDATION_LAYERS {
             // Add the validation layers to the list of enabled layers if validation layers are enabled
             device_create_info_builder =
-                device_create_info_builder.enabled_layer_names(layer_name_ptrs.as_slice())
+                device_create_info_builder.enabled_layer_names(&layer_name_pointers)
         }
 
         let device_create_info = device_create_info_builder.build();
@@ -150,12 +231,12 @@ impl VulkanContext {
         // Create the logical device using the physical device and device creation info
         let logical_device = unsafe {
             instance
+                .instance()
                 .create_device(physical_device, &device_create_info, None)
                 .expect("Failed to create logical device.")
         };
 
         VulkanContext {
-            _entry: entry,
             instance,
             physical_device,
             physical_device_memory_properties,
@@ -166,26 +247,6 @@ impl VulkanContext {
             graphics_queue_family_index,
             present_queue_family_index,
         }
-    }
-
-    fn build_application_creation_info() -> vk::ApplicationInfo {
-        let app_name = CString::new("Vulkan Tutorial").expect("Failed to create CString");
-        let engine_name = CString::new(ENGINE_NAME).expect("Failed to create CString");
-        vk::ApplicationInfo::builder()
-            .application_name(&app_name)
-            .engine_name(&engine_name)
-            .api_version(API_VERSION)
-            .application_version(APPLICATION_VERSION)
-            .engine_version(ENGINE_VERSION)
-            .build()
-    }
-
-    fn required_instance_extension_names() -> Vec<*const i8> {
-        let mut instance_extension_names = surface::surface_extension_names();
-        if debug::ENABLE_VALIDATION_LAYERS {
-            instance_extension_names.push(DebugUtils::name().as_ptr());
-        }
-        instance_extension_names
     }
 
     fn pick_physical_device(
@@ -287,7 +348,7 @@ impl VulkanContext {
     }
 
     pub fn instance(&self) -> &ash::Instance {
-        &self.instance
+        self.instance.instance()
     }
 
     pub fn physical_device(&self) -> PhysicalDevice {
@@ -327,7 +388,6 @@ impl Drop for VulkanContext {
             if let Some((debug_utils, messenger)) = &mut self.debug_messenger {
                 debug_utils.destroy_debug_utils_messenger(*messenger, None);
             }
-            self.instance.destroy_instance(None);
         }
     }
 }
