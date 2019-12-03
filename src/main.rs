@@ -48,7 +48,6 @@ fn main() {
             .get_device_queue(context.present_queue_family_index(), 0)
     };
 
-    // TODO: create vulkanswapchain
     let vulkan_swapchain = VulkanSwapchain::new(context.clone());
 
     let command_pool = create_command_pool(

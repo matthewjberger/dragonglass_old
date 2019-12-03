@@ -160,6 +160,8 @@ pub struct VulkanSwapchain {
 
 impl VulkanSwapchain {
     pub fn new(context: Arc<VulkanContext>) -> Self {
+        unsafe { context.logical_device().device_wait_idle().unwrap() };
+
         let (swapchain, swapchain_khr, swapchain_properties, images) = create_swapchain(
             context.instance(),
             context.physical_device(),
