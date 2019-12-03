@@ -294,6 +294,32 @@ impl VulkanSwapchain {
         vulkan_swapchain
     }
 
+    pub fn recreate(&self) {
+        unimplemented!()
+    }
+
+    fn cleanup_swapchain(&self) {
+        let logical_device = self.context.logical_device();
+        unsafe {
+            self.framebuffers
+                .iter()
+                .for_each(|f| logical_device.destroy_framebuffer(*f, None));
+
+            logical_device.free_command_buffers(self.command_pool, &self.command_buffers);
+
+            logical_device.destroy_pipeline(self.pipeline, None);
+            logical_device.destroy_pipeline_layout(self.pipeline_layout, None);
+
+            logical_device.destroy_render_pass(self.render_pass, None);
+
+            self.image_views
+                .iter()
+                .for_each(|v| logical_device.destroy_image_view(*v, None));
+
+            self.swapchain.destroy_swapchain(self.swapchain_khr, None);
+        }
+    }
+
     fn create_command_buffers(
         &self,
         command_pool: ash::vk::CommandPool,
@@ -509,33 +535,15 @@ impl VulkanSwapchain {
 
 impl Drop for VulkanSwapchain {
     fn drop(&mut self) {
+        self.cleanup_swapchain();
         let logical_device = self.context.logical_device();
         unsafe {
-            self.framebuffers
-                .iter()
-                .for_each(|f| logical_device.destroy_framebuffer(*f, None));
-
-            logical_device.free_command_buffers(self.command_pool, &self.command_buffers);
-
-            logical_device.destroy_pipeline(self.pipeline, None);
-            logical_device.destroy_pipeline_layout(self.pipeline_layout, None);
-
-            logical_device.destroy_render_pass(self.render_pass, None);
-
-            self.image_views
-                .iter()
-                .for_each(|v| logical_device.destroy_image_view(*v, None));
-
-            self.swapchain.destroy_swapchain(self.swapchain_khr, None);
-
             logical_device.destroy_descriptor_pool(self.descriptor_pool, None);
-
             logical_device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
 
             self.uniform_buffer_memory_list
                 .iter()
                 .for_each(|m| logical_device.free_memory(*m, None));
-
             self.uniform_buffers
                 .iter()
                 .for_each(|b| logical_device.destroy_buffer(*b, None));
