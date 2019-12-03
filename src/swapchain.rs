@@ -170,10 +170,19 @@ pub struct VulkanSwapchain {
     pub uniform_buffers: Vec<vk::Buffer>,
     pub vertex_buffer: vk::Buffer,
     pub vertex_buffer_memory: vk::DeviceMemory,
+    last_width: f64,
+    last_height: f64,
+    pub recreation_required: bool,
 }
 
 impl VulkanSwapchain {
-    pub fn new(context: Arc<VulkanContext>, vertices: &[Vertex], indices: &[u16]) -> Self {
+    pub fn new(
+        context: Arc<VulkanContext>,
+        vertices: &[Vertex],
+        indices: &[u16],
+        width: f64,
+        height: f64,
+    ) -> Self {
         unsafe { context.logical_device().device_wait_idle().unwrap() };
 
         let graphics_queue = unsafe {
@@ -188,7 +197,8 @@ impl VulkanSwapchain {
                 .get_device_queue(context.present_queue_family_index(), 0)
         };
 
-        let (swapchain, swapchain_khr, swapchain_properties, images) = create_swapchain(&context);
+        let (swapchain, swapchain_khr, swapchain_properties, images) =
+            create_swapchain(&context, [width as u32, height as u32]);
         let image_views =
             create_image_views(context.logical_device(), &swapchain_properties, &images);
         let render_pass = create_render_pass(context.logical_device(), &swapchain_properties);
@@ -271,6 +281,9 @@ impl VulkanSwapchain {
             uniform_buffers,
             vertex_buffer,
             vertex_buffer_memory,
+            last_width: width,
+            last_height: height,
+            recreation_required: false,
         };
 
         vulkan_swapchain.command_buffers = vulkan_swapchain.create_command_buffers();
@@ -278,12 +291,20 @@ impl VulkanSwapchain {
     }
 
     pub fn recreate_swapchain(&mut self) {
+        log::debug!("Recreating swapchain.");
+
+        // TODO: check if window was minimized. if so,
+        // block but process_events until maximized
+        // This is because a width or height of 0 is not legal
+
         unsafe { self.context.logical_device().device_wait_idle().unwrap() };
 
         self.cleanup_swapchain();
 
-        let (swapchain, swapchain_khr, swapchain_properties, images) =
-            create_swapchain(&self.context);
+        let (swapchain, swapchain_khr, swapchain_properties, images) = create_swapchain(
+            &self.context,
+            [self.last_width as u32, self.last_height as u32],
+        );
         self.swapchain = swapchain;
         self.swapchain_khr = swapchain_khr;
 
@@ -318,6 +339,68 @@ impl VulkanSwapchain {
             create_descriptor_pool(self.context.logical_device(), number_of_images as _);
 
         self.create_command_buffers();
+    }
+
+    pub fn update_uniform_buffers(
+        &self,
+        current_image: u32,
+        swapchain_properties: SwapchainProperties,
+        start_time: Instant,
+    ) {
+        let elapsed_time = start_time.elapsed();
+        let elapsed_time =
+            elapsed_time.as_secs() as f32 + (elapsed_time.subsec_millis() as f32) / 1000_f32;
+
+        let aspect_ratio =
+            swapchain_properties.extent.width as f32 / swapchain_properties.extent.height as f32;
+        let ubo = UniformBufferObject {
+            model: glm::rotate(
+                &glm::Mat4::identity(),
+                (elapsed_time * 90.0).to_radians(),
+                &glm::vec3(0.0, 1.0, 0.0),
+            ),
+            view: glm::look_at(
+                &glm::vec3(0.0, 0.0, 2.0),
+                &glm::vec3(0.0, 0.0, 0.0),
+                &glm::vec3(0.0, 1.0, 0.0),
+            ), // TODO: Make Z the up axis
+            projection: glm::perspective(aspect_ratio, 90_f32.to_radians(), 0.1_f32, 1000_f32),
+        };
+
+        let ubos = [ubo];
+
+        let buffer_memory = self.uniform_buffer_memory_list[current_image as usize];
+        let buffer_memory_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
+
+        unsafe {
+            let data_pointer = self
+                .context
+                .logical_device()
+                .map_memory(
+                    buffer_memory,
+                    0,
+                    buffer_memory_size,
+                    vk::MemoryMapFlags::empty(),
+                )
+                .unwrap();
+            let mut align = ash::util::Align::new(
+                data_pointer,
+                mem::align_of::<f32>() as _,
+                buffer_memory_size,
+            );
+            align.copy_from_slice(&ubos);
+            self.context.logical_device().unmap_memory(buffer_memory);
+        }
+    }
+
+    pub fn dimensions(&self) -> (f64, f64) {
+        (self.last_width, self.last_height)
+    }
+
+    pub fn resize(&mut self, width: f64, height: f64) {
+        self.last_width = width;
+        self.last_height = height;
+        self.recreation_required = true;
     }
 
     fn cleanup_swapchain(&self) {
@@ -496,58 +579,6 @@ impl VulkanSwapchain {
             0,
         );
     }
-
-    pub fn update_uniform_buffers(
-        &self,
-        current_image: u32,
-        swapchain_properties: SwapchainProperties,
-        start_time: Instant,
-    ) {
-        let elapsed_time = start_time.elapsed();
-        let elapsed_time =
-            elapsed_time.as_secs() as f32 + (elapsed_time.subsec_millis() as f32) / 1000_f32;
-
-        let aspect_ratio =
-            swapchain_properties.extent.width as f32 / swapchain_properties.extent.height as f32;
-        let ubo = UniformBufferObject {
-            model: glm::rotate(
-                &glm::Mat4::identity(),
-                (elapsed_time * 90.0).to_radians(),
-                &glm::vec3(0.0, 1.0, 0.0),
-            ),
-            view: glm::look_at(
-                &glm::vec3(0.0, 0.0, 2.0),
-                &glm::vec3(0.0, 0.0, 0.0),
-                &glm::vec3(0.0, 1.0, 0.0),
-            ), // TODO: Make Z the up axis
-            projection: glm::perspective(aspect_ratio, 90_f32.to_radians(), 0.1_f32, 1000_f32),
-        };
-
-        let ubos = [ubo];
-
-        let buffer_memory = self.uniform_buffer_memory_list[current_image as usize];
-        let buffer_memory_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
-
-        unsafe {
-            let data_pointer = self
-                .context
-                .logical_device()
-                .map_memory(
-                    buffer_memory,
-                    0,
-                    buffer_memory_size,
-                    vk::MemoryMapFlags::empty(),
-                )
-                .unwrap();
-            let mut align = ash::util::Align::new(
-                data_pointer,
-                mem::align_of::<f32>() as _,
-                buffer_memory_size,
-            );
-            align.copy_from_slice(&ubos);
-            self.context.logical_device().unmap_memory(buffer_memory);
-        }
-    }
 }
 
 impl Drop for VulkanSwapchain {
@@ -579,6 +610,7 @@ impl Drop for VulkanSwapchain {
 
 fn create_swapchain(
     context: &VulkanContext,
+    dimensions: [u32; 2],
 ) -> (
     Swapchain,
     vk::SwapchainKHR,
@@ -592,7 +624,7 @@ fn create_swapchain(
     );
     let capabilities = &swapchain_support_details.capabilities;
 
-    let swapchain_properties = swapchain_support_details.suitable_properties([800, 600]);
+    let swapchain_properties = swapchain_support_details.suitable_properties(dimensions);
     let surface_format = swapchain_properties.format;
     let present_mode = swapchain_properties.present_mode;
     let extent = swapchain_properties.extent;

@@ -31,10 +31,17 @@ fn main() {
 
     let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
 
-    let mut app = App::new(800, 600, "Vulkan Tutorial");
+    let (width, height) = (800, 600);
+    let mut app = App::new(width, height, "Vulkan Tutorial");
     let context = Arc::new(VulkanContext::new(app.window()));
 
-    let vulkan_swapchain = VulkanSwapchain::new(context.clone(), &vertices, &indices);
+    let mut vulkan_swapchain = VulkanSwapchain::new(
+        context.clone(),
+        &vertices,
+        &indices,
+        width as f64,
+        height as f64,
+    );
 
     let (image_available_semaphores, render_finished_semaphores, in_flight_fences) =
         create_semaphores_and_fences(context.logical_device());
@@ -44,6 +51,7 @@ fn main() {
 
     let swapchain_khr_arr = [vulkan_swapchain.swapchain_khr];
 
+    let mut resized_dimensions: Option<(f64, f64)> = None;
     app.run(|| {
         let image_available_semaphore = image_available_semaphores[current_frame];
         let image_available_semaphores = [image_available_semaphore];
@@ -66,18 +74,24 @@ fn main() {
         }
 
         // Acquire the next image from the swapchain
-        let image_index = unsafe {
-            vulkan_swapchain
-                .swapchain
-                .acquire_next_image(
-                    vulkan_swapchain.swapchain_khr,
-                    std::u64::MAX,
-                    image_available_semaphore,
-                    vk::Fence::null(),
-                )
-                .unwrap()
-                .0
+        let next_image_result = unsafe {
+            vulkan_swapchain.swapchain.acquire_next_image(
+                vulkan_swapchain.swapchain_khr,
+                std::u64::MAX,
+                image_available_semaphore,
+                vk::Fence::null(),
+            )
         };
+
+        let image_index = match next_image_result {
+            Ok((image_index, _)) => image_index,
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                vulkan_swapchain.recreate_swapchain();
+                return;
+            }
+            Err(error) => panic!("Error while acquiring the next swapchain image: {}", error),
+        };
+
         let image_indices = [image_index];
 
         vulkan_swapchain.update_uniform_buffers(
@@ -115,12 +129,24 @@ fn main() {
             .image_indices(&image_indices)
             .build();
 
-        unsafe {
+        let queue_present_result = unsafe {
             vulkan_swapchain
                 .swapchain
                 .queue_present(vulkan_swapchain.present_queue, &present_info)
-                .unwrap()
         };
+
+        match queue_present_result {
+            Ok(is_suboptimal) if is_suboptimal => {
+                vulkan_swapchain.recreate_swapchain();
+            }
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                vulkan_swapchain.recreate_swapchain();
+            }
+            Err(error) => panic!("Failed to present queue: {}", error),
+            _ => {}
+        }
+
+        // TODO: recreate swapchain if resize occurs
 
         current_frame += (1 + current_frame) % MAX_FRAMES_IN_FLIGHT as usize;
     });
