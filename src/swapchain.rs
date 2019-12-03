@@ -145,29 +145,31 @@ impl SwapchainSupportDetails {
 }
 
 pub struct VulkanSwapchain {
+    context: Arc<VulkanContext>,
+    pub command_buffers: Vec<vk::CommandBuffer>,
+    pub command_pool: vk::CommandPool,
+    pub descriptor_pool: vk::DescriptorPool,
+    pub descriptor_set_layout: vk::DescriptorSetLayout,
+    pub descriptor_sets: Vec<vk::DescriptorSet>,
+    pub framebuffers: Vec<vk::Framebuffer>,
+    pub graphics_queue: vk::Queue,
+    pub image_views: Vec<vk::ImageView>,
+    pub images: Vec<vk::Image>,
+    pub index_buffer: vk::Buffer,
+    pub index_buffer_memory: vk::DeviceMemory,
+    pub number_of_indices: u32,
+    pub pipeline: vk::Pipeline,
+    pub pipeline_layout: vk::PipelineLayout,
+    pub present_queue: vk::Queue,
+    pub render_pass: vk::RenderPass,
     pub swapchain: Swapchain,
     pub swapchain_khr: vk::SwapchainKHR,
     pub swapchain_properties: SwapchainProperties,
-    pub images: Vec<vk::Image>,
-    pub image_views: Vec<vk::ImageView>,
-    pub render_pass: vk::RenderPass,
-    pub descriptor_set_layout: vk::DescriptorSetLayout,
-    pub descriptor_pool: vk::DescriptorPool,
-    pub pipeline: vk::Pipeline,
-    pub pipeline_layout: vk::PipelineLayout,
-    pub framebuffers: Vec<vk::Framebuffer>,
-    pub command_buffers: Vec<vk::CommandBuffer>,
-    pub uniform_buffers: Vec<vk::Buffer>,
+    pub transient_command_pool: vk::CommandPool,
     pub uniform_buffer_memory_list: Vec<vk::DeviceMemory>,
-    pub graphics_queue: vk::Queue,
-    pub present_queue: vk::Queue,
+    pub uniform_buffers: Vec<vk::Buffer>,
     pub vertex_buffer: vk::Buffer,
     pub vertex_buffer_memory: vk::DeviceMemory,
-    pub index_buffer: vk::Buffer,
-    pub index_buffer_memory: vk::DeviceMemory,
-    pub command_pool: vk::CommandPool,
-    pub transient_command_pool: vk::CommandPool,
-    context: Arc<VulkanContext>,
 }
 
 impl VulkanSwapchain {
@@ -186,15 +188,7 @@ impl VulkanSwapchain {
                 .get_device_queue(context.present_queue_family_index(), 0)
         };
 
-        let (swapchain, swapchain_khr, swapchain_properties, images) = create_swapchain(
-            context.instance(),
-            context.physical_device(),
-            context.logical_device(),
-            context.surface(),
-            context.surface_khr(),
-            context.graphics_queue_family_index(),
-            context.present_queue_family_index(),
-        );
+        let (swapchain, swapchain_khr, swapchain_properties, images) = create_swapchain(&context);
         let image_views =
             create_image_views(context.logical_device(), &swapchain_properties, &images);
         let render_pass = create_render_pass(context.logical_device(), &swapchain_properties);
@@ -216,17 +210,9 @@ impl VulkanSwapchain {
         let descriptor_pool =
             create_descriptor_pool(context.logical_device(), number_of_images as _);
 
-        let command_pool = create_command_pool(
-            context.logical_device(),
-            context.graphics_queue_family_index(),
-            vk::CommandPoolCreateFlags::empty(),
-        );
-
-        let transient_command_pool = create_command_pool(
-            context.logical_device(),
-            context.graphics_queue_family_index(),
-            vk::CommandPoolCreateFlags::TRANSIENT,
-        );
+        let command_pool = create_command_pool(&context, vk::CommandPoolCreateFlags::empty());
+        let transient_command_pool =
+            create_command_pool(&context, vk::CommandPoolCreateFlags::TRANSIENT);
 
         let (vertex_buffer, vertex_buffer_memory) = create_device_local_buffer::<u32, _>(
             context.logical_device(),
@@ -260,42 +246,78 @@ impl VulkanSwapchain {
         );
 
         let mut vulkan_swapchain = VulkanSwapchain {
+            command_buffers: Vec::new(),
+            command_pool,
+            context,
+            descriptor_pool,
+            descriptor_set_layout,
+            descriptor_sets,
+            framebuffers,
+            graphics_queue,
+            image_views,
+            images,
+            index_buffer,
+            index_buffer_memory,
+            number_of_indices: indices.len() as _,
+            pipeline,
+            pipeline_layout,
+            present_queue,
+            render_pass,
             swapchain,
             swapchain_khr,
             swapchain_properties,
-            images,
-            image_views,
-            render_pass,
-            descriptor_set_layout,
-            descriptor_pool,
-            pipeline,
-            pipeline_layout,
-            framebuffers,
-            context,
-            command_buffers: Vec::new(),
-            uniform_buffers,
+            transient_command_pool,
             uniform_buffer_memory_list,
-            graphics_queue,
-            present_queue,
+            uniform_buffers,
             vertex_buffer,
             vertex_buffer_memory,
-            index_buffer,
-            index_buffer_memory,
-            command_pool,
-            transient_command_pool,
         };
 
-        vulkan_swapchain.command_buffers = vulkan_swapchain.create_command_buffers(
-            command_pool,
-            &descriptor_sets,
-            indices.len() as _,
-        );
-
+        vulkan_swapchain.command_buffers = vulkan_swapchain.create_command_buffers();
         vulkan_swapchain
     }
 
-    pub fn recreate(&self) {
-        unimplemented!()
+    pub fn recreate_swapchain(&mut self) {
+        unsafe { self.context.logical_device().device_wait_idle().unwrap() };
+
+        self.cleanup_swapchain();
+
+        let (swapchain, swapchain_khr, swapchain_properties, images) =
+            create_swapchain(&self.context);
+        self.swapchain = swapchain;
+        self.swapchain_khr = swapchain_khr;
+
+        self.image_views = create_image_views(
+            self.context.logical_device(),
+            &swapchain_properties,
+            &images,
+        );
+
+        self.render_pass = create_render_pass(self.context.logical_device(), &swapchain_properties);
+
+        self.descriptor_set_layout = create_descriptor_set_layout(self.context.logical_device());
+
+        let (pipeline, pipeline_layout) = create_pipeline(
+            self.context.logical_device(),
+            &swapchain_properties,
+            self.render_pass,
+            self.descriptor_set_layout,
+        );
+        self.pipeline = pipeline;
+        self.pipeline_layout = pipeline_layout;
+
+        self.framebuffers = create_framebuffers(
+            self.context.logical_device(),
+            self.image_views.as_slice(),
+            &swapchain_properties,
+            self.render_pass,
+        );
+
+        let number_of_images = images.len();
+        self.descriptor_pool =
+            create_descriptor_pool(self.context.logical_device(), number_of_images as _);
+
+        self.create_command_buffers();
     }
 
     fn cleanup_swapchain(&self) {
@@ -320,15 +342,10 @@ impl VulkanSwapchain {
         }
     }
 
-    fn create_command_buffers(
-        &self,
-        command_pool: ash::vk::CommandPool,
-        descriptor_sets: &[vk::DescriptorSet],
-        number_of_indices: u32,
-    ) -> Vec<ash::vk::CommandBuffer> {
+    fn create_command_buffers(&self) -> Vec<ash::vk::CommandBuffer> {
         // Build the command buffer allocation info
         let allocate_info = vk::CommandBufferAllocateInfo::builder()
-            .command_pool(command_pool)
+            .command_pool(self.command_pool)
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(self.framebuffers.len() as _)
             .build();
@@ -349,8 +366,8 @@ impl VulkanSwapchain {
                 let framebuffer = self.framebuffers[index];
                 self.record_render_pass(framebuffer, command_buffer, || unsafe {
                     self.play_render_commands(
-                        descriptor_sets,
-                        number_of_indices,
+                        &self.descriptor_sets,
+                        self.number_of_indices,
                         command_buffer,
                         index,
                     );
@@ -561,21 +578,18 @@ impl Drop for VulkanSwapchain {
 }
 
 fn create_swapchain(
-    instance: &ash::Instance,
-    physical_device: ash::vk::PhysicalDevice,
-    logical_device: &ash::Device,
-    surface: &Surface,
-    surface_khr: ash::vk::SurfaceKHR,
-    graphics_queue_family_index: u32,
-    present_queue_family_index: u32,
+    context: &VulkanContext,
 ) -> (
     Swapchain,
     vk::SwapchainKHR,
     SwapchainProperties,
     Vec<vk::Image>,
 ) {
-    let swapchain_support_details =
-        SwapchainSupportDetails::new(physical_device, surface, surface_khr);
+    let swapchain_support_details = SwapchainSupportDetails::new(
+        context.physical_device(),
+        context.surface(),
+        context.surface_khr(),
+    );
     let capabilities = &swapchain_support_details.capabilities;
 
     let swapchain_properties = swapchain_support_details.suitable_properties([800, 600]);
@@ -596,7 +610,7 @@ fn create_swapchain(
     // Build the swapchain creation info
     let swapchain_create_info = {
         let mut builder = vk::SwapchainCreateInfoKHR::builder()
-            .surface(surface_khr)
+            .surface(context.surface_khr())
             .min_image_count(image_count)
             .image_format(surface_format.format)
             .image_color_space(surface_format.color_space)
@@ -604,11 +618,13 @@ fn create_swapchain(
             .image_array_layers(1)
             .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT);
 
-        let mut queue_family_indices =
-            vec![graphics_queue_family_index, present_queue_family_index];
+        let mut queue_family_indices = vec![
+            context.graphics_queue_family_index(),
+            context.present_queue_family_index(),
+        ];
         queue_family_indices.dedup();
 
-        builder = if graphics_queue_family_index != present_queue_family_index {
+        builder = if context.graphics_queue_family_index() != context.present_queue_family_index() {
             builder
                 .image_sharing_mode(vk::SharingMode::CONCURRENT)
                 .queue_family_indices(&queue_family_indices)
@@ -625,7 +641,7 @@ fn create_swapchain(
     };
 
     // Create the swapchain using the swapchain creation info
-    let swapchain = Swapchain::new(instance, logical_device);
+    let swapchain = Swapchain::new(context.instance(), context.logical_device());
     let swapchain_khr = unsafe {
         swapchain
             .create_swapchain(&swapchain_create_info, None)
@@ -957,17 +973,17 @@ fn create_descriptor_pool(logical_device: &ash::Device, size: u32) -> vk::Descri
 }
 
 fn create_command_pool(
-    logical_device: &ash::Device,
-    graphics_queue_family_index: u32,
+    context: &VulkanContext,
     flags: vk::CommandPoolCreateFlags,
 ) -> vk::CommandPool {
     let command_pool_info = vk::CommandPoolCreateInfo::builder()
-        .queue_family_index(graphics_queue_family_index)
+        .queue_family_index(context.graphics_queue_family_index())
         .flags(flags)
         .build();
 
     unsafe {
-        logical_device
+        context
+            .logical_device()
             .create_command_pool(&command_pool_info, None)
             .unwrap()
     }
