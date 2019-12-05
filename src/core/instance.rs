@@ -1,7 +1,9 @@
 use crate::{
-    core::error::{AppNameCreation, EngineNameCreation, EntryLoading, InstanceCreation, Result},
+    core::{
+        error::{AppNameCreation, EngineNameCreation, EntryLoading, InstanceCreation, Result},
+        surface::surface_extension_names,
+    },
     debug::{self, LayerNameVec},
-    surface,
 };
 use ash::{
     extensions::ext::DebugUtils,
@@ -74,7 +76,7 @@ impl Instance {
     }
 
     fn required_instance_extension_names() -> Vec<*const i8> {
-        let mut instance_extension_names = surface::surface_extension_names();
+        let mut instance_extension_names = surface_extension_names();
         if debug::ENABLE_VALIDATION_LAYERS {
             instance_extension_names.push(DebugUtils::name().as_ptr());
         }

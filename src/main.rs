@@ -8,7 +8,6 @@ mod context;
 mod core;
 mod debug;
 mod shader;
-mod surface;
 mod swapchain;
 mod vertex;
 
