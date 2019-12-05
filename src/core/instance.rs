@@ -1,4 +1,5 @@
 use crate::{
+    core::error::{AppNameCreation, EngineNameCreation, EntryLoading, InstanceCreation, Result},
     debug::{self, LayerNameVec},
     surface,
 };
@@ -7,25 +8,8 @@ use ash::{
     version::{EntryV1_0, InstanceV1_0},
     vk, vk_make_version,
 };
-use snafu::{ResultExt, Snafu};
+use snafu::ResultExt;
 use std::ffi::{CStr, CString};
-
-#[derive(Debug, Snafu)]
-pub enum Error {
-    #[snafu(display("Failed to create entry: {}", source))]
-    EntryLoading { source: ash::LoadingError },
-
-    #[snafu(display("Failed to create instance: {}", source))]
-    InstanceCreation { source: ash::InstanceError },
-
-    #[snafu(display("Failed to create a c-string from the application name: {}", source))]
-    AppNameCreation { source: std::ffi::NulError },
-
-    #[snafu(display("Failed to create a c-string from the engine name: {}", source))]
-    EngineNameCreation { source: std::ffi::NulError },
-}
-
-type Result<T, E = Error> = std::result::Result<T, E>;
 
 trait ApplicationDescription {
     const APPLICATION_NAME: &'static str;

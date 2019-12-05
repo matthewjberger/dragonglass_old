@@ -1,63 +1,30 @@
 use ash::{
-    extensions::{
-        ext::DebugUtils,
-        khr::{Surface, Swapchain},
-    },
+    extensions::{ext::DebugUtils, khr::Swapchain},
     version::{DeviceV1_0, InstanceV1_0},
     vk::{self, DebugUtilsMessengerEXT, SurfaceKHR},
 };
 
 use crate::{
-    core::{Instance, PhysicalDevice},
-    debug, surface,
+    core::{Instance, PhysicalDevice, Surface},
+    debug,
 };
 
 pub struct VulkanContext {
     physical_device: PhysicalDevice,
     logical_device: ash::Device,
     surface: Surface,
-    surface_khr: SurfaceKHR,
     debug_messenger: Option<(DebugUtils, DebugUtilsMessengerEXT)>,
-    graphics_queue_family_index: u32,
-    present_queue_family_index: u32,
     instance: Instance,
 }
 
+// TODO: Replace constructor return value with a result
 impl VulkanContext {
     pub fn new(window: &winit::Window) -> Self {
         let instance = Instance::new().unwrap();
-
-        // Create the window surface
-        let surface = Surface::new(instance.entry(), instance.instance());
-        let surface_khr = unsafe {
-            surface::create_surface(instance.entry(), instance.instance(), window)
-                .expect("Failed to create window surface!")
-        };
-
+        let surface = Surface::new(&instance, window);
         let debug_messenger = debug::setup_debug_messenger(instance.entry(), instance.instance());
-
-        let physical_device = PhysicalDevice::new(&instance.instance(), &surface, surface_khr);
-
-        let (graphics_queue_family_index, present_queue_family_index) =
-            PhysicalDevice::find_queue_family_indices(
-                instance.instance(),
-                physical_device.physical_device(),
-                &surface,
-                surface_khr,
-            );
-
-        let (graphics_queue_family_index, present_queue_family_index) = (
-            graphics_queue_family_index.expect("Failed to find a graphics queue family"),
-            present_queue_family_index.expect("Failed to find a present queue family"),
-        );
-
-        // Need to dedup since the graphics family and presentation family
-        // can have the same queue family index and
-        // Vulkan does not allow passing an array containing duplicated family
-        // indices.
-        let mut queue_family_indices =
-            vec![graphics_queue_family_index, present_queue_family_index];
-        queue_family_indices.dedup();
+        let physical_device = PhysicalDevice::new(&instance.instance(), &surface).unwrap();
+        let queue_family_indices = physical_device.queue_family_index_set().indices();
 
         // Build an array of DeviceQueueCreateInfo,
         // one for each different family index
@@ -106,12 +73,13 @@ impl VulkanContext {
             physical_device,
             logical_device,
             surface,
-            surface_khr,
             debug_messenger,
-            graphics_queue_family_index,
-            present_queue_family_index,
         }
     }
+
+    // TODO: Replace accessors with accessors to wrappers
+    // e.g. surface and surface_khr can be replaced with one
+    // method to return the Surface wrapper
 
     pub fn instance(&self) -> &ash::Instance {
         self.instance.instance()
@@ -121,12 +89,12 @@ impl VulkanContext {
         self.physical_device.physical_device()
     }
 
-    pub fn surface(&self) -> &Surface {
-        &self.surface
+    pub fn surface(&self) -> &ash::extensions::khr::Surface {
+        &self.surface.surface()
     }
 
     pub fn surface_khr(&self) -> SurfaceKHR {
-        self.surface_khr
+        self.surface.surface_khr()
     }
 
     pub fn physical_device_memory_properties(&self) -> &ash::vk::PhysicalDeviceMemoryProperties {
@@ -138,18 +106,21 @@ impl VulkanContext {
     }
 
     pub fn graphics_queue_family_index(&self) -> u32 {
-        self.graphics_queue_family_index
+        self.physical_device
+            .queue_family_index_set()
+            .graphics_queue_family_index()
     }
 
     pub fn present_queue_family_index(&self) -> u32 {
-        self.present_queue_family_index
+        self.physical_device
+            .queue_family_index_set()
+            .present_queue_family_index()
     }
 }
 
 impl Drop for VulkanContext {
     fn drop(&mut self) {
         unsafe {
-            self.surface.destroy_surface(self.surface_khr, None);
             self.logical_device.destroy_device(None);
             if let Some((debug_utils, messenger)) = &mut self.debug_messenger {
                 debug_utils.destroy_debug_utils_messenger(*messenger, None);
