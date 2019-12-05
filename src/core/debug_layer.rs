@@ -1,6 +1,6 @@
+use crate::core::Instance;
 use ash::{
     extensions::ext::DebugUtils,
-    version::{EntryV1_0, InstanceV1_0},
     vk::{
         self, Bool32, DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
         DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerEXT,
@@ -11,18 +11,70 @@ use std::{
     os::raw::c_void,
 };
 
-// Enable validation layers only in debug mode
-#[cfg(debug_assertions)]
-pub const ENABLE_VALIDATION_LAYERS: bool = true;
+use snafu::{ResultExt, Snafu};
 
-#[cfg(not(debug_assertions))]
-pub const ENABLE_VALIDATION_LAYERS: bool = false;
+type Result<T, E = Error> = std::result::Result<T, E>;
 
-pub fn debug_layer_names() -> LayerNameVec {
-    LayerNameVec {
-        layer_names: vec![LayerName::new("VK_LAYER_LUNARG_standard_validation")],
+#[derive(Debug, Snafu)]
+#[snafu(visibility = "pub(crate)")]
+pub enum Error {
+    #[snafu(display("Failed to create debug utils messenger: {:?}", source))]
+    DebugUtilsMessengerCreationFailed { source: vk::Result },
+}
+
+// TODO: Possibly rename this to DebugUtils
+pub struct DebugLayer {
+    debug_utils: DebugUtils,
+    debug_utils_messenger: DebugUtilsMessengerEXT,
+}
+
+// TODO: Make the constructor use a Result
+impl DebugLayer {
+    pub fn new(instance: &Instance) -> Result<Option<Self>> {
+        if !DebugLayer::validation_layers_enabled() {
+            return Ok(None);
+        }
+
+        let debug_utils = DebugUtils::new(instance.entry(), instance.instance());
+        let create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+            .flags(vk::DebugUtilsMessengerCreateFlagsEXT::all())
+            .message_severity(vk::DebugUtilsMessageSeverityFlagsEXT::all())
+            .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
+            .pfn_user_callback(Some(vulkan_debug_callback))
+            .build();
+        let debug_utils_messenger = unsafe {
+            debug_utils
+                .create_debug_utils_messenger(&create_info, None)
+                .context(DebugUtilsMessengerCreationFailed)?
+        };
+        Ok(Some(DebugLayer {
+            debug_utils,
+            debug_utils_messenger,
+        }))
+    }
+
+    pub fn validation_layers_enabled() -> bool {
+        // Enable validation layers only in debug mode
+        cfg!(debug_assertions)
+    }
+
+    pub fn debug_layer_names() -> LayerNameVec {
+        LayerNameVec {
+            layer_names: vec![LayerName::new("VK_LAYER_LUNARG_standard_validation")],
+        }
     }
 }
+
+impl Drop for DebugLayer {
+    fn drop(&mut self) {
+        unsafe {
+            self.debug_utils
+                .destroy_debug_utils_messenger(self.debug_utils_messenger, None);
+        }
+    }
+}
+
+// TODO: Move LayerName and LayerNameVec out to separate module
 
 pub struct LayerName {
     name: String,
@@ -106,27 +158,4 @@ unsafe extern "system" fn vulkan_debug_callback(
         log::trace!("{}", message);
     }
     vk::FALSE
-}
-
-pub fn setup_debug_messenger<E: EntryV1_0, I: InstanceV1_0>(
-    entry: &E,
-    instance: &I,
-) -> Option<(DebugUtils, DebugUtilsMessengerEXT)> {
-    if ENABLE_VALIDATION_LAYERS {
-        let debug_utils = DebugUtils::new(entry, instance);
-        let create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
-            .flags(vk::DebugUtilsMessengerCreateFlagsEXT::all())
-            .message_severity(vk::DebugUtilsMessageSeverityFlagsEXT::all())
-            .message_type(vk::DebugUtilsMessageTypeFlagsEXT::all())
-            .pfn_user_callback(Some(vulkan_debug_callback))
-            .build();
-        let messenger = unsafe {
-            debug_utils
-                .create_debug_utils_messenger(&create_info, None)
-                .expect("Failed to create debug utils messenger")
-        };
-        Some((debug_utils, messenger))
-    } else {
-        None
-    }
 }

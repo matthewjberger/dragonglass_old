@@ -1,27 +1,48 @@
-use crate::core::{error::Result, QueueFamilyIndexSet, Surface};
+use crate::core::{DebugLayer, Instance, QueueFamilyIndexSet, Surface};
 use ash::version::InstanceV1_0;
 use std::ffi::CStr;
 
+use snafu::{ResultExt, Snafu};
+
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+// TODO: Use the errors in this module
+#[derive(Debug, Snafu)]
+pub enum Error {
+    #[snafu(display("Failed to create the debug layer: {}", source))]
+    DebugLayerCreation {
+        source: crate::core::debug_layer::Error,
+    },
+}
+
+// The order of the struct fields
+// here matter because it determines drop order
 pub struct PhysicalDevice {
-    physical_device: ash::vk::PhysicalDevice,
-    physical_device_memory_properties: ash::vk::PhysicalDeviceMemoryProperties,
+    _debug_layer: Option<DebugLayer>,
     queue_family_index_set: QueueFamilyIndexSet,
+    physical_device_memory_properties: ash::vk::PhysicalDeviceMemoryProperties,
+    physical_device: ash::vk::PhysicalDevice,
 }
 
 impl PhysicalDevice {
-    pub fn new(instance: &ash::Instance, surface: &Surface) -> Result<Self> {
-        let physical_device = Self::pick_physical_device(instance, surface);
-        let physical_device_memory_properties =
-            unsafe { instance.get_physical_device_memory_properties(physical_device) };
+    pub fn new(instance: &Instance, surface: &Surface) -> Result<Self> {
+        let physical_device = Self::pick_physical_device(instance.instance(), surface);
+        let physical_device_memory_properties = unsafe {
+            instance
+                .instance()
+                .get_physical_device_memory_properties(physical_device)
+        };
+        let debug_layer = DebugLayer::new(instance).context(DebugLayerCreation)?;
 
         // TODO: This is called twice on the physical device that is deemed suitable.
         // reduce it to one call, storing the set on the first pass
         let queue_family_index_set =
-            QueueFamilyIndexSet::new(instance, physical_device, surface).unwrap();
+            QueueFamilyIndexSet::new(instance.instance(), physical_device, surface).unwrap();
 
         Ok(PhysicalDevice {
             physical_device,
             physical_device_memory_properties,
+            _debug_layer: debug_layer,
             queue_family_index_set,
         })
     }

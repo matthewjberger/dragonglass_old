@@ -1,10 +1,4 @@
-use crate::{
-    core::{
-        error::{AppNameCreation, EngineNameCreation, EntryLoading, InstanceCreation, Result},
-        surface::surface_extension_names,
-    },
-    debug::{self, LayerNameVec},
-};
+use crate::core::{surface::surface_extension_names, DebugLayer, LayerNameVec};
 use ash::{
     extensions::ext::DebugUtils,
     version::{EntryV1_0, InstanceV1_0},
@@ -12,6 +6,26 @@ use ash::{
 };
 use snafu::ResultExt;
 use std::ffi::{CStr, CString};
+
+use snafu::Snafu;
+
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, Snafu)]
+#[snafu(visibility = "pub(crate)")]
+pub enum Error {
+    #[snafu(display("Failed to create entry: {}", source))]
+    EntryLoading { source: ash::LoadingError },
+
+    #[snafu(display("Failed to create instance: {}", source))]
+    InstanceCreation { source: ash::InstanceError },
+
+    #[snafu(display("Failed to create a c-string from the application name: {}", source))]
+    AppNameCreation { source: std::ffi::NulError },
+
+    #[snafu(display("Failed to create a c-string from the engine name: {}", source))]
+    EngineNameCreation { source: std::ffi::NulError },
+}
 
 trait ApplicationDescription {
     const APPLICATION_NAME: &'static str;
@@ -77,7 +91,7 @@ impl Instance {
 
     fn required_instance_extension_names() -> Vec<*const i8> {
         let mut instance_extension_names = surface_extension_names();
-        if debug::ENABLE_VALIDATION_LAYERS {
+        if DebugLayer::validation_layers_enabled() {
             instance_extension_names.push(DebugUtils::name().as_ptr());
         }
         instance_extension_names
@@ -85,10 +99,11 @@ impl Instance {
 
     pub fn required_layers() -> LayerNameVec {
         let mut layer_name_vec = LayerNameVec::new();
-        if debug::ENABLE_VALIDATION_LAYERS {
+        if DebugLayer::validation_layers_enabled() {
             layer_name_vec
                 .layer_names
-                .extend(debug::debug_layer_names().layer_names);
+                // TODO: Improve naming here
+                .extend(DebugLayer::debug_layer_names().layer_names);
         }
         layer_name_vec
     }

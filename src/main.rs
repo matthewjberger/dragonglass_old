@@ -6,9 +6,9 @@ mod app;
 mod buffer;
 mod context;
 mod core;
-mod debug;
 mod shader;
 mod swapchain;
+mod sync;
 mod vertex;
 
 use app::App;
@@ -33,7 +33,8 @@ fn main() {
     let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
 
     let mut app = App::new(800, 600, "Vulkan Tutorial");
-    let context = Arc::new(VulkanContext::new(&app.window));
+    let context =
+        Arc::new(VulkanContext::new(&app.window).expect("Failed to create VulkanContext"));
 
     let vulkan_swapchain = VulkanSwapchain::new(context.clone(), &vertices, &indices);
 
