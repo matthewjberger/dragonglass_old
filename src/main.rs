@@ -5,6 +5,7 @@ use winit::{dpi::LogicalSize, Event, VirtualKeyCode, WindowEvent};
 mod app;
 mod buffer;
 mod context;
+mod core;
 mod debug;
 mod shader;
 mod surface;

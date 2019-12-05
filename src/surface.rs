@@ -23,7 +23,7 @@ pub unsafe fn create_surface<E: EntryV1_0, I: InstanceV1_0>(
     window: &winit::Window,
 ) -> Result<vk::SurfaceKHR, vk::Result> {
     use ash::extensions::khr::Win32Surface;
-    use std::{ptr, ffi::c_void};
+    use std::{ffi::c_void, ptr};
     use winapi::{shared::windef::HWND, um::libloaderapi::GetModuleHandleW};
     use winit::os::windows::WindowExt;
 
@@ -40,6 +40,8 @@ pub unsafe fn create_surface<E: EntryV1_0, I: InstanceV1_0>(
     win32_surface_loader.create_win32_surface(&win32_create_info, None)
 }
 
+/// # Safety
+/// TODO: Write up a safety note
 #[cfg(target_os = "linux")]
 pub unsafe fn create_surface<E: EntryV1_0, I: InstanceV1_0>(
     entry: &E,
