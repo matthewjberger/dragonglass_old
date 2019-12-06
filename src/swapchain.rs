@@ -4,6 +4,7 @@ use crate::{
     buffer::{create_buffer, create_device_local_buffer},
     context::VulkanContext,
     core::{Swapchain, SwapchainProperties},
+    render::RenderPass,
 };
 use ash::{version::DeviceV1_0, vk};
 use nalgebra_glm as glm;
@@ -43,7 +44,7 @@ pub struct VulkanSwapchain {
     pub pipeline: vk::Pipeline,
     pub pipeline_layout: vk::PipelineLayout,
     pub present_queue: vk::Queue,
-    pub render_pass: vk::RenderPass,
+    pub render_pass: RenderPass,
     pub swapchain: Swapchain,
     pub transient_command_pool: vk::CommandPool,
     pub uniform_buffer_memory_list: Vec<vk::DeviceMemory>,
@@ -69,20 +70,21 @@ impl VulkanSwapchain {
         };
 
         let swapchain = Swapchain::new(context.clone());
+        let render_pass = RenderPass::new(context.clone(), swapchain.properties());
 
-        let render_pass = create_render_pass(context.logical_device(), swapchain.properties());
         let descriptor_set_layout = create_descriptor_set_layout(context.logical_device());
         let (pipeline, pipeline_layout) = create_pipeline(
             context.logical_device(),
             swapchain.properties(),
-            render_pass,
+            render_pass.render_pass(),
             descriptor_set_layout,
         );
+
         let framebuffers = create_framebuffers(
             context.logical_device(),
             &swapchain.image_views(),
             swapchain.properties(),
-            render_pass,
+            render_pass.render_pass(),
         );
 
         let number_of_images = swapchain.images().len();
@@ -163,8 +165,6 @@ impl VulkanSwapchain {
 
             logical_device.destroy_pipeline(self.pipeline, None);
             logical_device.destroy_pipeline_layout(self.pipeline_layout, None);
-
-            logical_device.destroy_render_pass(self.render_pass, None);
         }
     }
 
@@ -229,7 +229,7 @@ impl VulkanSwapchain {
         }];
 
         let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
-            .render_pass(self.render_pass)
+            .render_pass(self.render_pass.render_pass())
             .framebuffer(framebuffer)
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
@@ -400,57 +400,6 @@ impl Drop for VulkanSwapchain {
             logical_device.destroy_command_pool(self.command_pool, None);
             logical_device.destroy_command_pool(self.transient_command_pool, None);
         }
-    }
-}
-
-fn create_render_pass(
-    logical_device: &ash::Device,
-    swapchain_properties: &SwapchainProperties,
-) -> vk::RenderPass {
-    let attachment_description = vk::AttachmentDescription::builder()
-        .format(swapchain_properties.format.format)
-        .samples(vk::SampleCountFlags::TYPE_1)
-        .load_op(vk::AttachmentLoadOp::CLEAR)
-        .store_op(vk::AttachmentStoreOp::STORE)
-        .initial_layout(vk::ImageLayout::UNDEFINED)
-        .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-        .build();
-    let attachment_descriptions = [attachment_description];
-
-    let attachment_reference = vk::AttachmentReference::builder()
-        .attachment(0)
-        .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-        .build();
-    let attachment_references = [attachment_reference];
-
-    let subpass_description = vk::SubpassDescription::builder()
-        .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-        .color_attachments(&attachment_references)
-        .build();
-    let subpass_descriptions = [subpass_description];
-
-    let subpass_dependency = vk::SubpassDependency::builder()
-        .src_subpass(vk::SUBPASS_EXTERNAL)
-        .dst_subpass(0)
-        .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-        .src_access_mask(vk::AccessFlags::empty())
-        .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-        .dst_access_mask(
-            vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-        )
-        .build();
-    let subpass_dependencies = [subpass_dependency];
-
-    let render_pass_info = vk::RenderPassCreateInfo::builder()
-        .attachments(&attachment_descriptions)
-        .subpasses(&subpass_descriptions)
-        .dependencies(&subpass_dependencies)
-        .build();
-
-    unsafe {
-        logical_device
-            .create_render_pass(&render_pass_info, None)
-            .unwrap()
     }
 }
 

@@ -6,6 +6,7 @@ mod app;
 mod buffer;
 mod context;
 mod core;
+mod render;
 mod shader;
 mod swapchain;
 mod sync;
