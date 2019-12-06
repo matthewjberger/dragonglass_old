@@ -2,8 +2,16 @@ use crate::VulkanContext;
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
-// TODO: Add semaphore snafu errors
-// TODO: Add fence abstraction
+use snafu::{ResultExt, Snafu};
+
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, Snafu)]
+#[snafu(visibility = "pub(crate)")]
+pub enum Error {
+    #[snafu(display("Failed to create fence: {}", source))]
+    SemaphoreCreation { source: vk::Result },
+}
 
 pub struct Semaphore {
     semaphore: vk::Semaphore,
@@ -11,15 +19,15 @@ pub struct Semaphore {
 }
 
 impl Semaphore {
-    pub fn new(context: Arc<VulkanContext>) -> Self {
+    pub fn new(context: Arc<VulkanContext>) -> Result<Self> {
         let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
         let semaphore = unsafe {
             context
                 .logical_device()
                 .create_semaphore(&semaphore_info, None)
-                .unwrap()
+                .context(SemaphoreCreation)?
         };
-        Semaphore { semaphore, context }
+        Ok(Semaphore { semaphore, context })
     }
 
     pub fn semaphore(&self) -> &vk::Semaphore {

@@ -14,7 +14,7 @@ type Result<T, E = Error> = std::result::Result<T, E>;
 #[snafu(visibility = "pub(crate)")]
 pub enum Error {
     #[snafu(display("Failed to create logical device: {}", source))]
-    LogicalDeviceCreationFailed { source: vk::Result },
+    LogicalDeviceCreation { source: vk::Result },
 }
 
 pub struct LogicalDevice {
@@ -46,7 +46,7 @@ impl LogicalDevice {
                     &device_create_info_builder.build(),
                     None,
                 )
-                .context(LogicalDeviceCreationFailed)?
+                .context(LogicalDeviceCreation)?
         };
 
         Ok(LogicalDevice { logical_device })

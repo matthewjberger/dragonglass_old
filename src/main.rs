@@ -11,15 +11,12 @@ mod swapchain;
 mod sync;
 mod vertex;
 
-use crate::sync::{Fence, Semaphore};
 use app::App;
 use context::VulkanContext;
 use std::sync::Arc;
 use swapchain::VulkanSwapchain;
+use sync::{SynchronizationSet, SynchronizationSetConstants};
 use vertex::Vertex;
-
-// The maximum number of frames that can be rendered simultaneously
-pub const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 
 fn main() {
     env_logger::init();
@@ -36,11 +33,9 @@ fn main() {
     let mut app = App::new(800, 600, "Vulkan Tutorial");
     let context =
         Arc::new(VulkanContext::new(&app.window).expect("Failed to create VulkanContext"));
-
     let vulkan_swapchain = VulkanSwapchain::new(context.clone(), &vertices, &indices);
-
-    let (image_available_semaphores, render_finished_semaphores, in_flight_fences) =
-        create_semaphores_and_fences(context.clone());
+    let synchronization_set =
+        SynchronizationSet::new(context.clone()).expect("Failed to create sync objects");
 
     let mut current_frame = 0;
     let start_time = Instant::now();
@@ -84,13 +79,15 @@ fn main() {
             break;
         }
 
-        let image_available_semaphore = *image_available_semaphores[current_frame].semaphore();
+        let image_available_semaphore =
+            *synchronization_set.image_available_semaphores()[current_frame].semaphore();
         let image_available_semaphores = [image_available_semaphore];
 
-        let render_finished_semaphore = *render_finished_semaphores[current_frame].semaphore();
+        let render_finished_semaphore =
+            *synchronization_set.render_finished_semaphores()[current_frame].semaphore();
         let render_finished_semaphores = [render_finished_semaphore];
 
-        let in_flight_fence = *in_flight_fences[current_frame].fence();
+        let in_flight_fence = *synchronization_set.in_flight_fences()[current_frame].fence();
         let in_flight_fences = [in_flight_fence];
 
         unsafe {
@@ -161,32 +158,8 @@ fn main() {
                 .unwrap()
         };
 
-        current_frame += (1 + current_frame) % MAX_FRAMES_IN_FLIGHT as usize;
+        current_frame += (1 + current_frame) % SynchronizationSet::MAX_FRAMES_IN_FLIGHT as usize;
     }
 
     unsafe { context.logical_device().device_wait_idle().unwrap() };
-}
-
-fn create_semaphores_and_fences(
-    context: Arc<VulkanContext>,
-) -> (Vec<Semaphore>, Vec<Semaphore>, Vec<Fence>) {
-    let mut image_available_semaphores = Vec::new();
-    let mut render_finished_semaphores = Vec::new();
-    let mut in_flight_fences = Vec::new();
-    for _ in 0..MAX_FRAMES_IN_FLIGHT {
-        let image_available_semaphore = Semaphore::new(context.clone());
-        image_available_semaphores.push(image_available_semaphore);
-
-        let render_finished_semaphore = Semaphore::new(context.clone());
-        render_finished_semaphores.push(render_finished_semaphore);
-
-        let in_flight_fence = Fence::new(context.clone(), vk::FenceCreateFlags::SIGNALED);
-        in_flight_fences.push(in_flight_fence);
-    }
-
-    (
-        image_available_semaphores,
-        render_finished_semaphores,
-        in_flight_fences,
-    )
 }

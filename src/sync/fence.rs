@@ -2,7 +2,16 @@ use crate::VulkanContext;
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
-// TODO: Add semaphore snafu errors
+use snafu::{ResultExt, Snafu};
+
+type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, Snafu)]
+#[snafu(visibility = "pub(crate)")]
+pub enum Error {
+    #[snafu(display("Failed to create fence: {}", source))]
+    FenceCreation { source: vk::Result },
+}
 
 pub struct Fence {
     fence: vk::Fence,
@@ -10,16 +19,16 @@ pub struct Fence {
 }
 
 impl Fence {
-    pub fn new(context: Arc<VulkanContext>, flags: vk::FenceCreateFlags) -> Self {
+    pub fn new(context: Arc<VulkanContext>, flags: vk::FenceCreateFlags) -> Result<Self> {
         let fence_info = vk::FenceCreateInfo::builder().flags(flags).build();
         let fence = unsafe {
             context
                 .logical_device()
                 .create_fence(&fence_info, None)
-                .unwrap()
+                .context(FenceCreation)?
         };
 
-        Fence { fence, context }
+        Ok(Fence { fence, context })
     }
 
     pub fn fence(&self) -> &vk::Fence {
