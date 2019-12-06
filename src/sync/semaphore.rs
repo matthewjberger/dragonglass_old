@@ -1,4 +1,4 @@
-use crate::core::LogicalDevice;
+use crate::VulkanContext;
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -7,22 +7,19 @@ use std::sync::Arc;
 
 pub struct Semaphore {
     semaphore: vk::Semaphore,
-    logical_device: Arc<LogicalDevice>,
+    context: Arc<VulkanContext>,
 }
 
 impl Semaphore {
-    pub fn new(logical_device: Arc<LogicalDevice>) -> Self {
+    pub fn new(context: Arc<VulkanContext>) -> Self {
         let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
         let semaphore = unsafe {
-            logical_device
+            context
                 .logical_device()
                 .create_semaphore(&semaphore_info, None)
                 .unwrap()
         };
-        Semaphore {
-            semaphore,
-            logical_device,
-        }
+        Semaphore { semaphore, context }
     }
 
     pub fn semaphore(&self) -> &vk::Semaphore {
@@ -33,7 +30,7 @@ impl Semaphore {
 impl Drop for Semaphore {
     fn drop(&mut self) {
         unsafe {
-            self.logical_device
+            self.context
                 .logical_device()
                 .destroy_semaphore(self.semaphore, None)
         }

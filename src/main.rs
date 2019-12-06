@@ -11,6 +11,7 @@ mod swapchain;
 mod sync;
 mod vertex;
 
+use crate::sync::{Fence, Semaphore};
 use app::App;
 use context::VulkanContext;
 use std::sync::Arc;
@@ -39,7 +40,7 @@ fn main() {
     let vulkan_swapchain = VulkanSwapchain::new(context.clone(), &vertices, &indices);
 
     let (image_available_semaphores, render_finished_semaphores, in_flight_fences) =
-        create_semaphores_and_fences(context.logical_device());
+        create_semaphores_and_fences(context.clone());
 
     let mut current_frame = 0;
     let start_time = Instant::now();
@@ -83,13 +84,13 @@ fn main() {
             break;
         }
 
-        let image_available_semaphore = image_available_semaphores[current_frame];
+        let image_available_semaphore = *image_available_semaphores[current_frame].semaphore();
         let image_available_semaphores = [image_available_semaphore];
 
-        let render_finished_semaphore = render_finished_semaphores[current_frame];
+        let render_finished_semaphore = *render_finished_semaphores[current_frame].semaphore();
         let render_finished_semaphores = [render_finished_semaphore];
 
-        let in_flight_fence = in_flight_fences[current_frame];
+        let in_flight_fence = *in_flight_fences[current_frame].fence();
         let in_flight_fences = [in_flight_fence];
 
         unsafe {
@@ -164,55 +165,22 @@ fn main() {
     }
 
     unsafe { context.logical_device().device_wait_idle().unwrap() };
-
-    // Free objects
-    log::debug!("Dropping application");
-    unsafe {
-        in_flight_fences
-            .iter()
-            .for_each(|fence| context.logical_device().destroy_fence(*fence, None));
-        render_finished_semaphores
-            .iter()
-            .for_each(|semaphore| context.logical_device().destroy_semaphore(*semaphore, None));
-        image_available_semaphores
-            .iter()
-            .for_each(|semaphore| context.logical_device().destroy_semaphore(*semaphore, None));
-    }
 }
 
 fn create_semaphores_and_fences(
-    logical_device: &ash::Device,
-) -> (Vec<vk::Semaphore>, Vec<vk::Semaphore>, Vec<vk::Fence>) {
+    context: Arc<VulkanContext>,
+) -> (Vec<Semaphore>, Vec<Semaphore>, Vec<Fence>) {
     let mut image_available_semaphores = Vec::new();
     let mut render_finished_semaphores = Vec::new();
     let mut in_flight_fences = Vec::new();
     for _ in 0..MAX_FRAMES_IN_FLIGHT {
-        let image_available_semaphore = {
-            let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
-            unsafe {
-                logical_device
-                    .create_semaphore(&semaphore_info, None)
-                    .unwrap()
-            }
-        };
+        let image_available_semaphore = Semaphore::new(context.clone());
         image_available_semaphores.push(image_available_semaphore);
 
-        let render_finished_semaphore = {
-            let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
-            unsafe {
-                logical_device
-                    .create_semaphore(&semaphore_info, None)
-                    .unwrap()
-            }
-        };
+        let render_finished_semaphore = Semaphore::new(context.clone());
         render_finished_semaphores.push(render_finished_semaphore);
 
-        let in_flight_fence = {
-            let fence_info = vk::FenceCreateInfo::builder()
-                .flags(vk::FenceCreateFlags::SIGNALED)
-                .build();
-            unsafe { logical_device.create_fence(&fence_info, None).unwrap() }
-        };
+        let in_flight_fence = Fence::new(context.clone(), vk::FenceCreateFlags::SIGNALED);
         in_flight_fences.push(in_flight_fence);
     }
 
