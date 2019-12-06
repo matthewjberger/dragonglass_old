@@ -1,12 +1,11 @@
-use crate::buffer::{create_buffer, create_device_local_buffer};
-use crate::context::VulkanContext;
 use crate::shader;
 use crate::vertex::Vertex;
-use ash::{
-    extensions::khr::{Surface, Swapchain},
-    version::DeviceV1_0,
-    vk,
+use crate::{
+    buffer::{create_buffer, create_device_local_buffer},
+    context::VulkanContext,
+    core::{Swapchain, SwapchainProperties},
 };
+use ash::{version::DeviceV1_0, vk};
 use nalgebra_glm as glm;
 use std::{ffi::CString, mem, sync::Arc, time::Instant};
 
@@ -29,121 +28,6 @@ impl UniformBufferObject {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct SwapchainProperties {
-    pub format: vk::SurfaceFormatKHR,
-    pub present_mode: vk::PresentModeKHR,
-    pub extent: vk::Extent2D,
-}
-
-pub struct SwapchainSupportDetails {
-    pub capabilities: vk::SurfaceCapabilitiesKHR,
-    pub formats: Vec<vk::SurfaceFormatKHR>,
-    pub present_modes: Vec<vk::PresentModeKHR>,
-}
-
-impl SwapchainSupportDetails {
-    pub fn new(
-        physical_device: vk::PhysicalDevice,
-        surface: &Surface,
-        surface_khr: vk::SurfaceKHR,
-    ) -> Self {
-        // Get the surface capabilities
-        let capabilities = unsafe {
-            surface
-                .get_physical_device_surface_capabilities(physical_device, surface_khr)
-                .expect("Failed to get physical device surface capabilities")
-        };
-
-        // Get the supported surface formats
-        let formats = unsafe {
-            surface
-                .get_physical_device_surface_formats(physical_device, surface_khr)
-                .expect("Failed to get physical device surface formats")
-        };
-
-        // Get the supported present modes
-        let present_modes = unsafe {
-            surface
-                .get_physical_device_surface_present_modes(physical_device, surface_khr)
-                .expect("Failed to get physical device surface present modes")
-        };
-
-        Self {
-            capabilities,
-            formats,
-            present_modes,
-        }
-    }
-
-    pub fn suitable_properties(&self, preferred_dimensions: [u32; 2]) -> SwapchainProperties {
-        let format = Self::choose_surface_format(&self.formats);
-        let present_mode = Self::choose_surface_present_mode(&self.present_modes);
-        let extent = Self::choose_swapchain_extent(self.capabilities, preferred_dimensions);
-        SwapchainProperties {
-            format,
-            present_mode,
-            extent,
-        }
-    }
-
-    fn choose_surface_format(available_formats: &[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR {
-        // Specify a default format and color space
-        let (default_format, default_color_space) = (
-            vk::Format::B8G8R8A8_UNORM,
-            vk::ColorSpaceKHR::SRGB_NONLINEAR,
-        );
-
-        // Choose the default format if available or choose the first available format
-        if available_formats.len() == 1 && available_formats[0].format == vk::Format::UNDEFINED {
-            // If only one format is available
-            // but it is undefined, assign a default
-            vk::SurfaceFormatKHR {
-                format: default_format,
-                color_space: default_color_space,
-            }
-        } else {
-            *available_formats
-                .iter()
-                .find(|format| {
-                    format.format == default_format && format.color_space == default_color_space
-                })
-                .unwrap_or_else(|| {
-                    available_formats
-                        .first()
-                        .expect("Failed to get first surface format")
-                })
-        }
-    }
-
-    fn choose_surface_present_mode(
-        available_present_modes: &[vk::PresentModeKHR],
-    ) -> vk::PresentModeKHR {
-        if available_present_modes.contains(&vk::PresentModeKHR::MAILBOX) {
-            vk::PresentModeKHR::MAILBOX
-        } else if available_present_modes.contains(&vk::PresentModeKHR::FIFO) {
-            vk::PresentModeKHR::FIFO
-        } else {
-            vk::PresentModeKHR::IMMEDIATE
-        }
-    }
-
-    fn choose_swapchain_extent(
-        capabilities: vk::SurfaceCapabilitiesKHR,
-        preferred_dimensions: [u32; 2],
-    ) -> vk::Extent2D {
-        if capabilities.current_extent.width != std::u32::MAX {
-            capabilities.current_extent
-        } else {
-            let min = capabilities.min_image_extent;
-            let max = capabilities.max_image_extent;
-            let width = preferred_dimensions[0].min(max.width).max(min.width);
-            let height = preferred_dimensions[1].min(max.height).max(min.height);
-            vk::Extent2D { width, height }
-        }
-    }
-}
-
 pub struct VulkanSwapchain {
     context: Arc<VulkanContext>,
     pub command_buffers: Vec<vk::CommandBuffer>,
@@ -153,8 +37,6 @@ pub struct VulkanSwapchain {
     pub descriptor_sets: Vec<vk::DescriptorSet>,
     pub framebuffers: Vec<vk::Framebuffer>,
     pub graphics_queue: vk::Queue,
-    pub image_views: Vec<vk::ImageView>,
-    pub images: Vec<vk::Image>,
     pub index_buffer: vk::Buffer,
     pub index_buffer_memory: vk::DeviceMemory,
     pub number_of_indices: u32,
@@ -163,8 +45,6 @@ pub struct VulkanSwapchain {
     pub present_queue: vk::Queue,
     pub render_pass: vk::RenderPass,
     pub swapchain: Swapchain,
-    pub swapchain_khr: vk::SwapchainKHR,
-    pub swapchain_properties: SwapchainProperties,
     pub transient_command_pool: vk::CommandPool,
     pub uniform_buffer_memory_list: Vec<vk::DeviceMemory>,
     pub uniform_buffers: Vec<vk::Buffer>,
@@ -188,25 +68,24 @@ impl VulkanSwapchain {
                 .get_device_queue(context.present_queue_family_index(), 0)
         };
 
-        let (swapchain, swapchain_khr, swapchain_properties, images) = create_swapchain(&context);
-        let image_views =
-            create_image_views(context.logical_device(), &swapchain_properties, &images);
-        let render_pass = create_render_pass(context.logical_device(), &swapchain_properties);
+        let swapchain = Swapchain::new(context.clone());
+
+        let render_pass = create_render_pass(context.logical_device(), swapchain.properties());
         let descriptor_set_layout = create_descriptor_set_layout(context.logical_device());
         let (pipeline, pipeline_layout) = create_pipeline(
             context.logical_device(),
-            &swapchain_properties,
+            swapchain.properties(),
             render_pass,
             descriptor_set_layout,
         );
         let framebuffers = create_framebuffers(
             context.logical_device(),
-            image_views.as_slice(),
-            &swapchain_properties,
+            &swapchain.image_views(),
+            swapchain.properties(),
             render_pass,
         );
 
-        let number_of_images = images.len();
+        let number_of_images = swapchain.images().len();
         let descriptor_pool =
             create_descriptor_pool(context.logical_device(), number_of_images as _);
 
@@ -235,7 +114,7 @@ impl VulkanSwapchain {
         let (uniform_buffers, uniform_buffer_memory_list) = create_uniform_buffers(
             context.logical_device(),
             context.physical_device_memory_properties(),
-            images.len(),
+            swapchain.images().len(),
         );
 
         let descriptor_sets = create_descriptor_sets(
@@ -254,8 +133,6 @@ impl VulkanSwapchain {
             descriptor_sets,
             framebuffers,
             graphics_queue,
-            image_views,
-            images,
             index_buffer,
             index_buffer_memory,
             number_of_indices: indices.len() as _,
@@ -264,8 +141,6 @@ impl VulkanSwapchain {
             present_queue,
             render_pass,
             swapchain,
-            swapchain_khr,
-            swapchain_properties,
             transient_command_pool,
             uniform_buffer_memory_list,
             uniform_buffers,
@@ -275,49 +150,6 @@ impl VulkanSwapchain {
 
         vulkan_swapchain.command_buffers = vulkan_swapchain.create_command_buffers();
         vulkan_swapchain
-    }
-
-    pub fn recreate_swapchain(&mut self) {
-        unsafe { self.context.logical_device().device_wait_idle().unwrap() };
-
-        self.cleanup_swapchain();
-
-        let (swapchain, swapchain_khr, swapchain_properties, images) =
-            create_swapchain(&self.context);
-        self.swapchain = swapchain;
-        self.swapchain_khr = swapchain_khr;
-
-        self.image_views = create_image_views(
-            self.context.logical_device(),
-            &swapchain_properties,
-            &images,
-        );
-
-        self.render_pass = create_render_pass(self.context.logical_device(), &swapchain_properties);
-
-        self.descriptor_set_layout = create_descriptor_set_layout(self.context.logical_device());
-
-        let (pipeline, pipeline_layout) = create_pipeline(
-            self.context.logical_device(),
-            &swapchain_properties,
-            self.render_pass,
-            self.descriptor_set_layout,
-        );
-        self.pipeline = pipeline;
-        self.pipeline_layout = pipeline_layout;
-
-        self.framebuffers = create_framebuffers(
-            self.context.logical_device(),
-            self.image_views.as_slice(),
-            &swapchain_properties,
-            self.render_pass,
-        );
-
-        let number_of_images = images.len();
-        self.descriptor_pool =
-            create_descriptor_pool(self.context.logical_device(), number_of_images as _);
-
-        self.create_command_buffers();
     }
 
     fn cleanup_swapchain(&self) {
@@ -333,12 +165,6 @@ impl VulkanSwapchain {
             logical_device.destroy_pipeline_layout(self.pipeline_layout, None);
 
             logical_device.destroy_render_pass(self.render_pass, None);
-
-            self.image_views
-                .iter()
-                .for_each(|v| logical_device.destroy_image_view(*v, None));
-
-            self.swapchain.destroy_swapchain(self.swapchain_khr, None);
         }
     }
 
@@ -407,7 +233,7 @@ impl VulkanSwapchain {
             .framebuffer(framebuffer)
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
-                extent: self.swapchain_properties.extent,
+                extent: self.swapchain.properties().extent,
             })
             .clear_values(&clear_values)
             .build();
@@ -500,7 +326,7 @@ impl VulkanSwapchain {
     pub fn update_uniform_buffers(
         &self,
         current_image: u32,
-        swapchain_properties: SwapchainProperties,
+        swapchain_properties: &SwapchainProperties,
         start_time: Instant,
     ) {
         let elapsed_time = start_time.elapsed();
@@ -575,128 +401,6 @@ impl Drop for VulkanSwapchain {
             logical_device.destroy_command_pool(self.transient_command_pool, None);
         }
     }
-}
-
-fn create_swapchain(
-    context: &VulkanContext,
-) -> (
-    Swapchain,
-    vk::SwapchainKHR,
-    SwapchainProperties,
-    Vec<vk::Image>,
-) {
-    let swapchain_support_details = SwapchainSupportDetails::new(
-        context.physical_device(),
-        context.surface(),
-        context.surface_khr(),
-    );
-    let capabilities = &swapchain_support_details.capabilities;
-
-    let swapchain_properties = swapchain_support_details.suitable_properties([800, 600]);
-    let surface_format = swapchain_properties.format;
-    let present_mode = swapchain_properties.present_mode;
-    let extent = swapchain_properties.extent;
-
-    // Choose the number of images to use in the swapchain
-    let image_count = {
-        let max = capabilities.max_image_count;
-        let mut preferred = capabilities.min_image_count + 1;
-        if max > 0 && preferred > max {
-            preferred = max;
-        }
-        preferred
-    };
-
-    // Build the swapchain creation info
-    let swapchain_create_info = {
-        let mut builder = vk::SwapchainCreateInfoKHR::builder()
-            .surface(context.surface_khr())
-            .min_image_count(image_count)
-            .image_format(surface_format.format)
-            .image_color_space(surface_format.color_space)
-            .image_extent(extent)
-            .image_array_layers(1)
-            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT);
-
-        let mut queue_family_indices = vec![
-            context.graphics_queue_family_index(),
-            context.present_queue_family_index(),
-        ];
-        queue_family_indices.dedup();
-
-        builder = if context.graphics_queue_family_index() != context.present_queue_family_index() {
-            builder
-                .image_sharing_mode(vk::SharingMode::CONCURRENT)
-                .queue_family_indices(&queue_family_indices)
-        } else {
-            builder.image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-        };
-
-        builder
-            .pre_transform(capabilities.current_transform)
-            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(present_mode)
-            .clipped(true)
-            .build()
-    };
-
-    // Create the swapchain using the swapchain creation info
-    let swapchain = Swapchain::new(context.instance(), context.logical_device());
-    let swapchain_khr = unsafe {
-        swapchain
-            .create_swapchain(&swapchain_create_info, None)
-            .unwrap()
-    };
-
-    log::debug!(
-        "Creating swapchain.\n\tFormat: {:?}\n\tColorSpace: {:?}\n\tPresentMode: {:?}\n\tExtent: {:?}\n\tImageCount: {}",
-        surface_format.format,
-        surface_format.color_space,
-        present_mode,
-        extent,
-        image_count
-    );
-
-    // Get the swapchain images
-    let images = unsafe { swapchain.get_swapchain_images(swapchain_khr).unwrap() };
-
-    (swapchain, swapchain_khr, swapchain_properties, images)
-}
-
-fn create_image_views(
-    logical_device: &ash::Device,
-    swapchain_properties: &SwapchainProperties,
-    images: &[vk::Image],
-) -> Vec<vk::ImageView> {
-    images
-        .iter()
-        .map(|image| {
-            let create_info = vk::ImageViewCreateInfo::builder()
-                .image(*image)
-                .view_type(vk::ImageViewType::TYPE_2D)
-                .format(swapchain_properties.format.format)
-                .components(vk::ComponentMapping {
-                    r: vk::ComponentSwizzle::IDENTITY,
-                    g: vk::ComponentSwizzle::IDENTITY,
-                    b: vk::ComponentSwizzle::IDENTITY,
-                    a: vk::ComponentSwizzle::IDENTITY,
-                })
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .build();
-
-            unsafe {
-                logical_device
-                    .create_image_view(&create_info, None)
-                    .unwrap()
-            }
-        })
-        .collect::<Vec<_>>()
 }
 
 fn create_render_pass(

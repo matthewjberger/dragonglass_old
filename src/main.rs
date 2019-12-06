@@ -40,7 +40,7 @@ fn main() {
     let mut current_frame = 0;
     let start_time = Instant::now();
 
-    let swapchain_khr_arr = [vulkan_swapchain.swapchain_khr];
+    let swapchain_khr_arr = [vulkan_swapchain.swapchain.swapchain_khr()];
 
     log::debug!("Running application.");
     let mut should_stop = false;
@@ -105,8 +105,9 @@ fn main() {
         let image_index = unsafe {
             vulkan_swapchain
                 .swapchain
+                .swapchain()
                 .acquire_next_image(
-                    vulkan_swapchain.swapchain_khr,
+                    vulkan_swapchain.swapchain.swapchain_khr(),
                     std::u64::MAX,
                     image_available_semaphore,
                     vk::Fence::null(),
@@ -118,7 +119,7 @@ fn main() {
 
         vulkan_swapchain.update_uniform_buffers(
             image_index,
-            vulkan_swapchain.swapchain_properties,
+            vulkan_swapchain.swapchain.properties(),
             start_time,
         );
 
@@ -154,6 +155,7 @@ fn main() {
         unsafe {
             vulkan_swapchain
                 .swapchain
+                .swapchain()
                 .queue_present(vulkan_swapchain.present_queue, &present_info)
                 .unwrap()
         };
