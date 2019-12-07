@@ -1,9 +1,8 @@
 use crate::{
-    command_pool::CommandPool,
     context::VulkanContext,
     core::{Swapchain, SwapchainProperties},
     render::{Framebuffer, GraphicsPipeline, RenderPass},
-    resource::{Buffer, DescriptorPool, DescriptorSetLayout},
+    resource::{Buffer, CommandPool, DescriptorPool, DescriptorSetLayout},
     vertex::Vertex,
 };
 use ash::{version::DeviceV1_0, vk};
