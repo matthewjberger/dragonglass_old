@@ -1,9 +1,8 @@
 use crate::{
-    buffer::{create_buffer, create_device_local_buffer},
     context::VulkanContext,
     core::{Swapchain, SwapchainProperties},
     render::{Framebuffer, GraphicsPipeline, RenderPass},
-    resource::{DescriptorPool, DescriptorSetLayout},
+    resource::{Buffer, DescriptorPool, DescriptorSetLayout},
     vertex::Vertex,
 };
 use ash::{version::DeviceV1_0, vk};
@@ -38,18 +37,15 @@ pub struct VulkanSwapchain {
     pub descriptor_sets: Vec<vk::DescriptorSet>,
     pub framebuffers: Vec<Framebuffer>,
     pub graphics_queue: vk::Queue,
-    pub index_buffer: vk::Buffer,
-    pub index_buffer_memory: vk::DeviceMemory,
+    pub index_buffer: Buffer,
     pub number_of_indices: u32,
     pub pipeline: GraphicsPipeline,
     pub present_queue: vk::Queue,
     pub render_pass: RenderPass,
     pub swapchain: Swapchain,
     pub transient_command_pool: vk::CommandPool,
-    pub uniform_buffer_memory_list: Vec<vk::DeviceMemory>,
-    pub uniform_buffers: Vec<vk::Buffer>,
-    pub vertex_buffer: vk::Buffer,
-    pub vertex_buffer_memory: vk::DeviceMemory,
+    pub uniform_buffers: Vec<Buffer>,
+    pub vertex_buffer: Buffer,
 }
 
 impl VulkanSwapchain {
@@ -103,29 +99,33 @@ impl VulkanSwapchain {
         let transient_command_pool =
             create_command_pool(&context, vk::CommandPoolCreateFlags::TRANSIENT);
 
-        let (vertex_buffer, vertex_buffer_memory) = create_device_local_buffer::<u32, _>(
-            context.logical_device(),
-            context.physical_device_memory_properties(),
+        let vertex_buffer = crate::buffer::create_device_local_buffer::<u32, _>(
+            context.clone(),
             transient_command_pool,
             graphics_queue,
             vk::BufferUsageFlags::VERTEX_BUFFER,
             &vertices,
         );
 
-        let (index_buffer, index_buffer_memory) = create_device_local_buffer::<u16, _>(
-            context.logical_device(),
-            context.physical_device_memory_properties(),
+        let index_buffer = crate::buffer::create_device_local_buffer::<u16, _>(
+            context.clone(),
             transient_command_pool,
             graphics_queue,
             vk::BufferUsageFlags::INDEX_BUFFER,
             &indices,
         );
 
-        let (uniform_buffers, uniform_buffer_memory_list) = create_uniform_buffers(
-            context.logical_device(),
-            context.physical_device_memory_properties(),
-            swapchain.images().len(),
-        );
+        let size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
+        let uniform_buffers = (0..swapchain.images().len())
+            .map(|_| {
+                Buffer::new(
+                    context.clone(),
+                    size,
+                    vk::BufferUsageFlags::UNIFORM_BUFFER,
+                    vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+                )
+            })
+            .collect::<Vec<_>>();
 
         let descriptor_sets = create_descriptor_sets(
             context.logical_device(),
@@ -144,17 +144,14 @@ impl VulkanSwapchain {
             framebuffers,
             graphics_queue,
             index_buffer,
-            index_buffer_memory,
             number_of_indices: indices.len() as _,
             pipeline,
             present_queue,
             render_pass,
             swapchain,
             transient_command_pool,
-            uniform_buffer_memory_list,
             uniform_buffers,
             vertex_buffer,
-            vertex_buffer_memory,
         };
 
         vulkan_swapchain.command_buffers = vulkan_swapchain.create_command_buffers();
@@ -285,7 +282,7 @@ impl VulkanSwapchain {
 
         // Bind vertex buffer
         let offsets = [0];
-        let vertex_buffers = [self.vertex_buffer];
+        let vertex_buffers = [self.vertex_buffer.buffer()];
         self.context.logical_device().cmd_bind_vertex_buffers(
             command_buffer,
             0,
@@ -296,7 +293,7 @@ impl VulkanSwapchain {
         // Bind index buffer
         self.context.logical_device().cmd_bind_index_buffer(
             command_buffer,
-            self.index_buffer,
+            self.index_buffer.buffer(),
             0,
             vk::IndexType::UINT16,
         );
@@ -351,7 +348,7 @@ impl VulkanSwapchain {
 
         let ubos = [ubo];
 
-        let buffer_memory = self.uniform_buffer_memory_list[current_image as usize];
+        let buffer_memory = self.uniform_buffers[current_image as usize].memory();
         let buffer_memory_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
 
         unsafe {
@@ -381,19 +378,6 @@ impl Drop for VulkanSwapchain {
         self.cleanup_swapchain();
         let logical_device = self.context.logical_device();
         unsafe {
-            self.uniform_buffer_memory_list
-                .iter()
-                .for_each(|m| logical_device.free_memory(*m, None));
-            self.uniform_buffers
-                .iter()
-                .for_each(|b| logical_device.destroy_buffer(*b, None));
-
-            logical_device.destroy_buffer(self.vertex_buffer, None);
-            logical_device.free_memory(self.vertex_buffer_memory, None);
-
-            logical_device.destroy_buffer(self.index_buffer, None);
-            logical_device.free_memory(self.index_buffer_memory, None);
-
             logical_device.destroy_command_pool(self.command_pool, None);
             logical_device.destroy_command_pool(self.transient_command_pool, None);
         }
@@ -421,7 +405,7 @@ fn create_descriptor_sets(
     logical_device: &ash::Device,
     pool: vk::DescriptorPool,
     layout: vk::DescriptorSetLayout,
-    uniform_buffers: &[vk::Buffer],
+    uniform_buffers: &[Buffer],
 ) -> Vec<vk::DescriptorSet> {
     let layouts = (0..uniform_buffers.len())
         .map(|_| layout)
@@ -441,7 +425,7 @@ fn create_descriptor_sets(
         .zip(uniform_buffers.iter())
         .for_each(|(set, buffer)| {
             let buffer_info = vk::DescriptorBufferInfo::builder()
-                .buffer(*buffer)
+                .buffer(buffer.buffer())
                 .offset(0)
                 .range(mem::size_of::<UniformBufferObject>() as vk::DeviceSize)
                 .build();
@@ -461,28 +445,4 @@ fn create_descriptor_sets(
         });
 
     descriptor_sets
-}
-
-fn create_uniform_buffers(
-    logical_device: &ash::Device,
-    physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
-    count: usize,
-) -> (Vec<vk::Buffer>, Vec<vk::DeviceMemory>) {
-    let size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
-    let mut buffers = Vec::new();
-    let mut memory_list = Vec::new();
-
-    for _ in 0..count {
-        let (buffer, memory, _) = create_buffer(
-            logical_device,
-            size,
-            vk::BufferUsageFlags::UNIFORM_BUFFER,
-            physical_device_memory_properties,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        );
-        buffers.push(buffer);
-        memory_list.push(memory);
-    }
-
-    (buffers, memory_list)
 }
