@@ -1,5 +1,5 @@
-use crate::VulkanContext;
-use ash::{extensions::khr::Swapchain as AshSwapchain, version::DeviceV1_0, vk};
+use crate::{core::ImageView, VulkanContext};
+use ash::{extensions::khr::Swapchain as AshSwapchain, vk};
 use std::sync::Arc;
 
 // TODO: Break out swapchain properties to seperate file
@@ -144,7 +144,7 @@ pub struct Swapchain {
     swapchain_khr: vk::SwapchainKHR,
     swapchain_properties: SwapchainProperties,
     images: Vec<vk::Image>,
-    image_views: Vec<vk::ImageView>,
+    image_views: Vec<ImageView>,
     context: Arc<VulkanContext>,
 }
 
@@ -217,9 +217,10 @@ impl Swapchain {
         );
 
         let images = unsafe { swapchain.get_swapchain_images(swapchain_khr).unwrap() };
-
-        let image_views =
-            Self::create_image_views(context.logical_device(), &swapchain_properties, &images);
+        let image_views = images
+            .iter()
+            .map(|image| ImageView::new(context.clone(), *image, &swapchain_properties))
+            .collect::<Vec<_>>();
 
         Swapchain {
             swapchain,
@@ -229,42 +230,6 @@ impl Swapchain {
             image_views,
             context,
         }
-    }
-
-    fn create_image_views(
-        logical_device: &ash::Device,
-        swapchain_properties: &SwapchainProperties,
-        images: &[vk::Image],
-    ) -> Vec<vk::ImageView> {
-        images
-            .iter()
-            .map(|image| {
-                let create_info = vk::ImageViewCreateInfo::builder()
-                    .image(*image)
-                    .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(swapchain_properties.format.format)
-                    .components(vk::ComponentMapping {
-                        r: vk::ComponentSwizzle::IDENTITY,
-                        g: vk::ComponentSwizzle::IDENTITY,
-                        b: vk::ComponentSwizzle::IDENTITY,
-                        a: vk::ComponentSwizzle::IDENTITY,
-                    })
-                    .subresource_range(vk::ImageSubresourceRange {
-                        aspect_mask: vk::ImageAspectFlags::COLOR,
-                        base_mip_level: 0,
-                        level_count: 1,
-                        base_array_layer: 0,
-                        layer_count: 1,
-                    })
-                    .build();
-
-                unsafe {
-                    logical_device
-                        .create_image_view(&create_info, None)
-                        .unwrap()
-                }
-            })
-            .collect::<Vec<_>>()
     }
 
     pub fn swapchain(&self) -> &AshSwapchain {
@@ -283,7 +248,7 @@ impl Swapchain {
         &self.images
     }
 
-    pub fn image_views(&self) -> &[vk::ImageView] {
+    pub fn image_views(&self) -> &[ImageView] {
         &self.image_views
     }
 }
@@ -291,10 +256,6 @@ impl Swapchain {
 impl Drop for Swapchain {
     fn drop(&mut self) {
         unsafe {
-            self.image_views
-                .iter()
-                .for_each(|v| self.context.logical_device().destroy_image_view(*v, None));
-
             self.swapchain.destroy_swapchain(self.swapchain_khr, None);
         }
     }

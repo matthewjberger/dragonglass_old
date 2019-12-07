@@ -80,7 +80,7 @@ impl RenderState {
         let framebuffers = swapchain
             .image_views()
             .iter()
-            .map(|view| [*view])
+            .map(|view| [view.view()])
             .map(|attachments| {
                 Framebuffer::new(
                     context.clone(),
