@@ -81,14 +81,14 @@ fn main() {
         }
 
         let image_available_semaphore =
-            *synchronization_set.image_available_semaphores()[current_frame].semaphore();
+            synchronization_set.image_available_semaphores()[current_frame].semaphore();
         let image_available_semaphores = [image_available_semaphore];
 
         let render_finished_semaphore =
-            *synchronization_set.render_finished_semaphores()[current_frame].semaphore();
+            synchronization_set.render_finished_semaphores()[current_frame].semaphore();
         let render_finished_semaphores = [render_finished_semaphore];
 
-        let in_flight_fence = *synchronization_set.in_flight_fences()[current_frame].fence();
+        let in_flight_fence = synchronization_set.in_flight_fences()[current_frame].fence();
         let in_flight_fences = [in_flight_fence];
 
         unsafe {

@@ -31,8 +31,8 @@ impl Fence {
         Ok(Fence { fence, context })
     }
 
-    pub fn fence(&self) -> &vk::Fence {
-        &self.fence
+    pub fn fence(&self) -> vk::Fence {
+        self.fence
     }
 }
 

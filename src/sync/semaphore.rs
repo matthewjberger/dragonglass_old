@@ -30,8 +30,8 @@ impl Semaphore {
         Ok(Semaphore { semaphore, context })
     }
 
-    pub fn semaphore(&self) -> &vk::Semaphore {
-        &self.semaphore
+    pub fn semaphore(&self) -> vk::Semaphore {
+        self.semaphore
     }
 }
 
