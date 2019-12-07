@@ -1,5 +1,5 @@
 use crate::{
-    command::CommandPool,
+    command_pool::CommandPool,
     context::VulkanContext,
     core::{Swapchain, SwapchainProperties},
     render::{Framebuffer, GraphicsPipeline, RenderPass},
@@ -128,11 +128,14 @@ impl VulkanSwapchain {
             })
             .collect::<Vec<_>>();
 
-        let descriptor_sets = descriptor_pool.create_descriptor_sets(
-            &uniform_buffers,
+        let descriptor_sets = descriptor_pool
+            .allocate_descriptor_sets(descriptor_set_layout.layout(), uniform_buffers.len() as _);
+
+        descriptor_pool.update_descriptor_sets(
+            &descriptor_sets,
             vk::DescriptorType::UNIFORM_BUFFER,
+            &uniform_buffers,
             mem::size_of::<UniformBufferObject>() as vk::DeviceSize,
-            descriptor_set_layout.layout(),
         );
 
         let mut vulkan_swapchain = VulkanSwapchain {
@@ -160,21 +163,10 @@ impl VulkanSwapchain {
     }
 
     fn create_command_buffers(&self) -> Vec<ash::vk::CommandBuffer> {
-        // Build the command buffer allocation info
-        let allocate_info = vk::CommandBufferAllocateInfo::builder()
-            .command_pool(self.command_pool.pool())
-            .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(self.framebuffers.len() as _)
-            .build();
-
         // Allocate one command buffer per swapchain image
-        let command_buffers = unsafe {
-            self.context
-                .logical_device()
-                .allocate_command_buffers(&allocate_info)
-                .unwrap()
-        };
-
+        let command_buffers = self
+            .command_pool
+            .allocate_command_buffers(self.framebuffers.len() as _);
         command_buffers
             .iter()
             .enumerate()
@@ -190,7 +182,6 @@ impl VulkanSwapchain {
                     );
                 });
             });
-
         command_buffers
     }
 

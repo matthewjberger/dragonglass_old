@@ -30,6 +30,22 @@ impl CommandPool {
     pub fn pool(&self) -> vk::CommandPool {
         self.pool
     }
+
+    pub fn allocate_command_buffers(&self, size: vk::DeviceSize) -> Vec<ash::vk::CommandBuffer> {
+        // Build the command buffer allocation info
+        let allocate_info = vk::CommandBufferAllocateInfo::builder()
+            .command_pool(self.pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(size as _)
+            .build();
+
+        unsafe {
+            self.context
+                .logical_device()
+                .allocate_command_buffers(&allocate_info)
+                .unwrap()
+        }
+    }
 }
 
 impl Drop for CommandPool {

@@ -34,25 +34,31 @@ impl DescriptorPool {
     }
 
     // TODO: Refactor this to use less parameters and make it smaller
-    pub fn create_descriptor_sets(
+    pub fn allocate_descriptor_sets(
         &self,
-        buffers: &[Buffer],
-        descriptor_type: vk::DescriptorType,
-        range: vk::DeviceSize,
         layout: vk::DescriptorSetLayout,
+        number_of_sets: u32,
     ) -> Vec<vk::DescriptorSet> {
-        let layouts = (0..buffers.len()).map(|_| layout).collect::<Vec<_>>();
+        let layouts = (0..number_of_sets).map(|_| layout).collect::<Vec<_>>();
         let allocation_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(self.pool)
             .set_layouts(&layouts)
             .build();
-        let descriptor_sets = unsafe {
+        unsafe {
             self.context
                 .logical_device()
                 .allocate_descriptor_sets(&allocation_info)
                 .unwrap()
-        };
+        }
+    }
 
+    pub fn update_descriptor_sets(
+        &self,
+        descriptor_sets: &[vk::DescriptorSet],
+        descriptor_type: vk::DescriptorType,
+        buffers: &[Buffer],
+        range: vk::DeviceSize,
+    ) {
         descriptor_sets
             .iter()
             .zip(buffers.iter())
@@ -79,9 +85,7 @@ impl DescriptorPool {
                         .logical_device()
                         .update_descriptor_sets(&descriptor_writes, &null)
                 }
-            });
-
-        descriptor_sets
+            })
     }
 }
 

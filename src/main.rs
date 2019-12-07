@@ -3,7 +3,7 @@ use std::time::Instant;
 use winit::{dpi::LogicalSize, Event, VirtualKeyCode, WindowEvent};
 
 mod app;
-mod command;
+mod command_pool;
 mod context;
 mod core;
 mod render;
