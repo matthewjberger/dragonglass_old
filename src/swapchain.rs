@@ -99,7 +99,7 @@ impl VulkanSwapchain {
         let transient_command_pool =
             create_command_pool(&context, vk::CommandPoolCreateFlags::TRANSIENT);
 
-        let vertex_buffer = crate::buffer::create_device_local_buffer::<u32, _>(
+        let vertex_buffer = crate::resource::buffer::create_device_local_buffer::<u32, _>(
             context.clone(),
             transient_command_pool,
             graphics_queue,
@@ -107,7 +107,7 @@ impl VulkanSwapchain {
             &vertices,
         );
 
-        let index_buffer = crate::buffer::create_device_local_buffer::<u16, _>(
+        let index_buffer = crate::resource::buffer::create_device_local_buffer::<u16, _>(
             context.clone(),
             transient_command_pool,
             graphics_queue,
