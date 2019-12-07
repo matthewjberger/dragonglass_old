@@ -80,12 +80,20 @@ impl VulkanSwapchain {
             descriptor_set_layout,
         );
 
-        let framebuffers = create_framebuffers(
-            context.clone(),
-            &swapchain.image_views(),
-            swapchain.properties(),
-            render_pass.render_pass(),
-        );
+        // Create one framebuffer for each image in the swapchain
+        let framebuffers = swapchain
+            .image_views()
+            .iter()
+            .map(|view| [*view])
+            .map(|attachments| {
+                Framebuffer::new(
+                    context.clone(),
+                    swapchain.properties(),
+                    render_pass.render_pass(),
+                    &attachments,
+                )
+            })
+            .collect::<Vec<_>>();
 
         let number_of_images = swapchain.images().len();
         let descriptor_pool =
@@ -573,27 +581,6 @@ fn create_pipeline(
     };
 
     (pipeline, pipeline_layout)
-}
-
-fn create_framebuffers(
-    context: Arc<VulkanContext>,
-    image_views: &[vk::ImageView],
-    swapchain_properties: &SwapchainProperties,
-    render_pass: vk::RenderPass,
-) -> Vec<Framebuffer> {
-    // Create one framebuffer for each image in the swapchain
-    image_views
-        .iter()
-        .map(|view| [*view])
-        .map(|attachments| {
-            Framebuffer::new(
-                context.clone(),
-                swapchain_properties,
-                render_pass,
-                &attachments,
-            )
-        })
-        .collect::<Vec<_>>()
 }
 
 fn create_descriptor_pool(logical_device: &ash::Device, size: u32) -> vk::DescriptorPool {
