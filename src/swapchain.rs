@@ -31,7 +31,6 @@ impl UniformBufferObject {
 
 pub struct VulkanSwapchain {
     context: Arc<VulkanContext>,
-    pub command_buffers: Vec<vk::CommandBuffer>,
     pub command_pool: CommandPool,
     pub descriptor_pool: DescriptorPool,
     pub descriptor_set_layout: DescriptorSetLayout,
@@ -139,7 +138,6 @@ impl VulkanSwapchain {
         );
 
         let mut vulkan_swapchain = VulkanSwapchain {
-            command_buffers: Vec::new(),
             command_pool,
             context,
             descriptor_pool,
@@ -158,31 +156,30 @@ impl VulkanSwapchain {
             vertex_buffer,
         };
 
-        vulkan_swapchain.command_buffers = vulkan_swapchain.create_command_buffers();
+        vulkan_swapchain.create_command_buffers();
         vulkan_swapchain
     }
 
-    fn create_command_buffers(&self) -> Vec<ash::vk::CommandBuffer> {
+    fn create_command_buffers(&mut self) {
         // Allocate one command buffer per swapchain image
-        let command_buffers = self
-            .command_pool
+        self.command_pool
             .allocate_command_buffers(self.framebuffers.len() as _);
-        command_buffers
+        self.command_pool
+            .command_buffers()
             .iter()
             .enumerate()
             .for_each(|(index, buffer)| {
-                let command_buffer = *buffer;
+                let command_buffer = buffer;
                 let framebuffer = self.framebuffers[index].framebuffer();
-                self.record_render_pass(framebuffer, command_buffer, || unsafe {
+                self.record_render_pass(framebuffer, *command_buffer, || unsafe {
                     self.play_render_commands(
                         &self.descriptor_sets,
                         self.number_of_indices,
-                        command_buffer,
+                        *command_buffer,
                         index,
                     );
                 });
             });
-        command_buffers
     }
 
     fn record_render_pass<F>(
@@ -337,15 +334,5 @@ impl VulkanSwapchain {
         let ubos = [ubo];
         let buffer = &self.uniform_buffers[current_image as usize];
         buffer.upload_to_entire_buffer::<u32, _>(&ubos);
-    }
-}
-
-impl Drop for VulkanSwapchain {
-    fn drop(&mut self) {
-        unsafe {
-            self.context
-                .logical_device()
-                .free_command_buffers(self.command_pool.pool(), &self.command_buffers);
-        }
     }
 }

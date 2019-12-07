@@ -126,7 +126,8 @@ fn main() {
 
         // Submit the command buffer
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-        let command_buffers_to_use = [vulkan_swapchain.command_buffers[image_index as usize]];
+        let command_buffers_to_use =
+            [vulkan_swapchain.command_pool.command_buffers()[image_index as usize]];
         let submit_info = vk::SubmitInfo::builder()
             .wait_semaphores(&image_available_semaphores)
             .wait_dst_stage_mask(&wait_stages)
