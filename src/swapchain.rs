@@ -3,7 +3,7 @@ use crate::{
     context::VulkanContext,
     core::{Swapchain, SwapchainProperties},
     render::{Framebuffer, GraphicsPipeline, RenderPass},
-    resource::DescriptorPool,
+    resource::{DescriptorPool, DescriptorSetLayout},
     vertex::Vertex,
 };
 use ash::{version::DeviceV1_0, vk};
@@ -34,7 +34,7 @@ pub struct VulkanSwapchain {
     pub command_buffers: Vec<vk::CommandBuffer>,
     pub command_pool: vk::CommandPool,
     pub descriptor_pool: DescriptorPool,
-    pub descriptor_set_layout: vk::DescriptorSetLayout,
+    pub descriptor_set_layout: DescriptorSetLayout,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
     pub framebuffers: Vec<Framebuffer>,
     pub graphics_queue: vk::Queue,
@@ -71,12 +71,14 @@ impl VulkanSwapchain {
         let swapchain = Swapchain::new(context.clone());
         let render_pass = RenderPass::new(context.clone(), swapchain.properties());
 
-        let descriptor_set_layout = create_descriptor_set_layout(context.logical_device());
+        let bindings = UniformBufferObject::get_descriptor_set_layout_bindings();
+        let descriptor_set_layout = DescriptorSetLayout::new(context.clone(), &bindings);
+
         let pipeline = GraphicsPipeline::new(
             context.clone(),
             swapchain.properties(),
             render_pass.render_pass(),
-            descriptor_set_layout,
+            descriptor_set_layout.layout(),
         );
 
         // Create one framebuffer for each image in the swapchain
@@ -128,7 +130,7 @@ impl VulkanSwapchain {
         let descriptor_sets = create_descriptor_sets(
             context.logical_device(),
             descriptor_pool.pool(),
-            descriptor_set_layout,
+            descriptor_set_layout.layout(),
             &uniform_buffers,
         );
 
@@ -379,8 +381,6 @@ impl Drop for VulkanSwapchain {
         self.cleanup_swapchain();
         let logical_device = self.context.logical_device();
         unsafe {
-            logical_device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
-
             self.uniform_buffer_memory_list
                 .iter()
                 .for_each(|m| logical_device.free_memory(*m, None));
@@ -397,19 +397,6 @@ impl Drop for VulkanSwapchain {
             logical_device.destroy_command_pool(self.command_pool, None);
             logical_device.destroy_command_pool(self.transient_command_pool, None);
         }
-    }
-}
-
-fn create_descriptor_set_layout(logical_device: &ash::Device) -> vk::DescriptorSetLayout {
-    let bindings = UniformBufferObject::get_descriptor_set_layout_bindings();
-    let layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
-        .bindings(&bindings)
-        .build();
-
-    unsafe {
-        logical_device
-            .create_descriptor_set_layout(&layout_info, None)
-            .unwrap()
     }
 }
 
