@@ -17,28 +17,23 @@ impl GraphicsPipeline {
         render_pass: vk::RenderPass,
         descriptor_set_layout: vk::DescriptorSetLayout,
     ) -> Self {
-        // Define the entry point for shaders
-        let entry_point_name = &CString::new("main").unwrap();
+        let shader_entry_point_name = &CString::new("main").unwrap();
 
-        // Create the vertex shader module
-        let vertex_shader_module = Shader::from_file(context.clone(), "shaders/shader.vert.spv");
+        let vertex_shader = Shader::from_file(
+            context.clone(),
+            "shaders/shader.vert.spv",
+            vk::ShaderStageFlags::VERTEX,
+            shader_entry_point_name,
+        );
 
-        let vertex_shader_state_info = vk::PipelineShaderStageCreateInfo::builder()
-            .stage(vk::ShaderStageFlags::VERTEX)
-            .module(vertex_shader_module.module())
-            .name(entry_point_name)
-            .build();
+        let fragment_shader = Shader::from_file(
+            context.clone(),
+            "shaders/shader.frag.spv",
+            vk::ShaderStageFlags::FRAGMENT,
+            shader_entry_point_name,
+        );
 
-        // Create the fragment shader module
-        let fragment_shader_module = Shader::from_file(context.clone(), "shaders/shader.frag.spv");
-
-        let fragment_shader_state_info = vk::PipelineShaderStageCreateInfo::builder()
-            .stage(vk::ShaderStageFlags::FRAGMENT)
-            .module(fragment_shader_module.module())
-            .name(entry_point_name)
-            .build();
-
-        let shader_state_info = [vertex_shader_state_info, fragment_shader_state_info];
+        let shader_state_info = [vertex_shader.state_info(), fragment_shader.state_info()];
 
         let descriptions = [Vertex::get_binding_description()];
         let attributes = Vertex::get_attribute_descriptions();
