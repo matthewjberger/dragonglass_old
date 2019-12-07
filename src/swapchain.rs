@@ -128,11 +128,11 @@ impl VulkanSwapchain {
             })
             .collect::<Vec<_>>();
 
-        let descriptor_sets = create_descriptor_sets(
-            context.logical_device(),
-            descriptor_pool.pool(),
-            descriptor_set_layout.layout(),
+        let descriptor_sets = descriptor_pool.create_descriptor_sets(
             &uniform_buffers,
+            vk::DescriptorType::UNIFORM_BUFFER,
+            mem::size_of::<UniformBufferObject>() as vk::DeviceSize,
+            descriptor_set_layout.layout(),
         );
 
         let mut vulkan_swapchain = VulkanSwapchain {
@@ -357,50 +357,4 @@ impl Drop for VulkanSwapchain {
                 .free_command_buffers(self.command_pool.pool(), &self.command_buffers);
         }
     }
-}
-
-fn create_descriptor_sets(
-    logical_device: &ash::Device,
-    pool: vk::DescriptorPool,
-    layout: vk::DescriptorSetLayout,
-    uniform_buffers: &[Buffer],
-) -> Vec<vk::DescriptorSet> {
-    let layouts = (0..uniform_buffers.len())
-        .map(|_| layout)
-        .collect::<Vec<_>>();
-    let allocation_info = vk::DescriptorSetAllocateInfo::builder()
-        .descriptor_pool(pool)
-        .set_layouts(&layouts)
-        .build();
-    let descriptor_sets = unsafe {
-        logical_device
-            .allocate_descriptor_sets(&allocation_info)
-            .unwrap()
-    };
-
-    descriptor_sets
-        .iter()
-        .zip(uniform_buffers.iter())
-        .for_each(|(set, buffer)| {
-            let buffer_info = vk::DescriptorBufferInfo::builder()
-                .buffer(buffer.buffer())
-                .offset(0)
-                .range(mem::size_of::<UniformBufferObject>() as vk::DeviceSize)
-                .build();
-            let buffer_infos = [buffer_info];
-
-            let descriptor_write = vk::WriteDescriptorSet::builder()
-                .dst_set(*set)
-                .dst_binding(0)
-                .dst_array_element(0)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(&buffer_infos)
-                .build();
-            let descriptor_writes = [descriptor_write];
-            let null = [];
-
-            unsafe { logical_device.update_descriptor_sets(&descriptor_writes, &null) }
-        });
-
-    descriptor_sets
 }
