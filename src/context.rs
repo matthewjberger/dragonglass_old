@@ -20,6 +20,9 @@ pub enum Error {
 // The order the struct members here are declared in
 // is important because it determines the order
 // the fields are 'Drop'ped in
+//
+// The drop order should be:
+// logical device -> physical device -> surface -> instance
 pub struct VulkanContext {
     logical_device: LogicalDevice,
     physical_device: PhysicalDevice,
