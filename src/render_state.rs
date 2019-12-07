@@ -29,7 +29,7 @@ impl UniformBufferObject {
     }
 }
 
-pub struct VulkanSwapchain {
+pub struct RenderState {
     context: Arc<VulkanContext>,
     pub command_pool: CommandPool,
     pub descriptor_pool: DescriptorPool,
@@ -48,7 +48,7 @@ pub struct VulkanSwapchain {
     pub vertex_buffer: Buffer,
 }
 
-impl VulkanSwapchain {
+impl RenderState {
     pub fn new(context: Arc<VulkanContext>, vertices: &[Vertex], indices: &[u16]) -> Self {
         unsafe { context.logical_device().device_wait_idle().unwrap() };
 
@@ -137,7 +137,7 @@ impl VulkanSwapchain {
             mem::size_of::<UniformBufferObject>() as vk::DeviceSize,
         );
 
-        let mut vulkan_swapchain = VulkanSwapchain {
+        let mut vulkan_swapchain = RenderState {
             command_pool,
             context,
             descriptor_pool,

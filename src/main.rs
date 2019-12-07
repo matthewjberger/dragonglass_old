@@ -7,15 +7,15 @@ mod command_pool;
 mod context;
 mod core;
 mod render;
+mod render_state;
 mod resource;
-mod swapchain;
 mod sync;
 mod vertex;
 
+use crate::render_state::RenderState;
 use app::App;
 use context::VulkanContext;
 use std::sync::Arc;
-use swapchain::VulkanSwapchain;
 use sync::{SynchronizationSet, SynchronizationSetConstants};
 use vertex::Vertex;
 
@@ -34,14 +34,14 @@ fn main() {
     let mut app = App::new(800, 600, "Vulkan Tutorial");
     let context =
         Arc::new(VulkanContext::new(&app.window).expect("Failed to create VulkanContext"));
-    let vulkan_swapchain = VulkanSwapchain::new(context.clone(), &vertices, &indices);
+    let render_state = RenderState::new(context.clone(), &vertices, &indices);
     let synchronization_set =
         SynchronizationSet::new(context.clone()).expect("Failed to create sync objects");
 
     let mut current_frame = 0;
     let start_time = Instant::now();
 
-    let swapchain_khr_arr = [vulkan_swapchain.swapchain.swapchain_khr()];
+    let swapchain_khr_arr = [render_state.swapchain.swapchain_khr()];
 
     log::debug!("Running application.");
     let mut should_stop = false;
@@ -104,11 +104,11 @@ fn main() {
 
         // Acquire the next image from the swapchain
         let image_index = unsafe {
-            vulkan_swapchain
+            render_state
                 .swapchain
                 .swapchain()
                 .acquire_next_image(
-                    vulkan_swapchain.swapchain.swapchain_khr(),
+                    render_state.swapchain.swapchain_khr(),
                     std::u64::MAX,
                     image_available_semaphore,
                     vk::Fence::null(),
@@ -118,16 +118,16 @@ fn main() {
         };
         let image_indices = [image_index];
 
-        vulkan_swapchain.update_uniform_buffers(
+        render_state.update_uniform_buffers(
             image_index,
-            vulkan_swapchain.swapchain.properties(),
+            render_state.swapchain.properties(),
             start_time,
         );
 
         // Submit the command buffer
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
         let command_buffers_to_use =
-            [vulkan_swapchain.command_pool.command_buffers()[image_index as usize]];
+            [render_state.command_pool.command_buffers()[image_index as usize]];
         let submit_info = vk::SubmitInfo::builder()
             .wait_semaphores(&image_available_semaphores)
             .wait_dst_stage_mask(&wait_stages)
@@ -140,7 +140,7 @@ fn main() {
             context
                 .logical_device()
                 .queue_submit(
-                    vulkan_swapchain.graphics_queue,
+                    render_state.graphics_queue,
                     &submit_info_arr,
                     in_flight_fence,
                 )
@@ -155,10 +155,10 @@ fn main() {
             .build();
 
         unsafe {
-            vulkan_swapchain
+            render_state
                 .swapchain
                 .swapchain()
-                .queue_present(vulkan_swapchain.present_queue, &present_info)
+                .queue_present(render_state.present_queue, &present_info)
                 .unwrap()
         };
 
