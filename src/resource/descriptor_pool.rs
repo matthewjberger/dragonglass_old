@@ -26,6 +26,7 @@ impl DescriptorPool {
         let pool = unsafe {
             context
                 .logical_device()
+                .logical_device()
                 .create_descriptor_pool(&pool_info, None)
                 .unwrap()
         };
@@ -45,6 +46,7 @@ impl DescriptorPool {
             .build();
         unsafe {
             self.context
+                .logical_device()
                 .logical_device()
                 .allocate_descriptor_sets(&allocation_info)
                 .unwrap()
@@ -83,6 +85,7 @@ impl DescriptorPool {
                 unsafe {
                     self.context
                         .logical_device()
+                        .logical_device()
                         .update_descriptor_sets(&descriptor_writes, &null)
                 }
             })
@@ -93,6 +96,7 @@ impl Drop for DescriptorPool {
     fn drop(&mut self) {
         unsafe {
             self.context
+                .logical_device()
                 .logical_device()
                 .destroy_descriptor_pool(self.pool, None);
         }

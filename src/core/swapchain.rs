@@ -1,4 +1,4 @@
-use crate::{core::ImageView, VulkanContext};
+use crate::{core::ImageView, sync::CurrentFrameSynchronization, VulkanContext};
 use ash::{extensions::khr::Swapchain as AshSwapchain, vk};
 use std::sync::Arc;
 
@@ -199,7 +199,10 @@ impl Swapchain {
                 .build()
         };
 
-        let swapchain = AshSwapchain::new(context.instance(), context.logical_device());
+        let swapchain = AshSwapchain::new(
+            context.instance(),
+            context.logical_device().logical_device(),
+        );
         let swapchain_khr = unsafe {
             swapchain
                 .create_swapchain(&swapchain_create_info, None)
@@ -237,14 +240,6 @@ Creating swapchain.
         }
     }
 
-    pub fn swapchain(&self) -> &AshSwapchain {
-        &self.swapchain
-    }
-
-    pub fn swapchain_khr(&self) -> vk::SwapchainKHR {
-        self.swapchain_khr
-    }
-
     pub fn properties(&self) -> &SwapchainProperties {
         &self.swapchain_properties
     }
@@ -264,6 +259,27 @@ Creating swapchain.
                 .unwrap()
                 .0 // TODO: Use error handling
         }
+    }
+
+    pub fn present_rendered_image(
+        &self,
+        current_frame_synchronization: &CurrentFrameSynchronization,
+        image_indices: &[u32],
+        present_queue: vk::Queue,
+    ) {
+        let swapchains = [self.swapchain_khr];
+        let render_finished_semaphores = [current_frame_synchronization.render_finished()];
+        let present_info = vk::PresentInfoKHR::builder()
+            .wait_semaphores(&render_finished_semaphores)
+            .swapchains(&swapchains)
+            .image_indices(image_indices)
+            .build();
+
+        unsafe {
+            self.swapchain
+                .queue_present(present_queue, &present_info)
+                .unwrap()
+        };
     }
 }
 

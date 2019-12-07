@@ -38,6 +38,7 @@ impl ImageView {
         let view = unsafe {
             context
                 .logical_device()
+                .logical_device()
                 .create_image_view(&create_info, None)
                 .unwrap()
         };
@@ -54,6 +55,7 @@ impl Drop for ImageView {
     fn drop(&mut self) {
         unsafe {
             self.context
+                .logical_device()
                 .logical_device()
                 .destroy_image_view(self.view, None);
         }

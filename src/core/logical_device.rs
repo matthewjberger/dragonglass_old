@@ -4,7 +4,10 @@ use ash::{
     vk,
 };
 
-use crate::core::{DebugLayer, Instance, PhysicalDevice};
+use crate::{
+    core::{DebugLayer, Instance, PhysicalDevice},
+    sync::CurrentFrameSynchronization,
+};
 
 use snafu::{ResultExt, Snafu};
 
@@ -72,6 +75,21 @@ impl LogicalDevice {
                     .build()
             })
             .collect::<Vec<_>>()
+    }
+
+    // TODO: Add error handling
+    pub fn wait_for_fence(&self, current_frame_synchronization: &CurrentFrameSynchronization) {
+        let in_flight_fences = [current_frame_synchronization.in_flight()];
+        unsafe {
+            self.logical_device
+                .wait_for_fences(&in_flight_fences, true, std::u64::MAX)
+                .unwrap();
+
+            // TODO: Resetting may need to be in a separate method
+            self.logical_device()
+                .reset_fences(&in_flight_fences)
+                .unwrap();
+        }
     }
 }
 

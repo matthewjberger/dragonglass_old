@@ -27,6 +27,7 @@ impl Framebuffer {
         let framebuffer = unsafe {
             context
                 .logical_device()
+                .logical_device()
                 .create_framebuffer(&framebuffer_info, None)
                 .unwrap()
         };
@@ -46,6 +47,7 @@ impl Drop for Framebuffer {
     fn drop(&mut self) {
         unsafe {
             self.context
+                .logical_device()
                 .logical_device()
                 .destroy_framebuffer(self.framebuffer, None);
         }

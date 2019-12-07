@@ -23,6 +23,7 @@ impl PipelineLayout {
         let layout = unsafe {
             context
                 .logical_device()
+                .logical_device()
                 .create_pipeline_layout(&pipeline_layout_info, None)
                 .unwrap()
         };
@@ -39,6 +40,7 @@ impl Drop for PipelineLayout {
     fn drop(&mut self) {
         unsafe {
             self.context
+                .logical_device()
                 .logical_device()
                 .destroy_pipeline_layout(self.layout, None);
         }

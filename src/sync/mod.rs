@@ -1,7 +1,9 @@
 pub use self::{
     fence::Fence,
     semaphore::Semaphore,
-    synchronization_set::{SynchronizationSet, SynchronizationSetConstants},
+    synchronization_set::{
+        CurrentFrameSynchronization, SynchronizationSet, SynchronizationSetConstants,
+    },
 };
 
 pub mod fence;

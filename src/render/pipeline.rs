@@ -150,6 +150,7 @@ impl GraphicsPipeline {
         let pipeline = unsafe {
             context
                 .logical_device()
+                .logical_device()
                 .create_graphics_pipelines(vk::PipelineCache::null(), &pipeline_info_arr, None)
                 .unwrap()[0]
         };
@@ -174,6 +175,7 @@ impl Drop for GraphicsPipeline {
     fn drop(&mut self) {
         unsafe {
             self.context
+                .logical_device()
                 .logical_device()
                 .destroy_pipeline(self.pipeline, None);
         }

@@ -70,8 +70,8 @@ impl VulkanContext {
         &self.physical_device.physical_device_memory_properties()
     }
 
-    pub fn logical_device(&self) -> &ash::Device {
-        self.logical_device.logical_device()
+    pub fn logical_device(&self) -> &LogicalDevice {
+        &self.logical_device
     }
 
     pub fn graphics_queue_family_index(&self) -> u32 {

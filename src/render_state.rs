@@ -49,16 +49,24 @@ pub struct RenderState {
 
 impl RenderState {
     pub fn new(context: Arc<VulkanContext>, vertices: &[Vertex], indices: &[u16]) -> Self {
-        unsafe { context.logical_device().device_wait_idle().unwrap() };
+        unsafe {
+            context
+                .logical_device()
+                .logical_device()
+                .device_wait_idle()
+                .unwrap()
+        };
 
         let graphics_queue = unsafe {
             context
+                .logical_device()
                 .logical_device()
                 .get_device_queue(context.graphics_queue_family_index(), 0)
         };
 
         let present_queue = unsafe {
             context
+                .logical_device()
                 .logical_device()
                 .get_device_queue(context.present_queue_family_index(), 0)
         };
@@ -196,6 +204,7 @@ impl RenderState {
         unsafe {
             self.context
                 .logical_device()
+                .logical_device()
                 .begin_command_buffer(command_buffer, &command_buffer_begin_info)
                 .unwrap()
         };
@@ -217,18 +226,24 @@ impl RenderState {
             .build();
 
         unsafe {
-            self.context.logical_device().cmd_begin_render_pass(
-                command_buffer,
-                &render_pass_begin_info,
-                vk::SubpassContents::INLINE,
-            );
+            self.context
+                .logical_device()
+                .logical_device()
+                .cmd_begin_render_pass(
+                    command_buffer,
+                    &render_pass_begin_info,
+                    vk::SubpassContents::INLINE,
+                );
 
             // Bind pipeline
-            self.context.logical_device().cmd_bind_pipeline(
-                command_buffer,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline.pipeline(),
-            );
+            self.context
+                .logical_device()
+                .logical_device()
+                .cmd_bind_pipeline(
+                    command_buffer,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    self.pipeline.pipeline(),
+                );
         }
 
         render_action();
@@ -237,10 +252,12 @@ impl RenderState {
             // End render pass
             self.context
                 .logical_device()
+                .logical_device()
                 .cmd_end_render_pass(command_buffer);
 
             // End command buffer
             self.context
+                .logical_device()
                 .logical_device()
                 .end_command_buffer(command_buffer)
                 .unwrap();
@@ -255,50 +272,53 @@ impl RenderState {
         image_index: usize,
     ) {
         // Bind pipeline
-        self.context.logical_device().cmd_bind_pipeline(
-            command_buffer,
-            vk::PipelineBindPoint::GRAPHICS,
-            self.pipeline.pipeline(),
-        );
+        self.context
+            .logical_device()
+            .logical_device()
+            .cmd_bind_pipeline(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline.pipeline(),
+            );
 
         // Bind vertex buffer
         let offsets = [0];
         let vertex_buffers = [self.vertex_buffer.buffer()];
-        self.context.logical_device().cmd_bind_vertex_buffers(
-            command_buffer,
-            0,
-            &vertex_buffers,
-            &offsets,
-        );
+        self.context
+            .logical_device()
+            .logical_device()
+            .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
 
         // Bind index buffer
-        self.context.logical_device().cmd_bind_index_buffer(
-            command_buffer,
-            self.index_buffer.buffer(),
-            0,
-            vk::IndexType::UINT16,
-        );
+        self.context
+            .logical_device()
+            .logical_device()
+            .cmd_bind_index_buffer(
+                command_buffer,
+                self.index_buffer.buffer(),
+                0,
+                vk::IndexType::UINT16,
+            );
 
         // Bind descriptor sets
         let null = [];
-        self.context.logical_device().cmd_bind_descriptor_sets(
-            command_buffer,
-            vk::PipelineBindPoint::GRAPHICS,
-            self.pipeline.layout(),
-            0,
-            &descriptor_sets[image_index..=image_index],
-            &null,
-        );
+        self.context
+            .logical_device()
+            .logical_device()
+            .cmd_bind_descriptor_sets(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline.layout(),
+                0,
+                &descriptor_sets[image_index..=image_index],
+                &null,
+            );
 
         // Draw
-        self.context.logical_device().cmd_draw_indexed(
-            command_buffer,
-            number_of_indices,
-            1,
-            0,
-            0,
-            0,
-        );
+        self.context
+            .logical_device()
+            .logical_device()
+            .cmd_draw_indexed(command_buffer, number_of_indices, 1, 0, 0, 0);
     }
 
     pub fn update_uniform_buffers(

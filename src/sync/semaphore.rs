@@ -24,6 +24,7 @@ impl Semaphore {
         let semaphore = unsafe {
             context
                 .logical_device()
+                .logical_device()
                 .create_semaphore(&semaphore_info, None)
                 .context(SemaphoreCreation)?
         };
@@ -39,6 +40,7 @@ impl Drop for Semaphore {
     fn drop(&mut self) {
         unsafe {
             self.context
+                .logical_device()
                 .logical_device()
                 .destroy_semaphore(self.semaphore, None)
         }

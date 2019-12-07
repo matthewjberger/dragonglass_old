@@ -1,5 +1,5 @@
 // TODO: Make a type alias for the current device version (DeviceV1_0)
-use crate::VulkanContext;
+use crate::{sync::CurrentFrameSynchronization, VulkanContext};
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -20,6 +20,7 @@ impl CommandPool {
 
         let pool = unsafe {
             context
+                .logical_device()
                 .logical_device()
                 .create_command_pool(&command_pool_info, None)
                 .unwrap()
@@ -50,6 +51,7 @@ impl CommandPool {
         self.command_buffers = unsafe {
             self.context
                 .logical_device()
+                .logical_device()
                 .allocate_command_buffers(&allocate_info)
                 .unwrap()
         };
@@ -60,10 +62,43 @@ impl CommandPool {
             unsafe {
                 self.context
                     .logical_device()
+                    .logical_device()
                     .free_command_buffers(self.pool, &self.command_buffers);
             }
         }
         self.command_buffers.clear();
+    }
+
+    // TODO: refactor this to use less parameters
+    pub fn submit_command_buffer(
+        &self,
+        index: usize,
+        queue: vk::Queue,
+        wait_stages: &[vk::PipelineStageFlags],
+        current_frame_synchronization: &CurrentFrameSynchronization,
+    ) {
+        let image_available_semaphores = [current_frame_synchronization.image_available()];
+        let render_finished_semaphores = [current_frame_synchronization.render_finished()];
+        // TODO: Add error handling, index may be invalid
+        let command_buffers_to_use = [self.command_buffers()[index]];
+        let submit_info = vk::SubmitInfo::builder()
+            .wait_semaphores(&image_available_semaphores)
+            .wait_dst_stage_mask(&wait_stages)
+            .command_buffers(&command_buffers_to_use)
+            .signal_semaphores(&render_finished_semaphores)
+            .build();
+        let submit_info_arr = [submit_info];
+        unsafe {
+            self.context
+                .logical_device()
+                .logical_device()
+                .queue_submit(
+                    queue,
+                    &submit_info_arr,
+                    current_frame_synchronization.in_flight(),
+                )
+                .unwrap()
+        }
     }
 }
 
@@ -72,6 +107,7 @@ impl Drop for CommandPool {
         self.clear_command_buffers();
         unsafe {
             self.context
+                .logical_device()
                 .logical_device()
                 .destroy_command_pool(self.pool, None);
         }

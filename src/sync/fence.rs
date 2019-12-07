@@ -24,6 +24,7 @@ impl Fence {
         let fence = unsafe {
             context
                 .logical_device()
+                .logical_device()
                 .create_fence(&fence_info, None)
                 .context(FenceCreation)?
         };
@@ -40,6 +41,7 @@ impl Drop for Fence {
     fn drop(&mut self) {
         unsafe {
             self.context
+                .logical_device()
                 .logical_device()
                 .destroy_fence(self.fence, None)
         }

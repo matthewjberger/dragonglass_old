@@ -30,6 +30,7 @@ impl Buffer {
         let buffer = unsafe {
             context
                 .logical_device()
+                .logical_device()
                 .create_buffer(&buffer_info, None)
                 .unwrap()
         };
@@ -37,6 +38,7 @@ impl Buffer {
         // Get the buffer's memory requirements
         let memory_requirements = unsafe {
             context
+                .logical_device()
                 .logical_device()
                 .get_buffer_memory_requirements(buffer)
         };
@@ -57,6 +59,7 @@ impl Buffer {
         let memory = unsafe {
             context
                 .logical_device()
+                .logical_device()
                 .allocate_memory(&buffer_allocation_info, None)
                 .unwrap()
         };
@@ -64,6 +67,7 @@ impl Buffer {
         unsafe {
             // Bind the buffer memory for mapping
             context
+                .logical_device()
                 .logical_device()
                 .bind_buffer_memory(buffer, memory, 0)
                 .unwrap();
@@ -134,6 +138,7 @@ impl Buffer {
         unsafe {
             self.context
                 .logical_device()
+                .logical_device()
                 .map_memory(self.memory, offset, size, flags)
                 .unwrap()
         }
@@ -141,7 +146,10 @@ impl Buffer {
 
     fn unmap(&self) {
         unsafe {
-            self.context.logical_device().unmap_memory(self.memory());
+            self.context
+                .logical_device()
+                .logical_device()
+                .unmap_memory(self.memory());
         }
     }
 
@@ -159,8 +167,12 @@ impl Drop for Buffer {
         unsafe {
             self.context
                 .logical_device()
+                .logical_device()
                 .destroy_buffer(self.buffer, None);
-            self.context.logical_device().free_memory(self.memory, None);
+            self.context
+                .logical_device()
+                .logical_device()
+                .free_memory(self.memory, None);
         }
     }
 }
@@ -192,7 +204,7 @@ pub fn create_device_local_buffer<A, T: Copy>(
     );
 
     copy_buffer(
-        context.logical_device(),
+        context.logical_device().logical_device(),
         command_pool,
         graphics_queue,
         staging_buffer.buffer(),

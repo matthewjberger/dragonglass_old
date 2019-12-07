@@ -54,6 +54,7 @@ impl RenderPass {
         let render_pass = unsafe {
             context
                 .logical_device()
+                .logical_device()
                 .create_render_pass(&render_pass_info, None)
                 .unwrap()
         };
@@ -73,6 +74,7 @@ impl Drop for RenderPass {
     fn drop(&mut self) {
         unsafe {
             self.context
+                .logical_device()
                 .logical_device()
                 .destroy_render_pass(self.render_pass, None);
         }

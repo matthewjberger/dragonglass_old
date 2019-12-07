@@ -27,6 +27,7 @@ impl Shader {
         let module = unsafe {
             context
                 .logical_device()
+                .logical_device()
                 .create_shader_module(&shader_create_info, None)
                 .expect("Failed to create shader module")
         };
@@ -59,6 +60,7 @@ impl Drop for Shader {
     fn drop(&mut self) {
         unsafe {
             self.context
+                .logical_device()
                 .logical_device()
                 .destroy_shader_module(self.module, None);
         }

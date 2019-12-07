@@ -2,10 +2,12 @@ use ash::{version::DeviceV1_0, vk};
 use std::time::Instant;
 use winit::{dpi::LogicalSize, Event, EventsLoop, VirtualKeyCode, Window, WindowEvent};
 
-use crate::context::VulkanContext;
-use crate::render_state::RenderState;
-use crate::sync::{SynchronizationSet, SynchronizationSetConstants};
-use crate::vertex::Vertex;
+use crate::{
+    context::VulkanContext,
+    render_state::RenderState,
+    sync::{SynchronizationSet, SynchronizationSetConstants},
+    vertex::Vertex,
+};
 use std::sync::Arc;
 
 pub struct App {
@@ -55,7 +57,6 @@ impl App {
         log::debug!("Running application.");
         let mut current_frame = 0;
         let start_time = Instant::now();
-        let swapchain_khr_arr = [self.render_state.swapchain.swapchain_khr()];
         loop {
             self.process_events();
 
@@ -66,20 +67,10 @@ impl App {
             let current_frame_synchronization = self
                 .synchronization_set
                 .current_frame_synchronization(current_frame);
-            let image_available_semaphores = [current_frame_synchronization.image_available()];
-            let render_finished_semaphores = [current_frame_synchronization.render_finished()];
-            let in_flight_fences = [current_frame_synchronization.in_flight()];
 
-            unsafe {
-                self.context
-                    .logical_device()
-                    .wait_for_fences(&in_flight_fences, true, std::u64::MAX)
-                    .unwrap();
-                self.context
-                    .logical_device()
-                    .reset_fences(&in_flight_fences)
-                    .unwrap();
-            }
+            self.context
+                .logical_device()
+                .wait_for_fence(&current_frame_synchronization);
 
             // Acquire the next image from the swapchain
             let image_index = self.render_state.swapchain.acquire_next_image(
@@ -94,49 +85,31 @@ impl App {
                 start_time,
             );
 
-            // Submit the command buffer
             let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-            let command_buffers_to_use =
-                [self.render_state.command_pool.command_buffers()[image_index as usize]];
-            let submit_info = vk::SubmitInfo::builder()
-                .wait_semaphores(&image_available_semaphores)
-                .wait_dst_stage_mask(&wait_stages)
-                .command_buffers(&command_buffers_to_use)
-                .signal_semaphores(&render_finished_semaphores)
-                .build();
-            let submit_info_arr = [submit_info];
+            self.render_state.command_pool.submit_command_buffer(
+                image_index as usize,
+                self.render_state.graphics_queue,
+                &wait_stages,
+                &current_frame_synchronization,
+            );
 
-            unsafe {
-                self.context
-                    .logical_device()
-                    .queue_submit(
-                        self.render_state.graphics_queue,
-                        &submit_info_arr,
-                        current_frame_synchronization.in_flight(),
-                    )
-                    .unwrap()
-            };
-
-            // Present the rendered image
-            let present_info = vk::PresentInfoKHR::builder()
-                .wait_semaphores(&render_finished_semaphores)
-                .swapchains(&swapchain_khr_arr)
-                .image_indices(&image_indices)
-                .build();
-
-            unsafe {
-                self.render_state
-                    .swapchain
-                    .swapchain()
-                    .queue_present(self.render_state.present_queue, &present_info)
-                    .unwrap()
-            };
+            self.render_state.swapchain.present_rendered_image(
+                &current_frame_synchronization,
+                &image_indices,
+                self.render_state.present_queue,
+            );
 
             current_frame +=
                 (1 + current_frame) % SynchronizationSet::MAX_FRAMES_IN_FLIGHT as usize;
         }
 
-        unsafe { self.context.logical_device().device_wait_idle().unwrap() };
+        unsafe {
+            self.context
+                .logical_device()
+                .logical_device()
+                .device_wait_idle()
+                .unwrap()
+        };
     }
 
     fn process_events(&mut self) {

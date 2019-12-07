@@ -18,6 +18,7 @@ impl DescriptorSetLayout {
         let layout = unsafe {
             context
                 .logical_device()
+                .logical_device()
                 .create_descriptor_set_layout(&layout_info, None)
                 .unwrap()
         };
@@ -34,6 +35,7 @@ impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
         unsafe {
             self.context
+                .logical_device()
                 .logical_device()
                 .destroy_descriptor_set_layout(self.layout, None);
         }
