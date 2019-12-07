@@ -145,7 +145,6 @@ pub struct Swapchain {
     swapchain_properties: SwapchainProperties,
     images: Vec<vk::Image>,
     image_views: Vec<ImageView>,
-    context: Arc<VulkanContext>,
 }
 
 impl Swapchain {
@@ -228,7 +227,6 @@ impl Swapchain {
             swapchain_properties,
             images: images.to_vec(),
             image_views,
-            context,
         }
     }
 
