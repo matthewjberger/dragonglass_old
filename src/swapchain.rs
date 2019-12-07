@@ -4,7 +4,7 @@ use crate::{
     buffer::{create_buffer, create_device_local_buffer},
     context::VulkanContext,
     core::{Swapchain, SwapchainProperties},
-    render::RenderPass,
+    render::{Framebuffer, RenderPass},
 };
 use ash::{version::DeviceV1_0, vk};
 use nalgebra_glm as glm;
@@ -36,7 +36,7 @@ pub struct VulkanSwapchain {
     pub descriptor_pool: vk::DescriptorPool,
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
-    pub framebuffers: Vec<vk::Framebuffer>,
+    pub framebuffers: Vec<Framebuffer>,
     pub graphics_queue: vk::Queue,
     pub index_buffer: vk::Buffer,
     pub index_buffer_memory: vk::DeviceMemory,
@@ -81,7 +81,7 @@ impl VulkanSwapchain {
         );
 
         let framebuffers = create_framebuffers(
-            context.logical_device(),
+            context.clone(),
             &swapchain.image_views(),
             swapchain.properties(),
             render_pass.render_pass(),
@@ -157,10 +157,6 @@ impl VulkanSwapchain {
     fn cleanup_swapchain(&self) {
         let logical_device = self.context.logical_device();
         unsafe {
-            self.framebuffers
-                .iter()
-                .for_each(|f| logical_device.destroy_framebuffer(*f, None));
-
             logical_device.free_command_buffers(self.command_pool, &self.command_buffers);
 
             logical_device.destroy_pipeline(self.pipeline, None);
@@ -189,7 +185,7 @@ impl VulkanSwapchain {
             .enumerate()
             .for_each(|(index, buffer)| {
                 let command_buffer = *buffer;
-                let framebuffer = self.framebuffers[index];
+                let framebuffer = self.framebuffers[index].framebuffer();
                 self.record_render_pass(framebuffer, command_buffer, || unsafe {
                     self.play_render_commands(
                         &self.descriptor_sets,
@@ -580,28 +576,22 @@ fn create_pipeline(
 }
 
 fn create_framebuffers(
-    logical_device: &ash::Device,
+    context: Arc<VulkanContext>,
     image_views: &[vk::ImageView],
     swapchain_properties: &SwapchainProperties,
     render_pass: vk::RenderPass,
-) -> Vec<vk::Framebuffer> {
+) -> Vec<Framebuffer> {
     // Create one framebuffer for each image in the swapchain
     image_views
         .iter()
         .map(|view| [*view])
         .map(|attachments| {
-            let framebuffer_info = vk::FramebufferCreateInfo::builder()
-                .render_pass(render_pass)
-                .attachments(&attachments)
-                .width(swapchain_properties.extent.width)
-                .height(swapchain_properties.extent.height)
-                .layers(1)
-                .build();
-            unsafe {
-                logical_device
-                    .create_framebuffer(&framebuffer_info, None)
-                    .unwrap()
-            }
+            Framebuffer::new(
+                context.clone(),
+                swapchain_properties,
+                render_pass,
+                &attachments,
+            )
         })
         .collect::<Vec<_>>()
 }
