@@ -43,15 +43,44 @@ impl SynchronizationSet {
         })
     }
 
-    pub fn image_available_semaphores(&self) -> &[Semaphore] {
-        &self.image_available_semaphores
+    pub fn current_frame_synchronization(
+        &self,
+        current_frame: usize,
+    ) -> CurrentFrameSynchronization {
+        CurrentFrameSynchronization::new(&self, current_frame)
+    }
+}
+
+pub struct CurrentFrameSynchronization {
+    image_available: vk::Semaphore,
+    render_finished: vk::Semaphore,
+    in_flight: vk::Fence,
+}
+
+impl CurrentFrameSynchronization {
+    pub fn new(synchronization_set: &SynchronizationSet, current_frame: usize) -> Self {
+        // TODO: Add error checking for vecs being empty
+        let image_available =
+            synchronization_set.image_available_semaphores[current_frame].semaphore();
+        let render_finished =
+            synchronization_set.render_finished_semaphores[current_frame].semaphore();
+        let in_flight = synchronization_set.in_flight_fences[current_frame].fence();
+        Self {
+            image_available,
+            render_finished,
+            in_flight,
+        }
     }
 
-    pub fn render_finished_semaphores(&self) -> &[Semaphore] {
-        &self.render_finished_semaphores
+    pub fn image_available(&self) -> vk::Semaphore {
+        self.image_available
     }
 
-    pub fn in_flight_fences(&self) -> &[Fence] {
-        &self.in_flight_fences
+    pub fn render_finished(&self) -> vk::Semaphore {
+        self.render_finished
+    }
+
+    pub fn in_flight(&self) -> vk::Fence {
+        self.in_flight
     }
 }

@@ -79,16 +79,11 @@ fn main() {
             break;
         }
 
-        let image_available_semaphore =
-            synchronization_set.image_available_semaphores()[current_frame].semaphore();
-        let image_available_semaphores = [image_available_semaphore];
-
-        let render_finished_semaphore =
-            synchronization_set.render_finished_semaphores()[current_frame].semaphore();
-        let render_finished_semaphores = [render_finished_semaphore];
-
-        let in_flight_fence = synchronization_set.in_flight_fences()[current_frame].fence();
-        let in_flight_fences = [in_flight_fence];
+        let current_frame_synchronization =
+            synchronization_set.current_frame_synchronization(current_frame);
+        let image_available_semaphores = [current_frame_synchronization.image_available()];
+        let render_finished_semaphores = [current_frame_synchronization.render_finished()];
+        let in_flight_fences = [current_frame_synchronization.in_flight()];
 
         unsafe {
             context
@@ -109,7 +104,7 @@ fn main() {
                 .acquire_next_image(
                     render_state.swapchain.swapchain_khr(),
                     std::u64::MAX,
-                    image_available_semaphore,
+                    current_frame_synchronization.image_available(),
                     vk::Fence::null(),
                 )
                 .unwrap()
@@ -141,7 +136,7 @@ fn main() {
                 .queue_submit(
                     render_state.graphics_queue,
                     &submit_info_arr,
-                    in_flight_fence,
+                    current_frame_synchronization.in_flight(),
                 )
                 .unwrap()
         };
