@@ -10,7 +10,7 @@ pub struct GraphicsPipeline {
 
 impl GraphicsPipeline {
     // TODO: Refactor this to use less parameters
-    // TODO: Breakout shader creation to seperate module
+    // TODO: Refactor fixed function steps to separate functions
     pub fn new(
         context: Arc<VulkanContext>,
         swapchain_properties: &SwapchainProperties,

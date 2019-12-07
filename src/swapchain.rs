@@ -3,6 +3,7 @@ use crate::{
     context::VulkanContext,
     core::{Swapchain, SwapchainProperties},
     render::{Framebuffer, GraphicsPipeline, RenderPass},
+    resource::DescriptorPool,
     vertex::Vertex,
 };
 use ash::{version::DeviceV1_0, vk};
@@ -32,7 +33,7 @@ pub struct VulkanSwapchain {
     context: Arc<VulkanContext>,
     pub command_buffers: Vec<vk::CommandBuffer>,
     pub command_pool: vk::CommandPool,
-    pub descriptor_pool: vk::DescriptorPool,
+    pub descriptor_pool: DescriptorPool,
     pub descriptor_set_layout: vk::DescriptorSetLayout,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
     pub framebuffers: Vec<Framebuffer>,
@@ -94,8 +95,7 @@ impl VulkanSwapchain {
             .collect::<Vec<_>>();
 
         let number_of_images = swapchain.images().len();
-        let descriptor_pool =
-            create_descriptor_pool(context.logical_device(), number_of_images as _);
+        let descriptor_pool = DescriptorPool::new(context.clone(), number_of_images as _);
 
         let command_pool = create_command_pool(&context, vk::CommandPoolCreateFlags::empty());
         let transient_command_pool =
@@ -127,7 +127,7 @@ impl VulkanSwapchain {
 
         let descriptor_sets = create_descriptor_sets(
             context.logical_device(),
-            descriptor_pool,
+            descriptor_pool.pool(),
             descriptor_set_layout,
             &uniform_buffers,
         );
@@ -379,7 +379,6 @@ impl Drop for VulkanSwapchain {
         self.cleanup_swapchain();
         let logical_device = self.context.logical_device();
         unsafe {
-            logical_device.destroy_descriptor_pool(self.descriptor_pool, None);
             logical_device.destroy_descriptor_set_layout(self.descriptor_set_layout, None);
 
             self.uniform_buffer_memory_list
@@ -410,25 +409,6 @@ fn create_descriptor_set_layout(logical_device: &ash::Device) -> vk::DescriptorS
     unsafe {
         logical_device
             .create_descriptor_set_layout(&layout_info, None)
-            .unwrap()
-    }
-}
-
-fn create_descriptor_pool(logical_device: &ash::Device, size: u32) -> vk::DescriptorPool {
-    let pool_size = vk::DescriptorPoolSize {
-        ty: vk::DescriptorType::UNIFORM_BUFFER,
-        descriptor_count: size,
-    };
-    let pool_sizes = [pool_size];
-
-    let pool_info = vk::DescriptorPoolCreateInfo::builder()
-        .pool_sizes(&pool_sizes)
-        .max_sets(size)
-        .build();
-
-    unsafe {
-        logical_device
-            .create_descriptor_pool(&pool_info, None)
             .unwrap()
     }
 }
