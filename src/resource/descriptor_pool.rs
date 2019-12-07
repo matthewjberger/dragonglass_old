@@ -33,7 +33,6 @@ impl DescriptorPool {
         DescriptorPool { pool, context }
     }
 
-    // TODO: Refactor this to use less parameters and make it smaller
     pub fn allocate_descriptor_sets(
         &self,
         layout: vk::DescriptorSetLayout,
@@ -52,6 +51,7 @@ impl DescriptorPool {
         }
     }
 
+    // TODO: Refactor this to use less parameters and make it smaller
     pub fn update_descriptor_sets(
         &self,
         descriptor_sets: &[vk::DescriptorSet],
