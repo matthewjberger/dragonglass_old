@@ -1,10 +1,15 @@
-use crate::{core::SwapchainProperties, resource::Shader, vertex::Vertex, VulkanContext};
+use crate::{
+    core::SwapchainProperties,
+    resource::{PipelineLayout, Shader},
+    vertex::Vertex,
+    VulkanContext,
+};
 use ash::{version::DeviceV1_0, vk};
 use std::{ffi::CString, sync::Arc};
 
 pub struct GraphicsPipeline {
     pipeline: vk::Pipeline,
-    pipeline_layout: vk::PipelineLayout,
+    pipeline_layout: PipelineLayout,
     context: Arc<VulkanContext>,
 }
 
@@ -121,18 +126,7 @@ impl GraphicsPipeline {
 
         // Build the pipeline layout info
         let descriptor_set_layouts = [descriptor_set_layout];
-        let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(&descriptor_set_layouts) // needed for uniforms in shaders
-            // .push_constant_ranges()
-            .build();
-
-        // Create the pipeline layout
-        let pipeline_layout = unsafe {
-            context
-                .logical_device()
-                .create_pipeline_layout(&pipeline_layout_info, None)
-                .unwrap()
-        };
+        let pipeline_layout = PipelineLayout::new(context.clone(), &descriptor_set_layouts);
 
         // Create the pipeline info
         let pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
@@ -145,7 +139,7 @@ impl GraphicsPipeline {
             //.depth_stencil_state() // not using depth/stencil tests
             .color_blend_state(&color_blending_info)
             //.dynamic_state // no dynamic states
-            .layout(pipeline_layout)
+            .layout(pipeline_layout.layout())
             .render_pass(render_pass)
             .subpass(0)
             .build();
@@ -171,8 +165,8 @@ impl GraphicsPipeline {
         self.pipeline
     }
 
-    pub fn pipeline_layout(&self) -> vk::PipelineLayout {
-        self.pipeline_layout
+    pub fn layout(&self) -> vk::PipelineLayout {
+        self.pipeline_layout.layout()
     }
 }
 
@@ -182,9 +176,6 @@ impl Drop for GraphicsPipeline {
             self.context
                 .logical_device()
                 .destroy_pipeline(self.pipeline, None);
-            self.context
-                .logical_device()
-                .destroy_pipeline_layout(self.pipeline_layout, None);
         }
     }
 }

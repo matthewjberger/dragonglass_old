@@ -306,7 +306,7 @@ impl VulkanSwapchain {
         self.context.logical_device().cmd_bind_descriptor_sets(
             command_buffer,
             vk::PipelineBindPoint::GRAPHICS,
-            self.pipeline.pipeline_layout(),
+            self.pipeline.layout(),
             0,
             &descriptor_sets[image_index..=image_index],
             &null,
