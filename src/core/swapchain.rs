@@ -207,7 +207,14 @@ impl Swapchain {
         };
 
         log::debug!(
-            "Creating swapchain.\n\tFormat: {:?}\n\tColorSpace: {:?}\n\tPresentMode: {:?}\n\tExtent: {:?}\n\tImageCount: {}",
+            r#"
+Creating swapchain.
+    Format: {:?}
+    ColorSpace: {:?}
+    PresentMode: {:?}
+    Extent: {:?}
+    ImageCount: {}
+"#,
             surface_format.format,
             surface_format.color_space,
             present_mode,
