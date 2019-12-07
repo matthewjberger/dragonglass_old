@@ -1,4 +1,5 @@
 use crate::{
+    command::CommandPool,
     context::VulkanContext,
     core::{Swapchain, SwapchainProperties},
     render::{Framebuffer, GraphicsPipeline, RenderPass},
@@ -31,7 +32,7 @@ impl UniformBufferObject {
 pub struct VulkanSwapchain {
     context: Arc<VulkanContext>,
     pub command_buffers: Vec<vk::CommandBuffer>,
-    pub command_pool: vk::CommandPool,
+    pub command_pool: CommandPool,
     pub descriptor_pool: DescriptorPool,
     pub descriptor_set_layout: DescriptorSetLayout,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
@@ -43,7 +44,7 @@ pub struct VulkanSwapchain {
     pub present_queue: vk::Queue,
     pub render_pass: RenderPass,
     pub swapchain: Swapchain,
-    pub transient_command_pool: vk::CommandPool,
+    pub transient_command_pool: CommandPool,
     pub uniform_buffers: Vec<Buffer>,
     pub vertex_buffer: Buffer,
 }
@@ -95,13 +96,13 @@ impl VulkanSwapchain {
         let number_of_images = swapchain.images().len();
         let descriptor_pool = DescriptorPool::new(context.clone(), number_of_images as _);
 
-        let command_pool = create_command_pool(&context, vk::CommandPoolCreateFlags::empty());
+        let command_pool = CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::empty());
         let transient_command_pool =
-            create_command_pool(&context, vk::CommandPoolCreateFlags::TRANSIENT);
+            CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::TRANSIENT);
 
         let vertex_buffer = crate::resource::buffer::create_device_local_buffer::<u32, _>(
             context.clone(),
-            transient_command_pool,
+            transient_command_pool.pool(),
             graphics_queue,
             vk::BufferUsageFlags::VERTEX_BUFFER,
             &vertices,
@@ -109,7 +110,7 @@ impl VulkanSwapchain {
 
         let index_buffer = crate::resource::buffer::create_device_local_buffer::<u16, _>(
             context.clone(),
-            transient_command_pool,
+            transient_command_pool.pool(),
             graphics_queue,
             vk::BufferUsageFlags::INDEX_BUFFER,
             &indices,
@@ -158,17 +159,10 @@ impl VulkanSwapchain {
         vulkan_swapchain
     }
 
-    fn cleanup_swapchain(&self) {
-        let logical_device = self.context.logical_device();
-        unsafe {
-            logical_device.free_command_buffers(self.command_pool, &self.command_buffers);
-        }
-    }
-
     fn create_command_buffers(&self) -> Vec<ash::vk::CommandBuffer> {
         // Build the command buffer allocation info
         let allocate_info = vk::CommandBufferAllocateInfo::builder()
-            .command_pool(self.command_pool)
+            .command_pool(self.command_pool.pool())
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(self.framebuffers.len() as _)
             .build();
@@ -357,29 +351,11 @@ impl VulkanSwapchain {
 
 impl Drop for VulkanSwapchain {
     fn drop(&mut self) {
-        self.cleanup_swapchain();
-        let logical_device = self.context.logical_device();
         unsafe {
-            logical_device.destroy_command_pool(self.command_pool, None);
-            logical_device.destroy_command_pool(self.transient_command_pool, None);
+            self.context
+                .logical_device()
+                .free_command_buffers(self.command_pool.pool(), &self.command_buffers);
         }
-    }
-}
-
-fn create_command_pool(
-    context: &VulkanContext,
-    flags: vk::CommandPoolCreateFlags,
-) -> vk::CommandPool {
-    let command_pool_info = vk::CommandPoolCreateInfo::builder()
-        .queue_family_index(context.graphics_queue_family_index())
-        .flags(flags)
-        .build();
-
-    unsafe {
-        context
-            .logical_device()
-            .create_command_pool(&command_pool_info, None)
-            .unwrap()
     }
 }
 
