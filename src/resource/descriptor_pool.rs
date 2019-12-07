@@ -33,6 +33,7 @@ impl DescriptorPool {
         DescriptorPool { pool, context }
     }
 
+    // TODO: Refactor this to use less parameters and make it smaller
     pub fn create_descriptor_sets(
         &self,
         buffers: &[Buffer],
