@@ -165,6 +165,7 @@ impl Drop for Buffer {
     }
 }
 
+// TODO: Refactor this to use less parameters
 pub fn create_device_local_buffer<A, T: Copy>(
     context: Arc<VulkanContext>,
     command_pool: ash::vk::CommandPool,
