@@ -82,19 +82,10 @@ impl App {
             }
 
             // Acquire the next image from the swapchain
-            let image_index = unsafe {
-                self.render_state
-                    .swapchain
-                    .swapchain()
-                    .acquire_next_image(
-                        self.render_state.swapchain.swapchain_khr(),
-                        std::u64::MAX,
-                        current_frame_synchronization.image_available(),
-                        vk::Fence::null(),
-                    )
-                    .unwrap()
-                    .0
-            };
+            let image_index = self.render_state.swapchain.acquire_next_image(
+                current_frame_synchronization.image_available(),
+                vk::Fence::null(),
+            );
             let image_indices = [image_index];
 
             self.render_state.update_uniform_buffers(

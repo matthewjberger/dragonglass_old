@@ -256,6 +256,15 @@ Creating swapchain.
     pub fn image_views(&self) -> &[ImageView] {
         &self.image_views
     }
+
+    pub fn acquire_next_image(&self, semaphore: vk::Semaphore, fence: vk::Fence) -> u32 {
+        unsafe {
+            self.swapchain
+                .acquire_next_image(self.swapchain_khr, std::u64::MAX, semaphore, fence)
+                .unwrap()
+                .0 // TODO: Use error handling
+        }
+    }
 }
 
 impl Drop for Swapchain {
