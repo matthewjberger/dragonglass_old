@@ -330,8 +330,6 @@ impl VulkanSwapchain {
         let elapsed_time =
             elapsed_time.as_secs() as f32 + (elapsed_time.subsec_millis() as f32) / 1000_f32;
 
-        let aspect_ratio =
-            swapchain_properties.extent.width as f32 / swapchain_properties.extent.height as f32;
         let ubo = UniformBufferObject {
             model: glm::rotate(
                 &glm::Mat4::identity(),
@@ -343,33 +341,17 @@ impl VulkanSwapchain {
                 &glm::vec3(0.0, 0.0, 0.0),
                 &glm::vec3(0.0, 1.0, 0.0),
             ), // TODO: Make Z the up axis
-            projection: glm::perspective(aspect_ratio, 90_f32.to_radians(), 0.1_f32, 1000_f32),
+            projection: glm::perspective(
+                swapchain_properties.aspect_ratio(),
+                90_f32.to_radians(),
+                0.1_f32,
+                1000_f32,
+            ),
         };
 
         let ubos = [ubo];
-
-        let buffer_memory = self.uniform_buffers[current_image as usize].memory();
-        let buffer_memory_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
-
-        unsafe {
-            let data_pointer = self
-                .context
-                .logical_device()
-                .map_memory(
-                    buffer_memory,
-                    0,
-                    buffer_memory_size,
-                    vk::MemoryMapFlags::empty(),
-                )
-                .unwrap();
-            let mut align = ash::util::Align::new(
-                data_pointer,
-                mem::align_of::<f32>() as _,
-                buffer_memory_size,
-            );
-            align.copy_from_slice(&ubos);
-            self.context.logical_device().unmap_memory(buffer_memory);
-        }
+        let buffer = &self.uniform_buffers[current_image as usize];
+        buffer.upload_to_entire_buffer::<u32, _>(&ubos);
     }
 }
 

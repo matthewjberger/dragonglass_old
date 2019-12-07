@@ -12,6 +12,17 @@ pub struct SwapchainProperties {
     pub extent: vk::Extent2D,
 }
 
+impl SwapchainProperties {
+    pub fn aspect_ratio(&self) -> f32 {
+        let height = if self.extent.height == 0 {
+            0
+        } else {
+            self.extent.height
+        };
+        self.extent.width as f32 / height as f32
+    }
+}
+
 pub struct SwapchainSupportDetails {
     pub capabilities: vk::SurfaceCapabilitiesKHR,
     pub formats: Vec<vk::SurfaceFormatKHR>,
