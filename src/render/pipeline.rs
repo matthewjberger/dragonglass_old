@@ -1,4 +1,4 @@
-use crate::{core::SwapchainProperties, shader, vertex::Vertex, VulkanContext};
+use crate::{core::SwapchainProperties, resource::Shader, vertex::Vertex, VulkanContext};
 use ash::{version::DeviceV1_0, vk};
 use std::{ffi::CString, sync::Arc};
 
@@ -21,22 +21,20 @@ impl GraphicsPipeline {
         let entry_point_name = &CString::new("main").unwrap();
 
         // Create the vertex shader module
-        let vertex_shader_module =
-            shader::create_shader_from_file("shaders/shader.vert.spv", context.logical_device());
+        let vertex_shader_module = Shader::from_file(context.clone(), "shaders/shader.vert.spv");
 
         let vertex_shader_state_info = vk::PipelineShaderStageCreateInfo::builder()
             .stage(vk::ShaderStageFlags::VERTEX)
-            .module(vertex_shader_module)
+            .module(vertex_shader_module.module())
             .name(entry_point_name)
             .build();
 
         // Create the fragment shader module
-        let fragment_shader_module =
-            shader::create_shader_from_file("shaders/shader.frag.spv", context.logical_device());
+        let fragment_shader_module = Shader::from_file(context.clone(), "shaders/shader.frag.spv");
 
         let fragment_shader_state_info = vk::PipelineShaderStageCreateInfo::builder()
             .stage(vk::ShaderStageFlags::FRAGMENT)
-            .module(fragment_shader_module)
+            .module(fragment_shader_module.module())
             .name(entry_point_name)
             .build();
 
@@ -165,16 +163,6 @@ impl GraphicsPipeline {
                 .logical_device()
                 .create_graphics_pipelines(vk::PipelineCache::null(), &pipeline_info_arr, None)
                 .unwrap()[0]
-        };
-
-        // Delete shader modules
-        unsafe {
-            context
-                .logical_device()
-                .destroy_shader_module(vertex_shader_module, None);
-            context
-                .logical_device()
-                .destroy_shader_module(fragment_shader_module, None);
         };
 
         GraphicsPipeline {

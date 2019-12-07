@@ -7,7 +7,7 @@ mod buffer;
 mod context;
 mod core;
 mod render;
-mod shader;
+mod resource;
 mod swapchain;
 mod sync;
 mod vertex;
