@@ -7,8 +7,7 @@ pub struct App {
     _window: Window, // Needs to live as long the event loop
     renderer: Renderer,
     should_exit: bool,
-    dimensions: [u32; 2],
-    resize_requested: bool,
+    dimensions: Option<[u32; 2]>,
 }
 
 impl App {
@@ -35,8 +34,7 @@ impl App {
             _window: window,
             renderer,
             should_exit: false,
-            dimensions: [width, height],
-            resize_requested: false,
+            dimensions: Some([width, height]),
         }
     }
 
@@ -44,32 +42,21 @@ impl App {
         log::debug!("Running application.");
         let start_time = Instant::now();
         loop {
-            // TODO: Refactor this
-            loop {
-                self.process_events();
-                let (width, height) = (self.dimensions[0], self.dimensions[1]);
-                if width != 0 && height != 0 {
-                    break;
-                }
-            }
+            self.process_events();
 
             if self.should_exit {
                 break;
             }
 
-            self.renderer
-                .step(self.dimensions, start_time, self.resize_requested);
-            self.resize_requested = false;
+            self.renderer.step(self.dimensions, start_time);
         }
 
         self.renderer.wait_idle();
     }
 
     fn process_events(&mut self) {
-        let extent = self.renderer.swapchain.properties().extent;
-        let mut dimensions: [u32; 2] = [extent.width, extent.height];
+        let mut dimensions: Option<[u32; 2]> = None;
         let mut should_exit = false;
-        let mut resize_requested = false;
         self.event_loop.poll_events(|event| match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -91,13 +78,27 @@ impl App {
                 event: WindowEvent::Resized(LogicalSize { width, height }),
                 ..
             } => {
-                dimensions = [width as u32, height as u32];
-                resize_requested = true;
+                dimensions = Some([width as u32, height as u32]);
             }
             _ => {}
         });
         self.dimensions = dimensions;
         self.should_exit = should_exit;
-        self.resize_requested = resize_requested;
+        self.block_while_minimized();
+    }
+
+    fn block_while_minimized(&mut self) {
+        if let Some(dimensions) = self.dimensions {
+            let is_minimized = dimensions[0] == 0 || dimensions[1] == 0;
+            if is_minimized {
+                loop {
+                    self.process_events();
+                    let is_minimized = dimensions[0] == 0 || dimensions[1] == 0;
+                    if !is_minimized {
+                        break;
+                    }
+                }
+            }
+        }
     }
 }

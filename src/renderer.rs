@@ -203,7 +203,7 @@ impl Renderer {
         vulkan_swapchain
     }
 
-    pub fn step(&mut self, dimensions: [u32; 2], start_time: Instant, resize_requested: bool) {
+    pub fn step(&mut self, dimensions: Option<[u32; 2]>, start_time: Instant) {
         let current_frame_synchronization = self
             .synchronization_set
             .current_frame_synchronization(self.current_frame);
@@ -259,7 +259,7 @@ impl Renderer {
             _ => {}
         }
 
-        if resize_requested {
+        if dimensions.is_some() {
             self.recreate_swapchain(dimensions);
         }
 
@@ -450,7 +450,12 @@ impl Renderer {
         buffer.upload_to_entire_buffer::<u32, _>(&ubos);
     }
 
-    pub fn recreate_swapchain(&mut self, dimensions: [u32; 2]) {
+    pub fn recreate_swapchain(&mut self, dimensions: Option<[u32; 2]>) {
+        let dimensions = dimensions.unwrap_or([
+            self.swapchain.properties().extent.width,
+            self.swapchain.properties().extent.height,
+        ]);
+
         self.wait_idle();
 
         self.swapchain = Swapchain::new(self.context.clone(), dimensions);
