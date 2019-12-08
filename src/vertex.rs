@@ -4,13 +4,13 @@ use std::mem;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Vertex {
-    position: glm::Vec2,
+    position: glm::Vec3,
     color: glm::Vec3,
     tex_coords: glm::Vec2,
 }
 
 impl Vertex {
-    pub fn new(position: glm::Vec2, color: glm::Vec3, tex_coords: glm::Vec2) -> Self {
+    pub fn new(position: glm::Vec3, color: glm::Vec3, tex_coords: glm::Vec2) -> Self {
         Vertex {
             position,
             color,
@@ -30,7 +30,7 @@ impl Vertex {
         let position_description = vk::VertexInputAttributeDescription::builder()
             .binding(0)
             .location(0)
-            .format(vk::Format::R32G32_SFLOAT)
+            .format(vk::Format::R32G32B32_SFLOAT)
             .offset(0)
             .build();
 
@@ -38,14 +38,14 @@ impl Vertex {
             .binding(0)
             .location(1)
             .format(vk::Format::R32G32B32_SFLOAT)
-            .offset(8)
+            .offset(12)
             .build();
 
         let tex_coords_description = vk::VertexInputAttributeDescription::builder()
             .binding(0)
             .location(2)
             .format(vk::Format::R32G32_SFLOAT)
-            .offset(20)
+            .offset(24)
             .build();
 
         [

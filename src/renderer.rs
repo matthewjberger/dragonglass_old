@@ -53,12 +53,23 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(
-        window: &winit::Window,
-        dimensions: [u32; 2],
-        vertices: &[Vertex],
-        indices: &[u16],
-    ) -> Self {
+    pub fn new(window: &winit::Window, dimensions: [u32; 2]) -> Self {
+        let color = glm::vec3(1.0, 1.0, 1.0);
+        let vertices: [Vertex; 8] = [
+            // First Quad
+            Vertex::new(glm::vec3(-0.5, -0.5, 0.0), color, glm::vec2(0.0, 0.0)),
+            Vertex::new(glm::vec3(0.5, -0.5, 0.0), color, glm::vec2(1.0, 0.0)),
+            Vertex::new(glm::vec3(0.5, 0.5, 0.0), color, glm::vec2(1.0, 1.0)),
+            Vertex::new(glm::vec3(-0.5, 0.5, 0.0), color, glm::vec2(0.0, 1.0)),
+            // Second Quad
+            Vertex::new(glm::vec3(-0.5, -0.5, -0.5), color, glm::vec2(0.0, 0.0)),
+            Vertex::new(glm::vec3(0.5, -0.5, -0.5), color, glm::vec2(1.0, 0.0)),
+            Vertex::new(glm::vec3(0.5, 0.5, -0.5), color, glm::vec2(1.0, 1.0)),
+            Vertex::new(glm::vec3(-0.5, 0.5, -0.5), color, glm::vec2(0.0, 1.0)),
+        ];
+
+        let indices: [u16; 12] = [0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4];
+
         let context =
             Arc::new(VulkanContext::new(&window).expect("Failed to create VulkanContext"));
 

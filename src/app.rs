@@ -1,5 +1,4 @@
-use crate::{renderer::Renderer, vertex::Vertex};
-use nalgebra_glm as glm;
+use crate::renderer::Renderer;
 use std::time::Instant;
 use winit::{dpi::LogicalSize, Event, EventsLoop, VirtualKeyCode, Window, WindowEvent};
 
@@ -21,30 +20,7 @@ impl App {
             .build(&event_loop)
             .expect("Failed to create window.");
 
-        let vertices: [Vertex; 4] = [
-            Vertex::new(
-                glm::vec2(-0.5, -0.5),
-                glm::vec3(1.0, 0.0, 0.0),
-                glm::vec2(0.0, 0.0),
-            ),
-            Vertex::new(
-                glm::vec2(0.5, -0.5),
-                glm::vec3(0.0, 1.0, 0.0),
-                glm::vec2(1.0, 0.0),
-            ),
-            Vertex::new(
-                glm::vec2(0.5, 0.5),
-                glm::vec3(0.0, 0.0, 1.0),
-                glm::vec2(1.0, 1.0),
-            ),
-            Vertex::new(
-                glm::vec2(-0.5, 0.5),
-                glm::vec3(1.0, 1.0, 1.0),
-                glm::vec2(0.0, 1.0),
-            ),
-        ];
-        let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
-        let renderer = Renderer::new(&window, [width, height], &vertices, &indices);
+        let renderer = Renderer::new(&window, [width, height]);
 
         App {
             event_loop,
