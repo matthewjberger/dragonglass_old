@@ -1,5 +1,5 @@
 use crate::core::{DebugLayer, Instance, QueueFamilyIndexSet, Surface};
-use ash::version::InstanceV1_0;
+use ash::{version::InstanceV1_0, vk};
 use std::ffi::CStr;
 
 use snafu::{ResultExt, Snafu};
@@ -109,9 +109,13 @@ impl PhysicalDevice {
                 .expect("Failed to get physical device surface present modes")
         };
 
+        let features = unsafe { instance.get_physical_device_features(physical_device) };
+
         let queue_family_index_set = QueueFamilyIndexSet::new(instance, physical_device, surface);
         let swapchain_adequate = !formats.is_empty() && !present_modes.is_empty();
 
-        queue_family_index_set.is_some() && swapchain_adequate
+        queue_family_index_set.is_some()
+            && swapchain_adequate
+            && features.sampler_anisotropy == vk::TRUE
     }
 }
