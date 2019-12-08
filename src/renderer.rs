@@ -450,61 +450,9 @@ impl Renderer {
         buffer.upload_to_entire_buffer::<u32, _>(&ubos);
     }
 
-    pub fn recreate_swapchain(&mut self, dimensions: Option<[u32; 2]>) {
+    pub fn recreate_swapchain(&mut self, _: Option<[u32; 2]>) {
         log::debug!("Recreating swapchain");
-
-        let dimensions = dimensions.unwrap_or([
-            self.swapchain.properties().extent.width,
-            self.swapchain.properties().extent.height,
-        ]);
-
-        self.wait_idle();
-
-        self.swapchain = Swapchain::new(self.context.clone(), dimensions);
-        self.render_pass = RenderPass::new(self.context.clone(), self.swapchain.properties());
-        self.pipeline = GraphicsPipeline::new(
-            self.context.clone(),
-            self.swapchain.properties(),
-            self.render_pass.render_pass(),
-            self.descriptor_set_layout.layout(),
-        );
-
-        // Create one framebuffer for each image in the swapchain
-        self.framebuffers = self
-            .swapchain
-            .image_views()
-            .iter()
-            .map(|view| [view.view()])
-            .map(|attachments| {
-                Framebuffer::new(
-                    self.context.clone(),
-                    self.swapchain.properties(),
-                    self.render_pass.render_pass(),
-                    &attachments,
-                )
-            })
-            .collect::<Vec<_>>();
-
-        let size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
-        self.uniform_buffers = (0..self.swapchain.images().len())
-            .map(|_| {
-                Buffer::new(
-                    self.context.clone(),
-                    size,
-                    vk::BufferUsageFlags::UNIFORM_BUFFER,
-                    vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-                )
-            })
-            .collect::<Vec<_>>();
-
-        let number_of_images = self.swapchain.images().len();
-        self.descriptor_pool = DescriptorPool::new(self.context.clone(), number_of_images as _);
-        self.descriptor_sets = self.descriptor_pool.allocate_descriptor_sets(
-            self.descriptor_set_layout.layout(),
-            self.uniform_buffers.len() as _,
-        );
-
-        self.create_command_buffers();
+        // TODO: Implement swapchain recreation
     }
 
     pub fn wait_idle(&self) {
