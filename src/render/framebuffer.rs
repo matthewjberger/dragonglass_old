@@ -1,4 +1,4 @@
-use crate::{core::SwapchainProperties, VulkanContext};
+use crate::core::{Instance, SwapchainProperties};
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -6,13 +6,13 @@ use std::sync::Arc;
 
 pub struct Framebuffer {
     framebuffer: vk::Framebuffer,
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
 }
 
 impl Framebuffer {
     // TODO: Refactor this to use less parameters
     pub fn new(
-        context: Arc<VulkanContext>,
+        instance: Arc<Instance>,
         swapchain_properties: &SwapchainProperties,
         render_pass: vk::RenderPass,
         attachments: &[vk::ImageView],
@@ -25,7 +25,7 @@ impl Framebuffer {
             .layers(1)
             .build();
         let framebuffer = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .create_framebuffer(&framebuffer_info, None)
@@ -34,7 +34,7 @@ impl Framebuffer {
 
         Framebuffer {
             framebuffer,
-            context,
+            instance,
         }
     }
 
@@ -46,7 +46,7 @@ impl Framebuffer {
 impl Drop for Framebuffer {
     fn drop(&mut self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .destroy_framebuffer(self.framebuffer, None);

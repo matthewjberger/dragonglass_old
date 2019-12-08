@@ -1,6 +1,6 @@
 use crate::{
+    core::Instance,
     resource::{Buffer, CommandPool},
-    VulkanContext,
 };
 use ash::{version::DeviceV1_0, vk};
 use std::{mem, sync::Arc};
@@ -8,14 +8,14 @@ use std::{mem, sync::Arc};
 // TODO: Add snafu errors
 
 pub struct Texture {
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
     image: vk::Image,
     memory: vk::DeviceMemory,
 }
 
 impl Texture {
     pub fn from_file(
-        context: Arc<VulkanContext>,
+        instance: Arc<Instance>,
         command_pool: &CommandPool,
         graphics_queue: vk::Queue,
         path: &str,
@@ -28,7 +28,7 @@ impl Texture {
         let image_size = (pixels.len() * mem::size_of::<u8>()) as vk::DeviceSize;
 
         let buffer = Buffer::new(
-            context.clone(),
+            instance.clone(),
             image_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE,
@@ -58,7 +58,7 @@ impl Texture {
             .build();
 
         let image = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .create_image(&image_info, None)
@@ -66,7 +66,7 @@ impl Texture {
         };
 
         let memory_requirements = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .get_image_memory_requirements(image)
@@ -74,7 +74,9 @@ impl Texture {
 
         let memory_type_index = Buffer::determine_memory_type_index(
             memory_requirements,
-            context.physical_device_memory_properties(),
+            instance
+                .physical_device()
+                .physical_device_memory_properties(),
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         );
 
@@ -84,7 +86,7 @@ impl Texture {
             .build();
 
         let memory = unsafe {
-            let logical_device = context.logical_device().logical_device();
+            let logical_device = instance.logical_device().logical_device();
             let memory_handle = logical_device
                 .allocate_memory(&allocation_info, None)
                 .unwrap();
@@ -115,7 +117,7 @@ impl Texture {
         Texture {
             image,
             memory,
-            context,
+            instance,
         }
     }
 
@@ -127,11 +129,11 @@ impl Texture {
 impl Drop for Texture {
     fn drop(&mut self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .destroy_image(self.image, None);
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .free_memory(self.memory, None);

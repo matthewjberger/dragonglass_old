@@ -1,5 +1,5 @@
 // TODO: Make a type alias for the current device version (DeviceV1_0)
-use crate::VulkanContext;
+use crate::core::Instance;
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -7,11 +7,11 @@ use std::sync::Arc;
 
 pub struct ImageView {
     view: vk::ImageView,
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
 }
 
 impl ImageView {
-    pub fn new(context: Arc<VulkanContext>, image: vk::Image, format: vk::Format) -> Self {
+    pub fn new(instance: Arc<Instance>, image: vk::Image, format: vk::Format) -> Self {
         let create_info = vk::ImageViewCreateInfo::builder()
             .image(image)
             .view_type(vk::ImageViewType::TYPE_2D)
@@ -32,14 +32,14 @@ impl ImageView {
             .build();
 
         let view = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .create_image_view(&create_info, None)
                 .unwrap()
         };
 
-        ImageView { view, context }
+        ImageView { view, instance }
     }
 
     pub fn view(&self) -> vk::ImageView {
@@ -50,7 +50,7 @@ impl ImageView {
 impl Drop for ImageView {
     fn drop(&mut self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .destroy_image_view(self.view, None);

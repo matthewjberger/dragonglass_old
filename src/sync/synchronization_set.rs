@@ -1,6 +1,6 @@
 use crate::{
+    core::Instance,
     sync::{Fence, Semaphore},
-    VulkanContext,
 };
 use ash::vk;
 use std::sync::Arc;
@@ -21,18 +21,18 @@ pub struct SynchronizationSet {
 }
 
 impl SynchronizationSet {
-    pub fn new(context: Arc<VulkanContext>) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(instance: Arc<Instance>) -> Result<Self, Box<dyn std::error::Error>> {
         let mut image_available_semaphores = Vec::new();
         let mut render_finished_semaphores = Vec::new();
         let mut in_flight_fences = Vec::new();
         for _ in 0..SynchronizationSet::MAX_FRAMES_IN_FLIGHT {
-            let image_available_semaphore = Semaphore::new(context.clone())?;
+            let image_available_semaphore = Semaphore::new(instance.clone())?;
             image_available_semaphores.push(image_available_semaphore);
 
-            let render_finished_semaphore = Semaphore::new(context.clone())?;
+            let render_finished_semaphore = Semaphore::new(instance.clone())?;
             render_finished_semaphores.push(render_finished_semaphore);
 
-            let in_flight_fence = Fence::new(context.clone(), vk::FenceCreateFlags::SIGNALED)?;
+            let in_flight_fence = Fence::new(instance.clone(), vk::FenceCreateFlags::SIGNALED)?;
             in_flight_fences.push(in_flight_fence);
         }
 

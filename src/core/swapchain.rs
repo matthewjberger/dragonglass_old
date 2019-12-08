@@ -1,4 +1,7 @@
-use crate::{core::ImageView, sync::CurrentFrameSynchronization, VulkanContext};
+use crate::{
+    core::{ImageView, Instance},
+    sync::CurrentFrameSynchronization,
+};
 use ash::{extensions::khr::Swapchain as AshSwapchain, vk};
 use std::sync::Arc;
 
@@ -30,36 +33,39 @@ pub struct SwapchainSupportDetails {
 }
 
 impl SwapchainSupportDetails {
-    pub fn new(context: &VulkanContext) -> Self {
+    pub fn new(instance: &Instance) -> Self {
         // Get the surface capabilities
         let capabilities = unsafe {
-            context
+            instance
+                .surface()
                 .surface()
                 .get_physical_device_surface_capabilities(
-                    context.physical_device(),
-                    context.surface_khr(),
+                    instance.physical_device().physical_device(),
+                    instance.surface().surface_khr(),
                 )
                 .expect("Failed to get physical device surface capabilities")
         };
 
         // Get the supported surface formats
         let formats = unsafe {
-            context
+            instance
+                .surface()
                 .surface()
                 .get_physical_device_surface_formats(
-                    context.physical_device(),
-                    context.surface_khr(),
+                    instance.physical_device().physical_device(),
+                    instance.surface().surface_khr(),
                 )
                 .expect("Failed to get physical device surface formats")
         };
 
         // Get the supported present modes
         let present_modes = unsafe {
-            context
+            instance
+                .surface()
                 .surface()
                 .get_physical_device_surface_present_modes(
-                    context.physical_device(),
-                    context.surface_khr(),
+                    instance.physical_device().physical_device(),
+                    instance.surface().surface_khr(),
                 )
                 .expect("Failed to get physical device surface present modes")
         };
@@ -148,8 +154,8 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(context: Arc<VulkanContext>, dimensions: [u32; 2]) -> Swapchain {
-        let swapchain_support_details = SwapchainSupportDetails::new(&context);
+    pub fn new(instance: Arc<Instance>, dimensions: [u32; 2]) -> Swapchain {
+        let swapchain_support_details = SwapchainSupportDetails::new(&instance);
         let capabilities = &swapchain_support_details.capabilities;
 
         let swapchain_properties = swapchain_support_details.suitable_properties(dimensions);
@@ -168,7 +174,7 @@ impl Swapchain {
 
         let swapchain_create_info = {
             let mut builder = vk::SwapchainCreateInfoKHR::builder()
-                .surface(context.surface_khr())
+                .surface(instance.surface().surface_khr())
                 .min_image_count(image_count)
                 .image_format(surface_format.format)
                 .image_color_space(surface_format.color_space)
@@ -177,19 +183,32 @@ impl Swapchain {
                 .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT);
 
             let mut queue_family_indices = vec![
-                context.graphics_queue_family_index(),
-                context.present_queue_family_index(),
+                instance
+                    .physical_device()
+                    .queue_family_index_set()
+                    .graphics_queue_family_index(),
+                instance
+                    .physical_device()
+                    .queue_family_index_set()
+                    .present_queue_family_index(),
             ];
             queue_family_indices.dedup();
 
-            builder =
-                if context.graphics_queue_family_index() != context.present_queue_family_index() {
-                    builder
-                        .image_sharing_mode(vk::SharingMode::CONCURRENT)
-                        .queue_family_indices(&queue_family_indices)
-                } else {
-                    builder.image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-                };
+            builder = if instance
+                .physical_device()
+                .queue_family_index_set()
+                .graphics_queue_family_index()
+                != instance
+                    .physical_device()
+                    .queue_family_index_set()
+                    .present_queue_family_index()
+            {
+                builder
+                    .image_sharing_mode(vk::SharingMode::CONCURRENT)
+                    .queue_family_indices(&queue_family_indices)
+            } else {
+                builder.image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+            };
 
             builder
                 .pre_transform(capabilities.current_transform)
@@ -200,8 +219,8 @@ impl Swapchain {
         };
 
         let swapchain = AshSwapchain::new(
-            context.instance(),
-            context.logical_device().logical_device(),
+            instance.instance(),
+            instance.logical_device().logical_device(),
         );
         let swapchain_khr = unsafe {
             swapchain
@@ -229,7 +248,7 @@ Creating swapchain.
         let image_views = images
             .iter()
             .map(|image| {
-                ImageView::new(context.clone(), *image, swapchain_properties.format.format)
+                ImageView::new(instance.clone(), *image, swapchain_properties.format.format)
             })
             .collect::<Vec<_>>();
 

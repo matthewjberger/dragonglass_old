@@ -1,4 +1,7 @@
-use crate::core::{surface::surface_extension_names, DebugLayer, LayerNameVec};
+use crate::core::{
+    surface::{surface_extension_names, Surface},
+    DebugLayer, LayerNameVec, LogicalDevice, PhysicalDevice,
+};
 use ash::{
     extensions::ext::DebugUtils,
     version::{EntryV1_0, InstanceV1_0},
@@ -25,6 +28,16 @@ pub enum Error {
 
     #[snafu(display("Failed to create a c-string from the engine name: {}", source))]
     EngineNameCreation { source: std::ffi::NulError },
+
+    #[snafu(display("Failed to create logical device: {}", source))]
+    LogicalDeviceCreation {
+        source: crate::core::logical_device::Error,
+    },
+
+    #[snafu(display("Failed to create physical device: {}", source))]
+    PhysicalDeviceCreation {
+        source: crate::core::physical_device::Error,
+    },
 }
 
 trait ApplicationDescription {
@@ -44,12 +57,15 @@ impl ApplicationDescription for Instance {
 }
 
 pub struct Instance {
-    entry: ash::Entry,
+    logical_device: LogicalDevice,
+    physical_device: PhysicalDevice,
+    surface: Surface,
+    _entry: ash::Entry,
     instance: ash::Instance,
 }
 
 impl Instance {
-    pub fn new() -> Result<Self> {
+    pub fn new(window: &winit::Window) -> Result<Self> {
         let entry = ash::Entry::new().context(EntryLoading)?;
         Self::check_required_layers_supported(&entry);
         let app_info = Self::build_application_creation_info()?;
@@ -65,11 +81,31 @@ impl Instance {
                 .create_instance(&instance_create_info, None)
                 .context(InstanceCreation)?
         };
-        Ok(Instance { entry, instance })
+        // TODO: Reverse the 'instance, entry' order to be 'entry, instance'
+        let surface = Surface::new(&instance, &entry, window);
+        let physical_device =
+            PhysicalDevice::new(&instance, &entry, &surface).context(PhysicalDeviceCreation)?;
+        let logical_device =
+            LogicalDevice::new(&instance, &physical_device).context(LogicalDeviceCreation)?;
+        Ok(Instance {
+            logical_device,
+            physical_device,
+            surface,
+            _entry: entry,
+            instance,
+        })
     }
 
-    pub fn entry(&self) -> &ash::Entry {
-        &self.entry
+    pub fn logical_device(&self) -> &LogicalDevice {
+        &self.logical_device
+    }
+
+    pub fn physical_device(&self) -> &PhysicalDevice {
+        &self.physical_device
+    }
+
+    pub fn surface(&self) -> &Surface {
+        &self.surface
     }
 
     pub fn instance(&self) -> &ash::Instance {
@@ -113,7 +149,7 @@ impl Instance {
         for layer_name in layer_name_vec.layer_names.iter() {
             let all_layers_supported = entry
                 .enumerate_instance_layer_properties()
-                .expect("Couldn't enumerate instance layer properties")
+                .unwrap()
                 .iter()
                 .any(|layer| {
                     let name = unsafe { CStr::from_ptr(layer.layer_name.as_ptr()) };

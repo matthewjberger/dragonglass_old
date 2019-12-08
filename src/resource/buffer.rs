@@ -1,4 +1,4 @@
-use crate::VulkanContext;
+use crate::core::Instance;
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -8,13 +8,13 @@ pub struct Buffer {
     buffer: vk::Buffer,
     memory: vk::DeviceMemory,
     memory_requirements: vk::MemoryRequirements,
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
 }
 
 impl Buffer {
     // TODO: Refactor this to use less parameters and be shorter
     pub fn new(
-        context: Arc<VulkanContext>,
+        instance: Arc<Instance>,
         size: ash::vk::DeviceSize,
         usage: vk::BufferUsageFlags,
         required_properties: vk::MemoryPropertyFlags,
@@ -28,7 +28,7 @@ impl Buffer {
 
         // Create the staging buffer
         let buffer = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .create_buffer(&buffer_info, None)
@@ -37,7 +37,7 @@ impl Buffer {
 
         // Get the buffer's memory requirements
         let memory_requirements = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .get_buffer_memory_requirements(buffer)
@@ -45,7 +45,9 @@ impl Buffer {
 
         let memory_type = Self::determine_memory_type_index(
             memory_requirements,
-            context.physical_device_memory_properties(),
+            instance
+                .physical_device()
+                .physical_device_memory_properties(),
             required_properties,
         );
 
@@ -57,7 +59,7 @@ impl Buffer {
 
         // Allocate memory for the buffer
         let memory = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .allocate_memory(&buffer_allocation_info, None)
@@ -66,7 +68,7 @@ impl Buffer {
 
         unsafe {
             // Bind the buffer memory for mapping
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .bind_buffer_memory(buffer, memory, 0)
@@ -77,7 +79,7 @@ impl Buffer {
             buffer,
             memory,
             memory_requirements,
-            context,
+            instance,
         }
     }
 
@@ -136,7 +138,7 @@ impl Buffer {
         flags: vk::MemoryMapFlags,
     ) -> *mut std::ffi::c_void {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .map_memory(self.memory, offset, size, flags)
@@ -146,7 +148,7 @@ impl Buffer {
 
     fn unmap(&self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .unmap_memory(self.memory());
@@ -165,11 +167,11 @@ impl Buffer {
 impl Drop for Buffer {
     fn drop(&mut self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .destroy_buffer(self.buffer, None);
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .free_memory(self.memory, None);

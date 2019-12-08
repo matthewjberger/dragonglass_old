@@ -1,6 +1,5 @@
 use crate::{
-    context::VulkanContext,
-    core::{ImageView, Swapchain},
+    core::{ImageView, Instance, Swapchain},
     render::{Framebuffer, GraphicsPipeline, RenderPass},
     resource::{Buffer, CommandPool, DescriptorPool, DescriptorSetLayout, Sampler, Texture},
     sync::{SynchronizationSet, SynchronizationSetConstants},
@@ -28,8 +27,10 @@ impl UniformBufferObject {
     }
 }
 
+// TODO: Refactor this to be smaller by moving the logical device
+// into the context
 pub struct Renderer {
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
     pub command_pool: CommandPool,
     pub descriptor_pool: DescriptorPool,
     pub descriptor_set_layout: DescriptorSetLayout,
@@ -59,14 +60,13 @@ impl Renderer {
         vertices: &[Vertex],
         indices: &[u16],
     ) -> Self {
-        let context =
-            Arc::new(VulkanContext::new(&window).expect("Failed to create VulkanContext"));
+        let instance = Arc::new(Instance::new(&window).expect("Failed to create VulkanInstance"));
 
         let synchronization_set =
-            SynchronizationSet::new(context.clone()).expect("Failed to create sync objects");
+            SynchronizationSet::new(instance.clone()).expect("Failed to create sync objects");
 
         unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .device_wait_idle()
@@ -74,21 +74,27 @@ impl Renderer {
         };
 
         let graphics_queue = unsafe {
-            context
-                .logical_device()
-                .logical_device()
-                .get_device_queue(context.graphics_queue_family_index(), 0)
+            instance.logical_device().logical_device().get_device_queue(
+                instance
+                    .physical_device()
+                    .queue_family_index_set()
+                    .graphics_queue_family_index(),
+                0,
+            )
         };
 
         let present_queue = unsafe {
-            context
-                .logical_device()
-                .logical_device()
-                .get_device_queue(context.present_queue_family_index(), 0)
+            instance.logical_device().logical_device().get_device_queue(
+                instance
+                    .physical_device()
+                    .queue_family_index_set()
+                    .present_queue_family_index(),
+                0,
+            )
         };
 
-        let swapchain = Swapchain::new(context.clone(), dimensions);
-        let render_pass = RenderPass::new(context.clone(), swapchain.properties());
+        let swapchain = Swapchain::new(instance.clone(), dimensions);
+        let render_pass = RenderPass::new(instance.clone(), swapchain.properties());
 
         let ubo_binding = UniformBufferObject::get_descriptor_set_layout_bindings();
         let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
@@ -98,10 +104,10 @@ impl Renderer {
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .build();
         let bindings = [ubo_binding, sampler_binding];
-        let descriptor_set_layout = DescriptorSetLayout::new(context.clone(), &bindings);
+        let descriptor_set_layout = DescriptorSetLayout::new(instance.clone(), &bindings);
 
         let pipeline = GraphicsPipeline::new(
-            context.clone(),
+            instance.clone(),
             swapchain.properties(),
             render_pass.render_pass(),
             descriptor_set_layout.layout(),
@@ -114,7 +120,7 @@ impl Renderer {
             .map(|view| [view.view()])
             .map(|attachments| {
                 Framebuffer::new(
-                    context.clone(),
+                    instance.clone(),
                     swapchain.properties(),
                     render_pass.render_pass(),
                     &attachments,
@@ -123,11 +129,11 @@ impl Renderer {
             .collect::<Vec<_>>();
 
         let number_of_images = swapchain.images().len();
-        let descriptor_pool = DescriptorPool::new(context.clone(), number_of_images as _);
+        let descriptor_pool = DescriptorPool::new(instance.clone(), number_of_images as _);
 
-        let command_pool = CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::empty());
+        let command_pool = CommandPool::new(instance.clone(), vk::CommandPoolCreateFlags::empty());
         let transient_command_pool =
-            CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::TRANSIENT);
+            CommandPool::new(instance.clone(), vk::CommandPoolCreateFlags::TRANSIENT);
 
         let vertex_buffer = transient_command_pool.create_device_local_buffer::<u32, _>(
             graphics_queue,
@@ -145,7 +151,7 @@ impl Renderer {
         let uniform_buffers = (0..swapchain.images().len())
             .map(|_| {
                 Buffer::new(
-                    context.clone(),
+                    instance.clone(),
                     size,
                     vk::BufferUsageFlags::UNIFORM_BUFFER,
                     vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
@@ -157,15 +163,18 @@ impl Renderer {
             .allocate_descriptor_sets(descriptor_set_layout.layout(), uniform_buffers.len() as _);
 
         let texture = Texture::from_file(
-            context.clone(),
+            instance.clone(),
             &command_pool,
             graphics_queue,
             "textures/crate.jpg",
         );
 
-        let texture_image_view =
-            ImageView::new(context.clone(), texture.image(), vk::Format::R8G8B8A8_UNORM);
-        let texture_image_sampler = Sampler::new(context.clone());
+        let texture_image_view = ImageView::new(
+            instance.clone(),
+            texture.image(),
+            vk::Format::R8G8B8A8_UNORM,
+        );
+        let texture_image_sampler = Sampler::new(instance.clone());
 
         descriptor_pool.update_descriptor_sets(
             &descriptor_sets,
@@ -177,7 +186,7 @@ impl Renderer {
 
         let mut vulkan_swapchain = Renderer {
             command_pool,
-            context,
+            instance,
             descriptor_pool,
             descriptor_set_layout,
             descriptor_sets,
@@ -208,7 +217,7 @@ impl Renderer {
             .synchronization_set
             .current_frame_synchronization(self.current_frame);
 
-        self.context
+        self.instance
             .logical_device()
             .wait_for_fence(&current_frame_synchronization);
 
@@ -228,7 +237,7 @@ impl Renderer {
         };
         let image_indices = [image_index];
 
-        self.context
+        self.instance
             .logical_device()
             .reset_fence(&current_frame_synchronization);
 
@@ -302,7 +311,7 @@ impl Renderer {
             .flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE)
             .build();
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .begin_command_buffer(command_buffer, &command_buffer_begin_info)
@@ -326,7 +335,7 @@ impl Renderer {
             .build();
 
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .cmd_begin_render_pass(
@@ -336,7 +345,7 @@ impl Renderer {
                 );
 
             // Bind pipeline
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .cmd_bind_pipeline(
@@ -350,13 +359,13 @@ impl Renderer {
 
         unsafe {
             // End render pass
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .cmd_end_render_pass(command_buffer);
 
             // End command buffer
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .end_command_buffer(command_buffer)
@@ -372,7 +381,7 @@ impl Renderer {
         image_index: usize,
     ) {
         // Bind pipeline
-        self.context
+        self.instance
             .logical_device()
             .logical_device()
             .cmd_bind_pipeline(
@@ -384,13 +393,13 @@ impl Renderer {
         // Bind vertex buffer
         let offsets = [0];
         let vertex_buffers = [self.vertex_buffer.buffer()];
-        self.context
+        self.instance
             .logical_device()
             .logical_device()
             .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
 
         // Bind index buffer
-        self.context
+        self.instance
             .logical_device()
             .logical_device()
             .cmd_bind_index_buffer(
@@ -402,7 +411,7 @@ impl Renderer {
 
         // Bind descriptor sets
         let null = [];
-        self.context
+        self.instance
             .logical_device()
             .logical_device()
             .cmd_bind_descriptor_sets(
@@ -415,7 +424,7 @@ impl Renderer {
             );
 
         // Draw
-        self.context
+        self.instance
             .logical_device()
             .logical_device()
             .cmd_draw_indexed(command_buffer, number_of_indices, 1, 0, 0, 0);
@@ -457,7 +466,7 @@ impl Renderer {
 
     pub fn wait_idle(&self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .device_wait_idle()

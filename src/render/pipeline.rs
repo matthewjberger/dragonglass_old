@@ -1,8 +1,7 @@
 use crate::{
-    core::SwapchainProperties,
+    core::{Instance, SwapchainProperties},
     resource::{PipelineLayout, Shader},
     vertex::Vertex,
-    VulkanContext,
 };
 use ash::{version::DeviceV1_0, vk};
 use std::{ffi::CString, sync::Arc};
@@ -10,14 +9,14 @@ use std::{ffi::CString, sync::Arc};
 pub struct GraphicsPipeline {
     pipeline: vk::Pipeline,
     pipeline_layout: PipelineLayout,
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
 }
 
 impl GraphicsPipeline {
     // TODO: Refactor this to use less parameters
     // TODO: Refactor fixed function steps to separate functions
     pub fn new(
-        context: Arc<VulkanContext>,
+        instance: Arc<Instance>,
         swapchain_properties: &SwapchainProperties,
         render_pass: vk::RenderPass,
         descriptor_set_layout: vk::DescriptorSetLayout,
@@ -25,14 +24,14 @@ impl GraphicsPipeline {
         let shader_entry_point_name = &CString::new("main").unwrap();
 
         let vertex_shader = Shader::from_file(
-            context.clone(),
+            instance.clone(),
             "shaders/shader.vert.spv",
             vk::ShaderStageFlags::VERTEX,
             shader_entry_point_name,
         );
 
         let fragment_shader = Shader::from_file(
-            context.clone(),
+            instance.clone(),
             "shaders/shader.frag.spv",
             vk::ShaderStageFlags::FRAGMENT,
             shader_entry_point_name,
@@ -126,7 +125,7 @@ impl GraphicsPipeline {
 
         // Build the pipeline layout info
         let descriptor_set_layouts = [descriptor_set_layout];
-        let pipeline_layout = PipelineLayout::new(context.clone(), &descriptor_set_layouts);
+        let pipeline_layout = PipelineLayout::new(instance.clone(), &descriptor_set_layouts);
 
         // Create the pipeline info
         let pipeline_info = vk::GraphicsPipelineCreateInfo::builder()
@@ -148,7 +147,7 @@ impl GraphicsPipeline {
 
         // Create the pipeline
         let pipeline = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .create_graphics_pipelines(vk::PipelineCache::null(), &pipeline_info_arr, None)
@@ -158,7 +157,7 @@ impl GraphicsPipeline {
         GraphicsPipeline {
             pipeline,
             pipeline_layout,
-            context,
+            instance,
         }
     }
 
@@ -174,7 +173,7 @@ impl GraphicsPipeline {
 impl Drop for GraphicsPipeline {
     fn drop(&mut self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .destroy_pipeline(self.pipeline, None);

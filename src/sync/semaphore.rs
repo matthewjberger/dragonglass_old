@@ -1,4 +1,4 @@
-use crate::VulkanContext;
+use crate::core::Instance;
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -15,20 +15,23 @@ pub enum Error {
 
 pub struct Semaphore {
     semaphore: vk::Semaphore,
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
 }
 
 impl Semaphore {
-    pub fn new(context: Arc<VulkanContext>) -> Result<Self> {
+    pub fn new(instance: Arc<Instance>) -> Result<Self> {
         let semaphore_info = vk::SemaphoreCreateInfo::builder().build();
         let semaphore = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .create_semaphore(&semaphore_info, None)
                 .context(SemaphoreCreation)?
         };
-        Ok(Semaphore { semaphore, context })
+        Ok(Semaphore {
+            semaphore,
+            instance,
+        })
     }
 
     pub fn semaphore(&self) -> vk::Semaphore {
@@ -39,7 +42,7 @@ impl Semaphore {
 impl Drop for Semaphore {
     fn drop(&mut self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .destroy_semaphore(self.semaphore, None)

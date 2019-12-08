@@ -1,4 +1,3 @@
-use crate::core::Instance;
 use ash::{
     extensions::ext::DebugUtils,
     vk::{
@@ -30,12 +29,12 @@ pub struct DebugLayer {
 
 // TODO: Make the constructor use a Result
 impl DebugLayer {
-    pub fn new(instance: &Instance) -> Result<Option<Self>> {
+    pub fn new(entry: &ash::Entry, instance: &ash::Instance) -> Result<Option<Self>> {
         if !DebugLayer::validation_layers_enabled() {
             return Ok(None);
         }
 
-        let debug_utils = DebugUtils::new(instance.entry(), instance.instance());
+        let debug_utils = DebugUtils::new(entry, instance);
         let create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
             .flags(vk::DebugUtilsMessengerCreateFlagsEXT::all())
             .message_severity(vk::DebugUtilsMessageSeverityFlagsEXT::all())

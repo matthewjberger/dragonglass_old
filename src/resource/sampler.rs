@@ -1,4 +1,4 @@
-use crate::VulkanContext;
+use crate::core::Instance;
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 pub struct Sampler {
     sampler: vk::Sampler,
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
 }
 
 impl Sampler {
-    pub fn new(context: Arc<VulkanContext>) -> Self {
+    pub fn new(instance: Arc<Instance>) -> Self {
         let sampler_info = vk::SamplerCreateInfo::builder()
             .mag_filter(vk::Filter::LINEAR)
             .min_filter(vk::Filter::LINEAR)
@@ -31,14 +31,14 @@ impl Sampler {
             .build();
 
         let sampler = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .create_sampler(&sampler_info, None)
                 .unwrap()
         };
 
-        Sampler { sampler, context }
+        Sampler { sampler, instance }
     }
 
     pub fn sampler(&self) -> vk::Sampler {
@@ -49,7 +49,7 @@ impl Sampler {
 impl Drop for Sampler {
     fn drop(&mut self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .destroy_sampler(self.sampler, None)

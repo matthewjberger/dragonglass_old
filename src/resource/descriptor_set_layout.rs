@@ -1,5 +1,5 @@
 // TODO: Make a type alias for the current device version (DeviceV1_0)
-use crate::VulkanContext;
+use crate::core::Instance;
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -7,23 +7,23 @@ use std::sync::Arc;
 
 pub struct DescriptorSetLayout {
     layout: vk::DescriptorSetLayout,
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
 }
 
 impl DescriptorSetLayout {
-    pub fn new(context: Arc<VulkanContext>, bindings: &[vk::DescriptorSetLayoutBinding]) -> Self {
+    pub fn new(instance: Arc<Instance>, bindings: &[vk::DescriptorSetLayoutBinding]) -> Self {
         let layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
             .bindings(&bindings)
             .build();
         let layout = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .create_descriptor_set_layout(&layout_info, None)
                 .unwrap()
         };
 
-        DescriptorSetLayout { layout, context }
+        DescriptorSetLayout { layout, instance }
     }
 
     pub fn layout(&self) -> vk::DescriptorSetLayout {
@@ -34,7 +34,7 @@ impl DescriptorSetLayout {
 impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .destroy_descriptor_set_layout(self.layout, None);

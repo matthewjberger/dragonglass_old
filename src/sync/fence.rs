@@ -1,4 +1,4 @@
-use crate::VulkanContext;
+use crate::core::Instance;
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -15,21 +15,21 @@ pub enum Error {
 
 pub struct Fence {
     fence: vk::Fence,
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
 }
 
 impl Fence {
-    pub fn new(context: Arc<VulkanContext>, flags: vk::FenceCreateFlags) -> Result<Self> {
+    pub fn new(instance: Arc<Instance>, flags: vk::FenceCreateFlags) -> Result<Self> {
         let fence_info = vk::FenceCreateInfo::builder().flags(flags).build();
         let fence = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .create_fence(&fence_info, None)
                 .context(FenceCreation)?
         };
 
-        Ok(Fence { fence, context })
+        Ok(Fence { fence, instance })
     }
 
     pub fn fence(&self) -> vk::Fence {
@@ -40,7 +40,7 @@ impl Fence {
 impl Drop for Fence {
     fn drop(&mut self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .destroy_fence(self.fence, None)

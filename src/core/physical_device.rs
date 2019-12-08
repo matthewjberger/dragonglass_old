@@ -1,4 +1,4 @@
-use crate::core::{DebugLayer, Instance, QueueFamilyIndexSet, Surface};
+use crate::core::{DebugLayer, QueueFamilyIndexSet, Surface};
 use ash::{version::InstanceV1_0, vk};
 use std::ffi::CStr;
 
@@ -25,19 +25,16 @@ pub struct PhysicalDevice {
 }
 
 impl PhysicalDevice {
-    pub fn new(instance: &Instance, surface: &Surface) -> Result<Self> {
-        let physical_device = Self::pick_physical_device(instance.instance(), surface);
-        let physical_device_memory_properties = unsafe {
-            instance
-                .instance()
-                .get_physical_device_memory_properties(physical_device)
-        };
-        let debug_layer = DebugLayer::new(instance).context(DebugLayerCreation)?;
+    pub fn new(instance: &ash::Instance, entry: &ash::Entry, surface: &Surface) -> Result<Self> {
+        let physical_device = Self::pick_physical_device(instance, surface);
+        let physical_device_memory_properties =
+            unsafe { instance.get_physical_device_memory_properties(physical_device) };
+        let debug_layer = DebugLayer::new(entry, instance).context(DebugLayerCreation)?;
 
         // TODO: This is called twice on the physical device that is deemed suitable.
         // reduce it to one call, storing the set on the first pass
         let queue_family_index_set =
-            QueueFamilyIndexSet::new(instance.instance(), physical_device, surface).unwrap();
+            QueueFamilyIndexSet::new(instance, physical_device, surface).unwrap();
 
         Ok(PhysicalDevice {
             physical_device,
@@ -74,7 +71,7 @@ impl PhysicalDevice {
         let physical_device = devices
             .into_iter()
             .find(|physical_device| {
-                Self::is_physical_device_suitable(instance, *physical_device, surface)
+                Self::is_physical_device_suitable(&instance, *physical_device, surface)
             })
             .expect("Failed to find a suitable physical device");
 

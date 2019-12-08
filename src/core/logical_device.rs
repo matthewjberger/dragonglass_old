@@ -25,7 +25,7 @@ pub struct LogicalDevice {
 }
 
 impl LogicalDevice {
-    pub fn new(instance: &Instance, physical_device: &PhysicalDevice) -> Result<Self> {
+    pub fn new(instance: &ash::Instance, physical_device: &PhysicalDevice) -> Result<Self> {
         let device_extensions = [Swapchain::name().as_ptr()];
         let queue_creation_info_list = Self::build_queue_creation_info_list(physical_device);
         let device_features = vk::PhysicalDeviceFeatures::builder().build();
@@ -43,7 +43,6 @@ impl LogicalDevice {
 
         let logical_device = unsafe {
             instance
-                .instance()
                 .create_device(
                     physical_device.physical_device(),
                     &device_create_info_builder.build(),

@@ -1,4 +1,4 @@
-use crate::{core::SwapchainProperties, VulkanContext};
+use crate::core::{Instance, SwapchainProperties};
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -6,11 +6,11 @@ use std::sync::Arc;
 
 pub struct RenderPass {
     render_pass: vk::RenderPass,
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
 }
 
 impl RenderPass {
-    pub fn new(context: Arc<VulkanContext>, swapchain_properties: &SwapchainProperties) -> Self {
+    pub fn new(instance: Arc<Instance>, swapchain_properties: &SwapchainProperties) -> Self {
         let attachment_description = vk::AttachmentDescription::builder()
             .format(swapchain_properties.format.format)
             .samples(vk::SampleCountFlags::TYPE_1)
@@ -52,7 +52,7 @@ impl RenderPass {
             .build();
 
         let render_pass = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .create_render_pass(&render_pass_info, None)
@@ -61,7 +61,7 @@ impl RenderPass {
 
         RenderPass {
             render_pass,
-            context,
+            instance,
         }
     }
 
@@ -73,7 +73,7 @@ impl RenderPass {
 impl Drop for RenderPass {
     fn drop(&mut self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .destroy_render_pass(self.render_pass, None);

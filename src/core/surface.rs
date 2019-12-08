@@ -1,4 +1,3 @@
-use crate::core::Instance;
 use ash::{
     extensions::khr::Surface as AshSurface,
     version::{EntryV1_0, InstanceV1_0},
@@ -12,11 +11,10 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub fn new(instance: &Instance, window: &winit::Window) -> Self {
-        let surface = AshSurface::new(instance.entry(), instance.instance());
+    pub fn new(instance: &ash::Instance, entry: &ash::Entry, window: &winit::Window) -> Self {
+        let surface = AshSurface::new(entry, instance);
         let surface_khr = unsafe {
-            create_surface(instance.entry(), instance.instance(), window)
-                .expect("Failed to create window surface!")
+            create_surface(entry, instance, window).expect("Failed to create window surface!")
         };
 
         Surface {
@@ -36,6 +34,7 @@ impl Surface {
 
 impl Drop for Surface {
     fn drop(&mut self) {
+        println!("Dropping Surface");
         unsafe {
             self.surface.destroy_surface(self.surface_khr, None);
         }

@@ -1,11 +1,11 @@
-use crate::VulkanContext;
+use crate::core::Instance;
 use ash::{version::DeviceV1_0, vk};
 use std::{ffi::CStr, sync::Arc};
 
 // TODO: Add snafu errors
 
 pub struct Shader {
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
     module: vk::ShaderModule,
     state_info: vk::PipelineShaderStageCreateInfo,
 }
@@ -13,7 +13,7 @@ pub struct Shader {
 impl Shader {
     // TODO: Refactor this to have less parameters
     pub fn from_file(
-        context: Arc<VulkanContext>,
+        instance: Arc<Instance>,
         path: &str,
         flags: vk::ShaderStageFlags,
         entry_point_name: &CStr,
@@ -25,7 +25,7 @@ impl Shader {
             .code(&shader_source)
             .build();
         let module = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .create_shader_module(&shader_create_info, None)
@@ -34,7 +34,7 @@ impl Shader {
         let state_info = Self::create_state_info(module, flags, entry_point_name);
         Shader {
             module,
-            context,
+            instance,
             state_info,
         }
     }
@@ -59,7 +59,7 @@ impl Shader {
 impl Drop for Shader {
     fn drop(&mut self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .destroy_shader_module(self.module, None);

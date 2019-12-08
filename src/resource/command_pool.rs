@@ -1,5 +1,5 @@
 // TODO: Make a type alias for the current device version (DeviceV1_0)
-use crate::{resource::Buffer, sync::CurrentFrameSynchronization, VulkanContext};
+use crate::{core::Instance, resource::Buffer, sync::CurrentFrameSynchronization};
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -7,19 +7,24 @@ use std::sync::Arc;
 
 pub struct CommandPool {
     pool: vk::CommandPool,
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
     command_buffers: Vec<vk::CommandBuffer>,
 }
 
 impl CommandPool {
-    pub fn new(context: Arc<VulkanContext>, flags: vk::CommandPoolCreateFlags) -> Self {
+    pub fn new(instance: Arc<Instance>, flags: vk::CommandPoolCreateFlags) -> Self {
         let command_pool_info = vk::CommandPoolCreateInfo::builder()
-            .queue_family_index(context.graphics_queue_family_index())
+            .queue_family_index(
+                instance
+                    .physical_device()
+                    .queue_family_index_set()
+                    .graphics_queue_family_index(),
+            )
             .flags(flags)
             .build();
 
         let pool = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .create_command_pool(&command_pool_info, None)
@@ -28,7 +33,7 @@ impl CommandPool {
 
         CommandPool {
             pool,
-            context,
+            instance,
             command_buffers: Vec::new(),
         }
     }
@@ -49,7 +54,7 @@ impl CommandPool {
             .build();
 
         self.command_buffers = unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .allocate_command_buffers(&allocate_info)
@@ -60,7 +65,7 @@ impl CommandPool {
     pub fn clear_command_buffers(&mut self) {
         if !self.command_buffers.is_empty() {
             unsafe {
-                self.context
+                self.instance
                     .logical_device()
                     .logical_device()
                     .free_command_buffers(self.pool, &self.command_buffers);
@@ -79,7 +84,7 @@ impl CommandPool {
             (vertices.len() * std::mem::size_of::<T>() as usize) as ash::vk::DeviceSize;
 
         let staging_buffer = Buffer::new(
-            self.context.clone(),
+            self.instance.clone(),
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
@@ -88,7 +93,7 @@ impl CommandPool {
         staging_buffer.upload_to_entire_buffer::<A, _>(&vertices);
 
         let vertex_buffer = Buffer::new(
-            self.context.clone(),
+            self.instance.clone(),
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_DST | usage_flags,
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
@@ -124,7 +129,7 @@ impl CommandPool {
             .build();
         let submit_info_arr = [submit_info];
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .queue_submit(
@@ -154,7 +159,7 @@ impl CommandPool {
 
             // Copy the bytes of the staging buffer to the vertex buffer
             unsafe {
-                self.context
+                self.instance
                     .logical_device()
                     .logical_device()
                     .cmd_copy_buffer(command_buffer, source, destination, &regions)
@@ -190,7 +195,7 @@ impl CommandPool {
                 .build();
             let regions = [region];
             unsafe {
-                self.context
+                self.instance
                     .logical_device()
                     .logical_device()
                     .cmd_copy_buffer_to_image(
@@ -220,7 +225,7 @@ impl CommandPool {
                 .build();
 
             unsafe {
-                self.context
+                self.instance
                     .logical_device()
                     .logical_device()
                     .allocate_command_buffers(&allocation_info)
@@ -233,7 +238,7 @@ impl CommandPool {
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
             .build();
-        let logical_device = self.context.logical_device().logical_device();
+        let logical_device = self.instance.logical_device().logical_device();
 
         unsafe {
             logical_device
@@ -317,7 +322,7 @@ impl CommandPool {
             let barriers = [barrier];
 
             unsafe {
-                self.context
+                self.instance
                     .logical_device()
                     .logical_device()
                     .cmd_pipeline_barrier(
@@ -338,7 +343,7 @@ impl Drop for CommandPool {
     fn drop(&mut self) {
         self.clear_command_buffers();
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .destroy_command_pool(self.pool, None);

@@ -1,8 +1,7 @@
 // TODO: Make a type alias for the current device version (DeviceV1_0)
 use crate::{
-    core::ImageView,
+    core::{ImageView, Instance},
     resource::{Buffer, Sampler},
-    VulkanContext,
 };
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
@@ -11,11 +10,11 @@ use std::sync::Arc;
 
 pub struct DescriptorPool {
     pool: vk::DescriptorPool,
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
 }
 
 impl DescriptorPool {
-    pub fn new(context: Arc<VulkanContext>, size: u32) -> Self {
+    pub fn new(instance: Arc<Instance>, size: u32) -> Self {
         let ubo_pool_size = vk::DescriptorPoolSize {
             ty: vk::DescriptorType::UNIFORM_BUFFER,
             descriptor_count: size,
@@ -34,14 +33,14 @@ impl DescriptorPool {
             .build();
 
         let pool = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .create_descriptor_pool(&pool_info, None)
                 .unwrap()
         };
 
-        DescriptorPool { pool, context }
+        DescriptorPool { pool, instance }
     }
 
     pub fn allocate_descriptor_sets(
@@ -55,7 +54,7 @@ impl DescriptorPool {
             .set_layouts(&layouts)
             .build();
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .allocate_descriptor_sets(&allocation_info)
@@ -109,7 +108,7 @@ impl DescriptorPool {
                 let descriptor_writes = [ubo_descriptor_write, sampler_descriptor_write];
 
                 unsafe {
-                    self.context
+                    self.instance
                         .logical_device()
                         .logical_device()
                         .update_descriptor_sets(&descriptor_writes, &[])
@@ -121,7 +120,7 @@ impl DescriptorPool {
 impl Drop for DescriptorPool {
     fn drop(&mut self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .destroy_descriptor_pool(self.pool, None);

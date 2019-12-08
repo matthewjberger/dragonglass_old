@@ -1,5 +1,5 @@
 // TODO: Make a type alias for the current device version (DeviceV1_0)
-use crate::VulkanContext;
+use crate::core::Instance;
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -7,12 +7,12 @@ use std::sync::Arc;
 
 pub struct PipelineLayout {
     layout: vk::PipelineLayout,
-    context: Arc<VulkanContext>,
+    instance: Arc<Instance>,
 }
 
 impl PipelineLayout {
     pub fn new(
-        context: Arc<VulkanContext>,
+        instance: Arc<Instance>,
         descriptor_set_layouts: &[vk::DescriptorSetLayout],
     ) -> Self {
         let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
@@ -21,14 +21,14 @@ impl PipelineLayout {
             .build();
 
         let layout = unsafe {
-            context
+            instance
                 .logical_device()
                 .logical_device()
                 .create_pipeline_layout(&pipeline_layout_info, None)
                 .unwrap()
         };
 
-        PipelineLayout { layout, context }
+        PipelineLayout { layout, instance }
     }
 
     pub fn layout(&self) -> vk::PipelineLayout {
@@ -39,7 +39,7 @@ impl PipelineLayout {
 impl Drop for PipelineLayout {
     fn drop(&mut self) {
         unsafe {
-            self.context
+            self.instance
                 .logical_device()
                 .logical_device()
                 .destroy_pipeline_layout(self.layout, None);

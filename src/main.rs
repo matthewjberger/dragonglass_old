@@ -1,5 +1,4 @@
 mod app;
-mod context;
 mod core;
 mod render;
 mod renderer;
@@ -8,7 +7,6 @@ mod sync;
 mod vertex;
 
 use app::App;
-use context::VulkanContext;
 
 fn main() {
     env_logger::init();
