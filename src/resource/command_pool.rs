@@ -141,14 +141,14 @@ impl CommandPool {
         transfer_queue: vk::Queue,
         source: vk::Buffer,
         destination: vk::Buffer,
-        buffer_size: vk::DeviceSize,
+        size: vk::DeviceSize,
     ) {
         self.execute_command_once(transfer_queue, |command_buffer| {
             // Define the region for the buffer copy
             let region = vk::BufferCopy {
                 src_offset: 0,
                 dst_offset: 0,
-                size: buffer_size as _,
+                size,
             };
             let regions = [region];
 
@@ -264,6 +264,73 @@ impl CommandPool {
             // Free the command buffer
             logical_device.free_command_buffers(self.pool(), &command_buffers);
         };
+    }
+
+    pub fn transition_image_layout(
+        &self,
+        transition_queue: vk::Queue,
+        image: vk::Image,
+        _format: vk::Format,
+        old_layout: vk::ImageLayout,
+        new_layout: vk::ImageLayout,
+    ) {
+        self.execute_command_once(transition_queue, |command_buffer| {
+            let (src_access_mask, dst_access_mask, src_stage, dst_stage) =
+                match (old_layout, new_layout) {
+                    (vk::ImageLayout::UNDEFINED, vk::ImageLayout::TRANSFER_DST_OPTIMAL) => (
+                        vk::AccessFlags::empty(),
+                        vk::AccessFlags::TRANSFER_WRITE,
+                        vk::PipelineStageFlags::TOP_OF_PIPE,
+                        vk::PipelineStageFlags::TRANSFER,
+                    ),
+                    (
+                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                        vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                    ) => (
+                        vk::AccessFlags::TRANSFER_WRITE,
+                        vk::AccessFlags::SHADER_READ,
+                        vk::PipelineStageFlags::TRANSFER,
+                        vk::PipelineStageFlags::FRAGMENT_SHADER,
+                    ),
+                    _ => panic!(
+                        "Unsupported layout transition({:?} => {:?})",
+                        old_layout, new_layout
+                    ),
+                };
+
+            let barrier = vk::ImageMemoryBarrier::builder()
+                .old_layout(old_layout)
+                .new_layout(new_layout)
+                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .image(image)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                })
+                .src_access_mask(src_access_mask)
+                .dst_access_mask(dst_access_mask)
+                .build();
+            let barriers = [barrier];
+
+            unsafe {
+                self.context
+                    .logical_device()
+                    .logical_device()
+                    .cmd_pipeline_barrier(
+                        command_buffer,
+                        src_stage,
+                        dst_stage,
+                        vk::DependencyFlags::empty(),
+                        &[],
+                        &[],
+                        &barriers,
+                    )
+            };
+        });
     }
 }
 

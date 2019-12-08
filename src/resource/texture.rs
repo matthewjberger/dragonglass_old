@@ -1,6 +1,7 @@
-// use image::{DynamicImage, GenericImageView};
-
-use crate::{resource::Buffer, VulkanContext};
+use crate::{
+    resource::{Buffer, CommandPool},
+    VulkanContext,
+};
 use ash::{version::DeviceV1_0, vk};
 use std::{mem, sync::Arc};
 
@@ -13,7 +14,12 @@ pub struct Texture {
 }
 
 impl Texture {
-    pub fn from_file(context: Arc<VulkanContext>, path: &str) -> Self {
+    pub fn from_file(
+        context: Arc<VulkanContext>,
+        command_pool: &CommandPool,
+        graphics_queue: vk::Queue,
+        path: &str,
+    ) -> Self {
         let image = image::open(path).unwrap();
         let image_as_rgb = image.to_rgba();
         let width = image_as_rgb.width();
@@ -87,6 +93,24 @@ impl Texture {
                 .unwrap();
             memory_handle
         };
+
+        command_pool.transition_image_layout(
+            graphics_queue,
+            image,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        );
+
+        command_pool.copy_buffer_to_image(graphics_queue, buffer.buffer(), image, width, height);
+
+        command_pool.transition_image_layout(
+            graphics_queue,
+            image,
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        );
 
         Texture {
             image,

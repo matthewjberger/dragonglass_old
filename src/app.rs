@@ -5,6 +5,7 @@ use winit::{dpi::LogicalSize, Event, EventsLoop, VirtualKeyCode, Window, WindowE
 use crate::{
     context::VulkanContext,
     render_state::RenderState,
+    resource::Texture,
     sync::{SynchronizationSet, SynchronizationSetConstants},
     vertex::Vertex,
 };
@@ -55,6 +56,13 @@ impl App {
 
     pub fn run(&mut self) {
         log::debug!("Running application.");
+
+        let texture = Texture::from_file(
+            self.context.clone(),
+            &self.render_state.command_pool,
+            self.render_state.graphics_queue,
+            "textures/crate.jpg",
+        );
 
         let mut current_frame = 0;
         let start_time = Instant::now();
