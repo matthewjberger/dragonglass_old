@@ -12,6 +12,6 @@ use context::VulkanContext;
 
 fn main() {
     env_logger::init();
-    let mut app = App::new(800, 600, "Vulkan Tutorial");
+    let mut app = App::new(800, 600, "Obsidian - Vulkan Rendering");
     app.run();
 }
