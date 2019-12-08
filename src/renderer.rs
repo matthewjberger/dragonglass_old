@@ -203,7 +203,7 @@ impl Renderer {
         vulkan_swapchain
     }
 
-    pub fn step(&mut self, dimensions: [u32; 2], start_time: Instant) {
+    pub fn step(&mut self, dimensions: [u32; 2], start_time: Instant, resize_requested: bool) {
         let current_frame_synchronization = self
             .synchronization_set
             .current_frame_synchronization(self.current_frame);
@@ -257,6 +257,10 @@ impl Renderer {
             }
             Err(error) => panic!("Failed to present queue. Cause: {}", error),
             _ => {}
+        }
+
+        if resize_requested {
+            self.recreate_swapchain(dimensions);
         }
 
         self.current_frame +=

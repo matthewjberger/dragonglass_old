@@ -8,6 +8,7 @@ pub struct App {
     renderer: Renderer,
     should_exit: bool,
     dimensions: [u32; 2],
+    resize_requested: bool,
 }
 
 impl App {
@@ -35,6 +36,7 @@ impl App {
             renderer,
             should_exit: false,
             dimensions: [width, height],
+            resize_requested: false,
         }
     }
 
@@ -55,7 +57,9 @@ impl App {
                 break;
             }
 
-            self.renderer.step(self.dimensions, start_time);
+            self.renderer
+                .step(self.dimensions, start_time, self.resize_requested);
+            self.resize_requested = false;
         }
 
         self.renderer.wait_idle();
@@ -65,6 +69,7 @@ impl App {
         let extent = self.renderer.swapchain.properties().extent;
         let mut dimensions: [u32; 2] = [extent.width, extent.height];
         let mut should_exit = false;
+        let mut resize_requested = false;
         self.event_loop.poll_events(|event| match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -87,10 +92,12 @@ impl App {
                 ..
             } => {
                 dimensions = [width as u32, height as u32];
+                resize_requested = true;
             }
             _ => {}
         });
-        self.should_exit = should_exit;
         self.dimensions = dimensions;
+        self.should_exit = should_exit;
+        self.resize_requested = resize_requested;
     }
 }
