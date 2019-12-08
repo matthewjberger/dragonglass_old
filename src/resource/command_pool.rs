@@ -94,7 +94,7 @@ impl CommandPool {
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
         );
 
-        self.copy_buffer(
+        self.copy_buffer_to_buffer(
             graphics_queue,
             staging_buffer.buffer(),
             vertex_buffer.buffer(),
@@ -136,7 +136,7 @@ impl CommandPool {
         }
     }
 
-    pub fn copy_buffer(
+    pub fn copy_buffer_to_buffer(
         &self,
         transfer_queue: vk::Queue,
         source: vk::Buffer,
