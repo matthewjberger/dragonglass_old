@@ -17,7 +17,7 @@ pub struct App {
     render_state: RenderState,
     synchronization_set: SynchronizationSet,
     should_exit: bool,
-    resize_dimensions: [u32; 2],
+    dimensions: [u32; 2],
 }
 
 impl App {
@@ -51,7 +51,7 @@ impl App {
             render_state,
             synchronization_set,
             should_exit: false,
-            resize_dimensions: [width, height],
+            dimensions: [width, height],
         }
     }
 
@@ -61,7 +61,15 @@ impl App {
         let mut current_frame = 0;
         let start_time = Instant::now();
         loop {
-            self.process_events();
+            // TODO: Refactor this
+            loop {
+                self.process_events();
+                let (width, height) = (self.dimensions[0], self.dimensions[1]);
+                let is_minimized = width <= 0 || height <= 0;
+                if !is_minimized {
+                    break;
+                }
+            }
 
             if self.should_exit {
                 break;
@@ -84,7 +92,7 @@ impl App {
             let image_index = match image_index_result {
                 Ok((image_index, _)) => image_index,
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                    self.render_state.recreate_swapchain(self.resize_dimensions);
+                    self.render_state.recreate_swapchain(self.dimensions);
                     continue;
                 }
                 Err(error) => panic!("Error while acquiring next image. Cause: {}", error),
@@ -117,10 +125,10 @@ impl App {
 
             match swapchain_presentation_result {
                 Ok(is_suboptimal) if is_suboptimal => {
-                    self.render_state.recreate_swapchain(self.resize_dimensions);
+                    self.render_state.recreate_swapchain(self.dimensions);
                 }
                 Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                    self.render_state.recreate_swapchain(self.resize_dimensions);
+                    self.render_state.recreate_swapchain(self.dimensions);
                 }
                 Err(error) => panic!("Failed to present queue. Cause: {}", error),
                 _ => {}
@@ -141,7 +149,7 @@ impl App {
 
     fn process_events(&mut self) {
         let extent = self.render_state.swapchain.properties().extent;
-        let mut resize_dimensions: [u32; 2] = [extent.width, extent.height];
+        let mut dimensions: [u32; 2] = [extent.width, extent.height];
         let mut should_exit = false;
         self.event_loop.poll_events(|event| match event {
             Event::WindowEvent {
@@ -164,11 +172,11 @@ impl App {
                 event: WindowEvent::Resized(LogicalSize { width, height }),
                 ..
             } => {
-                resize_dimensions = [width as u32, height as u32];
+                dimensions = [width as u32, height as u32];
             }
             _ => {}
         });
         self.should_exit = should_exit;
-        self.resize_dimensions = resize_dimensions;
+        self.dimensions = dimensions;
     }
 }
