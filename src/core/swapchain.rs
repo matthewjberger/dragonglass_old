@@ -206,7 +206,7 @@ impl Swapchain {
         let swapchain_khr = unsafe {
             swapchain
                 .create_swapchain(&swapchain_create_info, None)
-                .unwrap()
+                .expect("Failed to create swapchain")
         };
 
         log::debug!(
