@@ -458,6 +458,9 @@ impl Renderer {
 
         self.wait_idle();
 
+        self.synchronization_set =
+            SynchronizationSet::new(self.context.clone()).expect("Failed to create sync objects");
+
         self.swapchain = Swapchain::new(self.context.clone(), dimensions);
         self.render_pass = RenderPass::new(self.context.clone(), self.swapchain.properties());
         self.pipeline = GraphicsPipeline::new(
