@@ -2,7 +2,7 @@ mod app;
 mod context;
 mod core;
 mod render;
-mod render_state;
+mod renderer;
 mod resource;
 mod sync;
 mod vertex;

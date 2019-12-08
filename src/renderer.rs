@@ -1,8 +1,9 @@
 use crate::{
     context::VulkanContext,
-    core::{ImageView, Swapchain, SwapchainProperties},
+    core::{ImageView, Swapchain},
     render::{Framebuffer, GraphicsPipeline, RenderPass},
     resource::{Buffer, CommandPool, DescriptorPool, DescriptorSetLayout, Sampler, Texture},
+    sync::{SynchronizationSet, SynchronizationSetConstants},
     vertex::Vertex,
 };
 use ash::{version::DeviceV1_0, vk};
@@ -27,7 +28,7 @@ impl UniformBufferObject {
     }
 }
 
-pub struct RenderState {
+pub struct Renderer {
     context: Arc<VulkanContext>,
     pub command_pool: CommandPool,
     pub descriptor_pool: DescriptorPool,
@@ -47,15 +48,23 @@ pub struct RenderState {
     pub texture: Texture,
     pub texture_image_view: ImageView,
     pub texture_image_sampler: Sampler,
+    pub synchronization_set: SynchronizationSet,
+    pub current_frame: usize,
 }
 
-impl RenderState {
+impl Renderer {
     pub fn new(
-        context: Arc<VulkanContext>,
+        window: &winit::Window,
         dimensions: [u32; 2],
         vertices: &[Vertex],
         indices: &[u16],
     ) -> Self {
+        let context =
+            Arc::new(VulkanContext::new(&window).expect("Failed to create VulkanContext"));
+
+        let synchronization_set =
+            SynchronizationSet::new(context.clone()).expect("Failed to create sync objects");
+
         unsafe {
             context
                 .logical_device()
@@ -166,7 +175,7 @@ impl RenderState {
             mem::size_of::<UniformBufferObject>() as vk::DeviceSize,
         );
 
-        let mut vulkan_swapchain = RenderState {
+        let mut vulkan_swapchain = Renderer {
             command_pool,
             context,
             descriptor_pool,
@@ -180,16 +189,78 @@ impl RenderState {
             present_queue,
             render_pass,
             swapchain,
+            synchronization_set,
             texture,
             texture_image_view,
             texture_image_sampler,
             transient_command_pool,
             uniform_buffers,
             vertex_buffer,
+            current_frame: 0,
         };
 
         vulkan_swapchain.create_command_buffers();
         vulkan_swapchain
+    }
+
+    pub fn step(&mut self, dimensions: [u32; 2], start_time: Instant) {
+        let current_frame_synchronization = self
+            .synchronization_set
+            .current_frame_synchronization(self.current_frame);
+
+        self.context
+            .logical_device()
+            .wait_for_fence(&current_frame_synchronization);
+
+        // Acquire the next image from the swapchain
+        let image_index_result = self.swapchain.acquire_next_image(
+            current_frame_synchronization.image_available(),
+            vk::Fence::null(),
+        );
+
+        let image_index = match image_index_result {
+            Ok((image_index, _)) => image_index,
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                self.recreate_swapchain(dimensions);
+                return;
+            }
+            Err(error) => panic!("Error while acquiring next image. Cause: {}", error),
+        };
+        let image_indices = [image_index];
+
+        self.context
+            .logical_device()
+            .reset_fence(&current_frame_synchronization);
+
+        self.update_uniform_buffers(image_index, start_time);
+
+        let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+        self.command_pool.submit_command_buffer(
+            image_index as usize,
+            self.graphics_queue,
+            &wait_stages,
+            &current_frame_synchronization,
+        );
+
+        let swapchain_presentation_result = self.swapchain.present_rendered_image(
+            &current_frame_synchronization,
+            &image_indices,
+            self.present_queue,
+        );
+
+        match swapchain_presentation_result {
+            Ok(is_suboptimal) if is_suboptimal => {
+                self.recreate_swapchain(dimensions);
+            }
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                self.recreate_swapchain(dimensions);
+            }
+            Err(error) => panic!("Failed to present queue. Cause: {}", error),
+            _ => {}
+        }
+
+        self.current_frame +=
+            (1 + self.current_frame) % SynchronizationSet::MAX_FRAMES_IN_FLIGHT as usize;
     }
 
     fn create_command_buffers(&mut self) {
@@ -346,12 +417,7 @@ impl RenderState {
             .cmd_draw_indexed(command_buffer, number_of_indices, 1, 0, 0, 0);
     }
 
-    pub fn update_uniform_buffers(
-        &self,
-        current_image: u32,
-        swapchain_properties: &SwapchainProperties,
-        start_time: Instant,
-    ) {
+    pub fn update_uniform_buffers(&self, current_image: u32, start_time: Instant) {
         let elapsed_time = start_time.elapsed();
         let elapsed_time =
             elapsed_time.as_secs() as f32 + (elapsed_time.subsec_millis() as f32) / 1000_f32;
@@ -368,7 +434,7 @@ impl RenderState {
                 &glm::vec3(0.0, 1.0, 0.0),
             ), // TODO: Make Z the up axis
             projection: glm::perspective(
-                swapchain_properties.aspect_ratio(),
+                self.swapchain.properties().aspect_ratio(),
                 90_f32.to_radians(),
                 0.1_f32,
                 1000_f32,
@@ -438,5 +504,15 @@ impl RenderState {
         );
 
         self.create_command_buffers();
+    }
+
+    pub fn wait_idle(&self) {
+        unsafe {
+            self.context
+                .logical_device()
+                .logical_device()
+                .device_wait_idle()
+                .unwrap()
+        };
     }
 }
