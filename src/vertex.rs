@@ -1,15 +1,16 @@
 use ash::vk;
+use nalgebra_glm as glm;
 use std::mem;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Vertex {
-    position: [f32; 2],
-    color: [f32; 3],
-    tex_coords: [f32; 2],
+    position: glm::Vec2,
+    color: glm::Vec3,
+    tex_coords: glm::Vec2,
 }
 
 impl Vertex {
-    pub fn new(position: [f32; 2], color: [f32; 3], tex_coords: [f32; 2]) -> Self {
+    pub fn new(position: glm::Vec2, color: glm::Vec3, tex_coords: glm::Vec2) -> Self {
         Vertex {
             position,
             color,
