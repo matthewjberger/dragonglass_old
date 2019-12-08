@@ -1,5 +1,5 @@
 // TODO: Make a type alias for the current device version (DeviceV1_0)
-use crate::{sync::CurrentFrameSynchronization, VulkanContext};
+use crate::{resource::Buffer, sync::CurrentFrameSynchronization, VulkanContext};
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -69,6 +69,41 @@ impl CommandPool {
         self.command_buffers.clear();
     }
 
+    pub fn create_device_local_buffer<A, T: Copy>(
+        &self,
+        graphics_queue: vk::Queue,
+        usage_flags: vk::BufferUsageFlags,
+        vertices: &[T],
+    ) -> Buffer {
+        let buffer_size =
+            (vertices.len() * std::mem::size_of::<T>() as usize) as ash::vk::DeviceSize;
+
+        let staging_buffer = Buffer::new(
+            self.context.clone(),
+            buffer_size,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+        );
+
+        staging_buffer.upload_to_entire_buffer::<A, _>(&vertices);
+
+        let vertex_buffer = Buffer::new(
+            self.context.clone(),
+            buffer_size,
+            vk::BufferUsageFlags::TRANSFER_DST | usage_flags,
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        );
+
+        self.copy_buffer(
+            graphics_queue,
+            staging_buffer.buffer(),
+            vertex_buffer.buffer(),
+            buffer_size,
+        );
+
+        vertex_buffer
+    }
+
     // TODO: refactor this to use less parameters
     pub fn submit_command_buffer(
         &self,
@@ -99,6 +134,94 @@ impl CommandPool {
                 )
                 .unwrap()
         }
+    }
+
+    pub fn copy_buffer(
+        &self,
+        transfer_queue: vk::Queue,
+        source: vk::Buffer,
+        destination: vk::Buffer,
+        buffer_size: vk::DeviceSize,
+    ) {
+        self.execute_command_once(transfer_queue, |command_buffer| {
+            // Define the region for the buffer copy
+            let region = vk::BufferCopy {
+                src_offset: 0,
+                dst_offset: 0,
+                size: buffer_size as _,
+            };
+            let regions = [region];
+
+            // Copy the bytes of the staging buffer to the vertex buffer
+            unsafe {
+                self.context
+                    .logical_device()
+                    .logical_device()
+                    .cmd_copy_buffer(command_buffer, source, destination, &regions)
+            };
+        });
+    }
+
+    // TODO: Refactor this to be smaller. Functionality can probably be reused
+    // in generic command buffer submission method
+    pub fn execute_command_once<F: FnOnce(vk::CommandBuffer)>(
+        &self,
+        queue: vk::Queue,
+        executor: F,
+    ) {
+        // Allocate a command buffer using the command pool
+        let command_buffer = {
+            let allocation_info = vk::CommandBufferAllocateInfo::builder()
+                .level(vk::CommandBufferLevel::PRIMARY)
+                .command_pool(self.pool)
+                .command_buffer_count(1)
+                .build();
+
+            unsafe {
+                self.context
+                    .logical_device()
+                    .logical_device()
+                    .allocate_command_buffers(&allocation_info)
+                    .unwrap()[0]
+            }
+        };
+        let command_buffers = [command_buffer];
+
+        // Begin recording
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
+            .build();
+        let logical_device = self.context.logical_device().logical_device();
+
+        unsafe {
+            logical_device
+                .begin_command_buffer(command_buffer, &begin_info)
+                .unwrap()
+        };
+
+        executor(command_buffer);
+
+        // End command buffer recording
+        unsafe { logical_device.end_command_buffer(command_buffer).unwrap() };
+
+        // Build the submission info
+        let submit_info = vk::SubmitInfo::builder()
+            .command_buffers(&command_buffers)
+            .build();
+        let submit_info_arr = [submit_info];
+
+        unsafe {
+            // Submit the command buffer
+            logical_device
+                .queue_submit(queue, &submit_info_arr, vk::Fence::null())
+                .unwrap();
+
+            // Wait for the command buffer to be executed
+            logical_device.queue_wait_idle(queue).unwrap();
+
+            // Free the command buffer
+            logical_device.free_command_buffers(self.pool(), &command_buffers);
+        };
     }
 }
 

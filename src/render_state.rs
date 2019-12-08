@@ -106,17 +106,13 @@ impl RenderState {
         let transient_command_pool =
             CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::TRANSIENT);
 
-        let vertex_buffer = crate::resource::buffer::create_device_local_buffer::<u32, _>(
-            context.clone(),
-            transient_command_pool.pool(),
+        let vertex_buffer = transient_command_pool.create_device_local_buffer::<u32, _>(
             graphics_queue,
             vk::BufferUsageFlags::VERTEX_BUFFER,
             &vertices,
         );
 
-        let index_buffer = crate::resource::buffer::create_device_local_buffer::<u16, _>(
-            context.clone(),
-            transient_command_pool.pool(),
+        let index_buffer = transient_command_pool.create_device_local_buffer::<u16, _>(
             graphics_queue,
             vk::BufferUsageFlags::INDEX_BUFFER,
             &indices,

@@ -55,6 +55,7 @@ impl App {
 
     pub fn run(&mut self) {
         log::debug!("Running application.");
+
         let mut current_frame = 0;
         let start_time = Instant::now();
         loop {
