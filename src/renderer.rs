@@ -447,25 +447,10 @@ impl Renderer {
     }
 
     pub fn recreate_swapchain(&mut self, dimensions: [u32; 2]) {
-        unsafe {
-            self.context
-                .logical_device()
-                .logical_device()
-                .device_wait_idle()
-                .unwrap()
-        };
+        self.wait_idle();
 
         self.swapchain = Swapchain::new(self.context.clone(), dimensions);
         self.render_pass = RenderPass::new(self.context.clone(), self.swapchain.properties());
-        let ubo_binding = UniformBufferObject::get_descriptor_set_layout_bindings();
-        let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
-            .binding(1)
-            .descriptor_count(1)
-            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-            .build();
-        let bindings = [ubo_binding, sampler_binding];
-        self.descriptor_set_layout = DescriptorSetLayout::new(self.context.clone(), &bindings);
         self.pipeline = GraphicsPipeline::new(
             self.context.clone(),
             self.swapchain.properties(),
@@ -488,20 +473,6 @@ impl Renderer {
                 )
             })
             .collect::<Vec<_>>();
-
-        let number_of_images = self.swapchain.images().len();
-        self.descriptor_pool = DescriptorPool::new(self.context.clone(), number_of_images as _);
-        self.descriptor_sets = self.descriptor_pool.allocate_descriptor_sets(
-            self.descriptor_set_layout.layout(),
-            self.uniform_buffers.len() as _,
-        );
-        self.descriptor_pool.update_descriptor_sets(
-            &self.descriptor_sets,
-            &self.uniform_buffers,
-            &self.texture_image_view,
-            &self.texture_image_sampler,
-            mem::size_of::<UniformBufferObject>() as vk::DeviceSize,
-        );
 
         self.create_command_buffers();
     }
