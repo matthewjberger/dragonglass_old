@@ -1,6 +1,6 @@
 use crate::{
     context::VulkanContext,
-    core::{ImageView, Swapchain},
+    core::Swapchain,
     render::{Framebuffer, GraphicsPipeline, RenderPass},
     resource::{Buffer, CommandPool, DescriptorPool, DescriptorSetLayout, Sampler, Texture},
     sync::{SynchronizationSet, SynchronizationSetConstants},
@@ -46,7 +46,6 @@ pub struct Renderer {
     pub uniform_buffers: Vec<Buffer>,
     pub vertex_buffer: Buffer,
     pub texture: Texture,
-    pub texture_image_view: ImageView,
     pub texture_image_sampler: Sampler,
     pub synchronization_set: SynchronizationSet,
     pub current_frame: usize,
@@ -174,14 +173,12 @@ impl Renderer {
             "textures/crate.jpg",
         );
 
-        let texture_image_view =
-            ImageView::new(context.clone(), texture.image(), vk::Format::R8G8B8A8_UNORM);
         let texture_image_sampler = Sampler::new(context.clone());
 
         descriptor_pool.update_descriptor_sets(
             &descriptor_sets,
             &uniform_buffers,
-            &texture_image_view,
+            texture.view(),
             &texture_image_sampler,
             mem::size_of::<UniformBufferObject>() as vk::DeviceSize,
         );
@@ -202,7 +199,6 @@ impl Renderer {
             swapchain,
             synchronization_set,
             texture,
-            texture_image_view,
             texture_image_sampler,
             transient_command_pool,
             uniform_buffers,

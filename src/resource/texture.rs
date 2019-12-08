@@ -1,4 +1,5 @@
 use crate::{
+    core::ImageView,
     resource::{Buffer, CommandPool},
     VulkanContext,
 };
@@ -7,10 +8,13 @@ use std::{mem, sync::Arc};
 
 // TODO: Add snafu errors
 
+// The order of the struct fields matters here
+// because it determines drop order
 pub struct Texture {
-    context: Arc<VulkanContext>,
+    view: ImageView,
     image: vk::Image,
     memory: vk::DeviceMemory,
+    context: Arc<VulkanContext>,
 }
 
 impl Texture {
@@ -94,10 +98,11 @@ impl Texture {
             memory_handle
         };
 
+        let format = vk::Format::R8G8B8A8_UNORM;
         command_pool.transition_image_layout(
             graphics_queue,
             image,
-            vk::Format::R8G8B8A8_UNORM,
+            format,
             vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         );
@@ -107,20 +112,23 @@ impl Texture {
         command_pool.transition_image_layout(
             graphics_queue,
             image,
-            vk::Format::R8G8B8A8_UNORM,
+            format,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         );
 
+        let view = ImageView::new(context.clone(), image, format);
+
         Texture {
             image,
+            view,
             memory,
             context,
         }
     }
 
-    pub fn image(&self) -> vk::Image {
-        self.image
+    pub fn view(&self) -> &ImageView {
+        &self.view
     }
 }
 
