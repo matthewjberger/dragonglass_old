@@ -451,15 +451,14 @@ impl Renderer {
     }
 
     pub fn recreate_swapchain(&mut self, dimensions: Option<[u32; 2]>) {
+        log::debug!("Recreating swapchain");
+
         let dimensions = dimensions.unwrap_or([
             self.swapchain.properties().extent.width,
             self.swapchain.properties().extent.height,
         ]);
 
         self.wait_idle();
-
-        self.synchronization_set =
-            SynchronizationSet::new(self.context.clone()).expect("Failed to create sync objects");
 
         self.swapchain = Swapchain::new(self.context.clone(), dimensions);
         self.render_pass = RenderPass::new(self.context.clone(), self.swapchain.properties());
@@ -485,6 +484,25 @@ impl Renderer {
                 )
             })
             .collect::<Vec<_>>();
+
+        let size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
+        self.uniform_buffers = (0..self.swapchain.images().len())
+            .map(|_| {
+                Buffer::new(
+                    self.context.clone(),
+                    size,
+                    vk::BufferUsageFlags::UNIFORM_BUFFER,
+                    vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let number_of_images = self.swapchain.images().len();
+        self.descriptor_pool = DescriptorPool::new(self.context.clone(), number_of_images as _);
+        self.descriptor_sets = self.descriptor_pool.allocate_descriptor_sets(
+            self.descriptor_set_layout.layout(),
+            self.uniform_buffers.len() as _,
+        );
 
         self.create_command_buffers();
     }
