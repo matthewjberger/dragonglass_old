@@ -391,12 +391,22 @@ impl RenderState {
 
         self.swapchain = Swapchain::new(self.context.clone(), dimensions);
         self.render_pass = RenderPass::new(self.context.clone(), self.swapchain.properties());
+        let ubo_binding = UniformBufferObject::get_descriptor_set_layout_bindings();
+        let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
+            .binding(1)
+            .descriptor_count(1)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .build();
+        let bindings = [ubo_binding, sampler_binding];
+        self.descriptor_set_layout = DescriptorSetLayout::new(self.context.clone(), &bindings);
         self.pipeline = GraphicsPipeline::new(
             self.context.clone(),
             self.swapchain.properties(),
             self.render_pass.render_pass(),
             self.descriptor_set_layout.layout(),
         );
+
         // Create one framebuffer for each image in the swapchain
         self.framebuffers = self
             .swapchain

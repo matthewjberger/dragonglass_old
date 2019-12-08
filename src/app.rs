@@ -65,8 +65,7 @@ impl App {
             loop {
                 self.process_events();
                 let (width, height) = (self.dimensions[0], self.dimensions[1]);
-                let is_minimized = width <= 0 || height <= 0;
-                if !is_minimized {
+                if width != 0 && height != 0 {
                     break;
                 }
             }
