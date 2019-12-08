@@ -43,7 +43,7 @@ impl Buffer {
                 .get_buffer_memory_requirements(buffer)
         };
 
-        let memory_type = Self::determine_memory_type(
+        let memory_type = Self::determine_memory_type_index(
             memory_requirements,
             context.physical_device_memory_properties(),
             required_properties,
@@ -81,7 +81,7 @@ impl Buffer {
         }
     }
 
-    fn determine_memory_type(
+    pub fn determine_memory_type_index(
         buffer_memory_requirements: vk::MemoryRequirements,
         physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
         required_properties: vk::MemoryPropertyFlags,
