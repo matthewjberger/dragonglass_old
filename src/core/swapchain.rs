@@ -85,7 +85,7 @@ impl SwapchainSupportDetails {
     fn choose_surface_format(available_formats: &[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR {
         // Specify a default format and color space
         let (default_format, default_color_space) = (
-            vk::Format::B8G8R8A8_UNORM,
+            vk::Format::R8G8B8A8_UNORM,
             vk::ColorSpaceKHR::SRGB_NONLINEAR,
         );
 
@@ -228,7 +228,9 @@ Creating swapchain.
         let images = unsafe { swapchain.get_swapchain_images(swapchain_khr).unwrap() };
         let image_views = images
             .iter()
-            .map(|image| ImageView::new(context.clone(), *image, &swapchain_properties))
+            .map(|image| {
+                ImageView::new(context.clone(), *image, swapchain_properties.format.format)
+            })
             .collect::<Vec<_>>();
 
         Swapchain {

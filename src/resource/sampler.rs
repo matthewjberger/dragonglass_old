@@ -17,8 +17,9 @@ impl Sampler {
             .address_mode_u(vk::SamplerAddressMode::REPEAT)
             .address_mode_v(vk::SamplerAddressMode::REPEAT)
             .address_mode_w(vk::SamplerAddressMode::REPEAT)
-            .anisotropy_enable(true)
-            .max_anisotropy(16.0)
+            // TODO: Request the anisotropy feature when getting the physical device
+            // .anisotropy_enable(true)
+            // .max_anisotropy(16.0)
             .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
             .unnormalized_coordinates(false)
             .compare_enable(false)

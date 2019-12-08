@@ -1,8 +1,8 @@
 use crate::{
     context::VulkanContext,
-    core::{Swapchain, SwapchainProperties},
+    core::{ImageView, Swapchain, SwapchainProperties},
     render::{Framebuffer, GraphicsPipeline, RenderPass},
-    resource::{Buffer, CommandPool, DescriptorPool, DescriptorSetLayout},
+    resource::{Buffer, CommandPool, DescriptorPool, DescriptorSetLayout, Sampler, Texture},
     vertex::Vertex,
 };
 use ash::{version::DeviceV1_0, vk};
@@ -17,14 +17,13 @@ pub struct UniformBufferObject {
 }
 
 impl UniformBufferObject {
-    fn get_descriptor_set_layout_bindings() -> [vk::DescriptorSetLayoutBinding; 1] {
-        let ubo_layout_binding = vk::DescriptorSetLayoutBinding::builder()
+    fn get_descriptor_set_layout_bindings() -> vk::DescriptorSetLayoutBinding {
+        vk::DescriptorSetLayoutBinding::builder()
             .binding(0)
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::VERTEX)
-            .build();
-        [ubo_layout_binding]
+            .build()
     }
 }
 
@@ -45,6 +44,9 @@ pub struct RenderState {
     pub transient_command_pool: CommandPool,
     pub uniform_buffers: Vec<Buffer>,
     pub vertex_buffer: Buffer,
+    pub texture: Texture,
+    pub texture_image_view: ImageView,
+    pub texture_image_sampler: Sampler,
 }
 
 impl RenderState {
@@ -74,7 +76,14 @@ impl RenderState {
         let swapchain = Swapchain::new(context.clone());
         let render_pass = RenderPass::new(context.clone(), swapchain.properties());
 
-        let bindings = UniformBufferObject::get_descriptor_set_layout_bindings();
+        let ubo_binding = UniformBufferObject::get_descriptor_set_layout_bindings();
+        let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
+            .binding(1)
+            .descriptor_count(1)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .build();
+        let bindings = [ubo_binding, sampler_binding];
         let descriptor_set_layout = DescriptorSetLayout::new(context.clone(), &bindings);
 
         let pipeline = GraphicsPipeline::new(
@@ -133,10 +142,22 @@ impl RenderState {
         let descriptor_sets = descriptor_pool
             .allocate_descriptor_sets(descriptor_set_layout.layout(), uniform_buffers.len() as _);
 
+        let texture = Texture::from_file(
+            context.clone(),
+            &command_pool,
+            graphics_queue,
+            "textures/crate.jpg",
+        );
+
+        let texture_image_view =
+            ImageView::new(context.clone(), texture.image(), vk::Format::R8G8B8A8_UNORM);
+        let texture_image_sampler = Sampler::new(context.clone());
+
         descriptor_pool.update_descriptor_sets(
             &descriptor_sets,
-            vk::DescriptorType::UNIFORM_BUFFER,
             &uniform_buffers,
+            &texture_image_view,
+            &texture_image_sampler,
             mem::size_of::<UniformBufferObject>() as vk::DeviceSize,
         );
 
@@ -154,6 +175,9 @@ impl RenderState {
             present_queue,
             render_pass,
             swapchain,
+            texture,
+            texture_image_view,
+            texture_image_sampler,
             transient_command_pool,
             uniform_buffers,
             vertex_buffer,

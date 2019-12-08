@@ -1,5 +1,5 @@
 // TODO: Make a type alias for the current device version (DeviceV1_0)
-use crate::{core::SwapchainProperties, VulkanContext};
+use crate::VulkanContext;
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -11,15 +11,11 @@ pub struct ImageView {
 }
 
 impl ImageView {
-    pub fn new(
-        context: Arc<VulkanContext>,
-        image: vk::Image,
-        swapchain_properties: &SwapchainProperties,
-    ) -> Self {
+    pub fn new(context: Arc<VulkanContext>, image: vk::Image, format: vk::Format) -> Self {
         let create_info = vk::ImageViewCreateInfo::builder()
             .image(image)
             .view_type(vk::ImageViewType::TYPE_2D)
-            .format(swapchain_properties.format.format)
+            .format(format)
             .components(vk::ComponentMapping {
                 r: vk::ComponentSwizzle::IDENTITY,
                 g: vk::ComponentSwizzle::IDENTITY,

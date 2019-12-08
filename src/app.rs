@@ -5,7 +5,6 @@ use winit::{dpi::LogicalSize, Event, EventsLoop, VirtualKeyCode, Window, WindowE
 use crate::{
     context::VulkanContext,
     render_state::RenderState,
-    resource::Texture,
     sync::{SynchronizationSet, SynchronizationSetConstants},
     vertex::Vertex,
 };
@@ -34,10 +33,10 @@ impl App {
             Arc::new(VulkanContext::new(&window).expect("Failed to create VulkanContext"));
 
         let vertices: [Vertex; 4] = [
-            Vertex::new([-0.5, -0.5], [1.0, 0.0, 0.0]),
-            Vertex::new([0.5, -0.5], [0.0, 1.0, 0.0]),
-            Vertex::new([0.5, 0.5], [0.0, 0.0, 1.0]),
-            Vertex::new([-0.5, 0.5], [1.0, 1.0, 1.0]),
+            Vertex::new([-0.5, -0.5], [1.0, 0.0, 0.0], [0.0, 0.0]),
+            Vertex::new([0.5, -0.5], [0.0, 1.0, 0.0], [1.0, 0.0]),
+            Vertex::new([0.5, 0.5], [0.0, 0.0, 1.0], [1.0, 1.0]),
+            Vertex::new([-0.5, 0.5], [1.0, 1.0, 1.0], [0.0, 1.0]),
         ];
         let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
         let render_state = RenderState::new(context.clone(), &vertices, &indices);
@@ -56,13 +55,6 @@ impl App {
 
     pub fn run(&mut self) {
         log::debug!("Running application.");
-
-        let texture = Texture::from_file(
-            self.context.clone(),
-            &self.render_state.command_pool,
-            self.render_state.graphics_queue,
-            "textures/crate.jpg",
-        );
 
         let mut current_frame = 0;
         let start_time = Instant::now();

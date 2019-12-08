@@ -1,7 +1,8 @@
 #version 450
 
-layout(location = 0) in vec2 inPosition;
-layout(location = 1) in vec3 inColor;
+layout(location = 0) in vec2 vPosition;
+layout(location = 1) in vec3 vColor;
+layout(location = 2) in vec2 vCoords;
 
 layout(binding = 0) uniform UniformBufferObject {
   mat4 model;
@@ -10,8 +11,10 @@ layout(binding = 0) uniform UniformBufferObject {
 } ubo;
 
 layout(location = 0) out vec3 fragColor;
+layout(location = 1) out vec2 fragCoords;
 
 void main() {
-    gl_Position = ubo.projection * ubo.view * ubo.model * vec4(inPosition, 0.0, 1.0);
-    fragColor = inColor;
+    gl_Position = ubo.projection * ubo.view * ubo.model * vec4(vPosition, 0.0, 1.0);
+    fragColor = vColor;
+    fragCoords = vCoords;
 }

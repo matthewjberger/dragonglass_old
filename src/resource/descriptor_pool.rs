@@ -1,5 +1,9 @@
 // TODO: Make a type alias for the current device version (DeviceV1_0)
-use crate::{resource::Buffer, VulkanContext};
+use crate::{
+    core::ImageView,
+    resource::{Buffer, Sampler},
+    VulkanContext,
+};
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -12,11 +16,17 @@ pub struct DescriptorPool {
 
 impl DescriptorPool {
     pub fn new(context: Arc<VulkanContext>, size: u32) -> Self {
-        let pool_size = vk::DescriptorPoolSize {
+        let ubo_pool_size = vk::DescriptorPoolSize {
             ty: vk::DescriptorType::UNIFORM_BUFFER,
             descriptor_count: size,
         };
-        let pool_sizes = [pool_size];
+
+        let sampler_pool_size = vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: size,
+        };
+
+        let pool_sizes = [ubo_pool_size, sampler_pool_size];
 
         let pool_info = vk::DescriptorPoolCreateInfo::builder()
             .pool_sizes(&pool_sizes)
@@ -57,8 +67,9 @@ impl DescriptorPool {
     pub fn update_descriptor_sets(
         &self,
         descriptor_sets: &[vk::DescriptorSet],
-        descriptor_type: vk::DescriptorType,
         buffers: &[Buffer],
+        image_view: &ImageView,
+        sampler: &Sampler,
         range: vk::DeviceSize,
     ) {
         descriptor_sets
@@ -72,21 +83,36 @@ impl DescriptorPool {
                     .build();
                 let buffer_infos = [buffer_info];
 
-                let descriptor_write = vk::WriteDescriptorSet::builder()
+                let ubo_descriptor_write = vk::WriteDescriptorSet::builder()
                     .dst_set(*set)
                     .dst_binding(0)
                     .dst_array_element(0)
-                    .descriptor_type(descriptor_type)
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                     .buffer_info(&buffer_infos)
                     .build();
-                let descriptor_writes = [descriptor_write];
-                let null = [];
+
+                let image_info = vk::DescriptorImageInfo::builder()
+                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .image_view(image_view.view())
+                    .sampler(sampler.sampler())
+                    .build();
+                let image_infos = [image_info];
+
+                let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
+                    .dst_set(*set)
+                    .dst_binding(1)
+                    .dst_array_element(0)
+                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .image_info(&image_infos)
+                    .build();
+
+                let descriptor_writes = [ubo_descriptor_write, sampler_descriptor_write];
 
                 unsafe {
                     self.context
                         .logical_device()
                         .logical_device()
-                        .update_descriptor_sets(&descriptor_writes, &null)
+                        .update_descriptor_sets(&descriptor_writes, &[])
                 }
             })
     }

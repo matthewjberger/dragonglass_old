@@ -118,6 +118,10 @@ impl Texture {
             context,
         }
     }
+
+    pub fn image(&self) -> vk::Image {
+        self.image
+    }
 }
 
 impl Drop for Texture {
