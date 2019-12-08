@@ -17,6 +17,7 @@ pub struct App {
     render_state: RenderState,
     synchronization_set: SynchronizationSet,
     should_exit: bool,
+    resize_dimensions: [u32; 2],
 }
 
 impl App {
@@ -50,6 +51,7 @@ impl App {
             render_state,
             synchronization_set,
             should_exit: false,
+            resize_dimensions: [width, height],
         }
     }
 
@@ -74,11 +76,24 @@ impl App {
                 .wait_for_fence(&current_frame_synchronization);
 
             // Acquire the next image from the swapchain
-            let image_index = self.render_state.swapchain.acquire_next_image(
+            let image_index_result = self.render_state.swapchain.acquire_next_image(
                 current_frame_synchronization.image_available(),
                 vk::Fence::null(),
             );
+
+            let image_index = match image_index_result {
+                Ok((image_index, _)) => image_index,
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                    self.render_state.recreate_swapchain(self.resize_dimensions);
+                    continue;
+                }
+                Err(error) => panic!("Error while acquiring next image. Cause: {}", error),
+            };
             let image_indices = [image_index];
+
+            self.context
+                .logical_device()
+                .reset_fence(&current_frame_synchronization);
 
             self.render_state.update_uniform_buffers(
                 image_index,
@@ -94,11 +109,22 @@ impl App {
                 &current_frame_synchronization,
             );
 
-            self.render_state.swapchain.present_rendered_image(
+            let swapchain_presentation_result = self.render_state.swapchain.present_rendered_image(
                 &current_frame_synchronization,
                 &image_indices,
                 self.render_state.present_queue,
             );
+
+            match swapchain_presentation_result {
+                Ok(is_suboptimal) if is_suboptimal => {
+                    self.render_state.recreate_swapchain(self.resize_dimensions);
+                }
+                Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                    self.render_state.recreate_swapchain(self.resize_dimensions);
+                }
+                Err(error) => panic!("Failed to present queue. Cause: {}", error),
+                _ => {}
+            }
 
             current_frame +=
                 (1 + current_frame) % SynchronizationSet::MAX_FRAMES_IN_FLIGHT as usize;
@@ -114,6 +140,8 @@ impl App {
     }
 
     fn process_events(&mut self) {
+        let extent = self.render_state.swapchain.properties().extent;
+        let mut resize_dimensions: [u32; 2] = [extent.width, extent.height];
         let mut should_exit = false;
         self.event_loop.poll_events(|event| match event {
             Event::WindowEvent {
@@ -133,18 +161,14 @@ impl App {
                 ..
             } => should_exit = true,
             Event::WindowEvent {
-                event:
-                    WindowEvent::Resized(LogicalSize {
-                        width: _width,
-                        height: _height,
-                    }),
+                event: WindowEvent::Resized(LogicalSize { width, height }),
                 ..
             } => {
-                // TODO: Handle resizing by recreating the swapchain
+                resize_dimensions = [width as u32, height as u32];
             }
             _ => {}
         });
-
         self.should_exit = should_exit;
+        self.resize_dimensions = resize_dimensions;
     }
 }

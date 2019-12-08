@@ -84,8 +84,12 @@ impl LogicalDevice {
             self.logical_device
                 .wait_for_fences(&in_flight_fences, true, std::u64::MAX)
                 .unwrap();
+        }
+    }
 
-            // TODO: Resetting may need to be in a separate method
+    pub fn reset_fence(&self, current_frame_synchronization: &CurrentFrameSynchronization) {
+        let in_flight_fences = [current_frame_synchronization.in_flight()];
+        unsafe {
             self.logical_device()
                 .reset_fences(&in_flight_fences)
                 .unwrap();

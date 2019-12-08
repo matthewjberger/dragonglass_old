@@ -254,12 +254,14 @@ Creating swapchain.
         &self.image_views
     }
 
-    pub fn acquire_next_image(&self, semaphore: vk::Semaphore, fence: vk::Fence) -> u32 {
+    pub fn acquire_next_image(
+        &self,
+        semaphore: vk::Semaphore,
+        fence: vk::Fence,
+    ) -> ash::prelude::VkResult<(u32, bool)> {
         unsafe {
             self.swapchain
                 .acquire_next_image(self.swapchain_khr, std::u64::MAX, semaphore, fence)
-                .unwrap()
-                .0 // TODO: Use error handling
         }
     }
 
@@ -268,7 +270,7 @@ Creating swapchain.
         current_frame_synchronization: &CurrentFrameSynchronization,
         image_indices: &[u32],
         present_queue: vk::Queue,
-    ) {
+    ) -> ash::prelude::VkResult<bool> {
         let swapchains = [self.swapchain_khr];
         let render_finished_semaphores = [current_frame_synchronization.render_finished()];
         let present_info = vk::PresentInfoKHR::builder()
@@ -277,11 +279,7 @@ Creating swapchain.
             .image_indices(image_indices)
             .build();
 
-        unsafe {
-            self.swapchain
-                .queue_present(present_queue, &present_info)
-                .unwrap()
-        };
+        unsafe { self.swapchain.queue_present(present_queue, &present_info) }
     }
 }
 

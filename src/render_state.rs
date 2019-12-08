@@ -379,4 +379,54 @@ impl RenderState {
         let buffer = &self.uniform_buffers[current_image as usize];
         buffer.upload_to_entire_buffer::<u32, _>(&ubos);
     }
+
+    pub fn recreate_swapchain(&mut self, dimensions: [u32; 2]) {
+        unsafe {
+            self.context
+                .logical_device()
+                .logical_device()
+                .device_wait_idle()
+                .unwrap()
+        };
+
+        self.swapchain = Swapchain::new(self.context.clone(), dimensions);
+        self.render_pass = RenderPass::new(self.context.clone(), self.swapchain.properties());
+        self.pipeline = GraphicsPipeline::new(
+            self.context.clone(),
+            self.swapchain.properties(),
+            self.render_pass.render_pass(),
+            self.descriptor_set_layout.layout(),
+        );
+        // Create one framebuffer for each image in the swapchain
+        self.framebuffers = self
+            .swapchain
+            .image_views()
+            .iter()
+            .map(|view| [view.view()])
+            .map(|attachments| {
+                Framebuffer::new(
+                    self.context.clone(),
+                    self.swapchain.properties(),
+                    self.render_pass.render_pass(),
+                    &attachments,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let number_of_images = self.swapchain.images().len();
+        self.descriptor_pool = DescriptorPool::new(self.context.clone(), number_of_images as _);
+        self.descriptor_sets = self.descriptor_pool.allocate_descriptor_sets(
+            self.descriptor_set_layout.layout(),
+            self.uniform_buffers.len() as _,
+        );
+        self.descriptor_pool.update_descriptor_sets(
+            &self.descriptor_sets,
+            &self.uniform_buffers,
+            &self.texture_image_view,
+            &self.texture_image_sampler,
+            mem::size_of::<UniformBufferObject>() as vk::DeviceSize,
+        );
+
+        self.create_command_buffers();
+    }
 }
