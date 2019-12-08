@@ -50,7 +50,12 @@ pub struct RenderState {
 }
 
 impl RenderState {
-    pub fn new(context: Arc<VulkanContext>, vertices: &[Vertex], indices: &[u16]) -> Self {
+    pub fn new(
+        context: Arc<VulkanContext>,
+        dimensions: [u32; 2],
+        vertices: &[Vertex],
+        indices: &[u16],
+    ) -> Self {
         unsafe {
             context
                 .logical_device()
@@ -73,7 +78,7 @@ impl RenderState {
                 .get_device_queue(context.present_queue_family_index(), 0)
         };
 
-        let swapchain = Swapchain::new(context.clone());
+        let swapchain = Swapchain::new(context.clone(), dimensions);
         let render_pass = RenderPass::new(context.clone(), swapchain.properties());
 
         let ubo_binding = UniformBufferObject::get_descriptor_set_layout_bindings();

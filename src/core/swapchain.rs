@@ -148,11 +148,11 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(context: Arc<VulkanContext>) -> Swapchain {
+    pub fn new(context: Arc<VulkanContext>, dimensions: [u32; 2]) -> Swapchain {
         let swapchain_support_details = SwapchainSupportDetails::new(&context);
         let capabilities = &swapchain_support_details.capabilities;
 
-        let swapchain_properties = swapchain_support_details.suitable_properties([800, 600]);
+        let swapchain_properties = swapchain_support_details.suitable_properties(dimensions);
         let surface_format = swapchain_properties.format;
         let present_mode = swapchain_properties.present_mode;
         let extent = swapchain_properties.extent;

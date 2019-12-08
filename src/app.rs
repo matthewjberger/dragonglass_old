@@ -39,7 +39,7 @@ impl App {
             Vertex::new([-0.5, 0.5], [1.0, 1.0, 1.0], [0.0, 1.0]),
         ];
         let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
-        let render_state = RenderState::new(context.clone(), &vertices, &indices);
+        let render_state = RenderState::new(context.clone(), [width, height], &vertices, &indices);
         let synchronization_set =
             SynchronizationSet::new(context.clone()).expect("Failed to create sync objects");
 
