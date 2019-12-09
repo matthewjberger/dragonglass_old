@@ -8,6 +8,8 @@ use std::{mem, sync::Arc};
 
 // TODO: Add snafu errors
 
+// TODO: Allow creating texture from passed in pixel data
+
 // The order of the struct fields matters here
 // because it determines drop order
 pub struct Texture {
@@ -107,6 +109,35 @@ impl Texture {
         let width = image_as_rgb.width();
         let height = image_as_rgb.height();
         let pixels = image_as_rgb.into_raw();
+        Self::from_data(
+            context.clone(),
+            command_pool,
+            graphics_queue,
+            format,
+            tiling,
+            usage,
+            aspect_mask,
+            view_type,
+            width,
+            height,
+            &pixels,
+        )
+    }
+
+    // TODO: Refactor this to use less parameters
+    pub fn from_data(
+        context: Arc<VulkanContext>,
+        command_pool: &CommandPool,
+        graphics_queue: vk::Queue,
+        format: vk::Format,
+        tiling: vk::ImageTiling,
+        usage: vk::ImageUsageFlags,
+        aspect_mask: vk::ImageAspectFlags,
+        view_type: vk::ImageViewType,
+        width: u32,
+        height: u32,
+        pixels: &[u8],
+    ) -> Self {
         let image_size = (pixels.len() * mem::size_of::<u8>()) as vk::DeviceSize;
         let mut texture = Self::new(context.clone(), width, height, format, tiling, usage);
 

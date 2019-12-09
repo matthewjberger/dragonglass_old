@@ -1,6 +1,7 @@
 mod app;
 mod context;
 mod core;
+mod gltf;
 mod render;
 mod renderer;
 mod resource;
