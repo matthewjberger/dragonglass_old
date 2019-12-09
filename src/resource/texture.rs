@@ -18,6 +18,80 @@ pub struct Texture {
 }
 
 impl Texture {
+    pub fn new(
+        context: Arc<VulkanContext>,
+        command_pool: &CommandPool,
+        graphics_queue: vk::Queue,
+        path: &str,
+        width: u32,
+        height: u32,
+        format: vk::Format,
+        tiling: vk::ImageTiling,
+        usage: vk::ImageUsageFlags,
+    ) -> Self {
+        let image_info = vk::ImageCreateInfo::builder()
+            .image_type(vk::ImageType::TYPE_2D)
+            .extent(vk::Extent3D {
+                width,
+                height,
+                depth: 1,
+            })
+            .mip_levels(1)
+            .array_layers(1)
+            .format(format)
+            .tiling(tiling)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .usage(usage)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .flags(vk::ImageCreateFlags::empty())
+            .build();
+
+        let image = unsafe {
+            context
+                .logical_device()
+                .logical_device()
+                .create_image(&image_info, None)
+                .unwrap()
+        };
+
+        let memory_requirements = unsafe {
+            context
+                .logical_device()
+                .logical_device()
+                .get_image_memory_requirements(image)
+        };
+
+        let memory_type_index = Buffer::determine_memory_type_index(
+            memory_requirements,
+            context.physical_device_memory_properties(),
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        );
+
+        let allocation_info = vk::MemoryAllocateInfo::builder()
+            .allocation_size(memory_requirements.size)
+            .memory_type_index(memory_type_index)
+            .build();
+
+        let memory = unsafe {
+            let logical_device = context.logical_device().logical_device();
+            let memory_handle = logical_device
+                .allocate_memory(&allocation_info, None)
+                .unwrap();
+            logical_device
+                .bind_image_memory(image, memory_handle, 0)
+                .unwrap();
+            memory_handle
+        };
+
+        Texture {
+            image,
+            view,
+            memory,
+            context,
+        }
+    }
+
     pub fn from_file(
         context: Arc<VulkanContext>,
         command_pool: &CommandPool,

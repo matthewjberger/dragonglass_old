@@ -1,4 +1,5 @@
 use crate::core::{Instance, LogicalDevice, PhysicalDevice, Surface};
+use ash::{version::InstanceV1_0, vk};
 use snafu::{ResultExt, Snafu};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -44,6 +45,46 @@ impl VulkanContext {
             logical_device,
             surface,
         })
+    }
+
+    // TODO: Move this to a more specific module
+    pub fn determine_depth_format(&self) -> vk::Format {
+        let tiling = vk::ImageTiling::OPTIMAL;
+        let candidates = vec![
+            vk::Format::D32_SFLOAT,
+            vk::Format::D32_SFLOAT_S8_UINT,
+            vk::Format::D24_UNORM_S8_UINT,
+        ];
+        let features = vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT;
+
+        candidates
+            .iter()
+            .map(|f| *f)
+            .find(|candidate| {
+                let properties = unsafe {
+                    self.instance
+                        .instance()
+                        .get_physical_device_format_properties(self.physical_device(), *candidate)
+                };
+
+                if tiling == vk::ImageTiling::LINEAR
+                    && properties.linear_tiling_features.contains(features)
+                {
+                    true
+                } else if tiling == vk::ImageTiling::OPTIMAL
+                    && properties.optimal_tiling_features.contains(features)
+                {
+                    true
+                } else {
+                    false
+                }
+            })
+            .expect("Failed to find supported depth format")
+    }
+
+    // TODO: Move this to a more specific module
+    pub fn has_stencil_component(format: vk::Format) -> bool {
+        format == vk::Format::D32_SFLOAT_S8_UINT || format == vk::Format::D24_UNORM_S8_UINT
     }
 
     // TODO: Replace accessors with accessors to wrappers

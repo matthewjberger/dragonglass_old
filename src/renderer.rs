@@ -117,6 +117,8 @@ impl Renderer {
             descriptor_set_layout.layout(),
         );
 
+        // TODO: Create depth resources
+
         // Create one framebuffer for each image in the swapchain
         let framebuffers = swapchain
             .image_views()
@@ -316,11 +318,19 @@ impl Renderer {
                 .unwrap()
         };
 
-        let clear_values = [vk::ClearValue {
-            color: vk::ClearColorValue {
-                float32: [0.0, 0.0, 0.0, 1.0],
+        let clear_values = [
+            vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: [0.0, 0.0, 0.0, 1.0],
+                },
             },
-        }];
+            vk::ClearValue {
+                depth_stencil: vk::ClearDepthStencilValue {
+                    depth: 1.0,
+                    stencil: 0,
+                },
+            },
+        ];
 
         let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
             .render_pass(self.render_pass.render_pass())
@@ -471,4 +481,6 @@ impl Renderer {
                 .unwrap()
         };
     }
+
+    pub fn create_depth_resources(&self) {}
 }
