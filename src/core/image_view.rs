@@ -16,10 +16,11 @@ impl ImageView {
         image: vk::Image,
         format: vk::Format,
         aspect_mask: vk::ImageAspectFlags,
+        view_type: vk::ImageViewType,
     ) -> Self {
         let create_info = vk::ImageViewCreateInfo::builder()
             .image(image)
-            .view_type(vk::ImageViewType::TYPE_2D)
+            .view_type(view_type)
             .format(format)
             .components(vk::ComponentMapping {
                 r: vk::ComponentSwizzle::IDENTITY,

@@ -148,7 +148,11 @@ impl Renderer {
             vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         );
 
-        depth_texture.create_view(depth_format, vk::ImageAspectFlags::DEPTH);
+        depth_texture.create_view(
+            depth_format,
+            vk::ImageAspectFlags::DEPTH,
+            vk::ImageViewType::TYPE_2D,
+        );
 
         // Create one framebuffer for each image in the swapchain
         let framebuffers = swapchain
@@ -212,6 +216,7 @@ impl Renderer {
             vk::ImageTiling::OPTIMAL,
             vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
             vk::ImageAspectFlags::COLOR,
+            vk::ImageViewType::TYPE_2D,
         );
 
         let texture_image_sampler = Sampler::new(context.clone());

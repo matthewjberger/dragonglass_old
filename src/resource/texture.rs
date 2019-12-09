@@ -90,6 +90,7 @@ impl Texture {
         }
     }
 
+    // TODO: Refactor this to use less parameters
     pub fn from_file(
         context: Arc<VulkanContext>,
         command_pool: &CommandPool,
@@ -99,6 +100,7 @@ impl Texture {
         tiling: vk::ImageTiling,
         usage: vk::ImageUsageFlags,
         aspect_mask: vk::ImageAspectFlags,
+        view_type: vk::ImageViewType,
     ) -> Self {
         let image = image::open(path).unwrap();
         let image_as_rgb = image.to_rgba();
@@ -141,7 +143,7 @@ impl Texture {
             vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         );
 
-        texture.create_view(format, aspect_mask);
+        texture.create_view(format, aspect_mask, view_type);
         texture
     }
 
@@ -149,12 +151,18 @@ impl Texture {
         self.image
     }
 
-    pub fn create_view(&mut self, format: vk::Format, aspect_mask: vk::ImageAspectFlags) {
+    pub fn create_view(
+        &mut self,
+        format: vk::Format,
+        aspect_mask: vk::ImageAspectFlags,
+        view_type: vk::ImageViewType,
+    ) {
         self.view = Some(ImageView::new(
             self.context.clone(),
             self.image(),
             format,
             aspect_mask,
+            view_type,
         ));
     }
 

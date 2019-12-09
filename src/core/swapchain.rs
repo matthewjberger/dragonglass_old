@@ -234,6 +234,7 @@ Creating swapchain.
                     *image,
                     swapchain_properties.format.format,
                     vk::ImageAspectFlags::COLOR,
+                    vk::ImageViewType::TYPE_2D,
                 )
             })
             .collect::<Vec<_>>();
