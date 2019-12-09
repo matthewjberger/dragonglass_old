@@ -11,38 +11,22 @@ use std::{mem, sync::Arc};
 // The order of the struct fields matters here
 // because it determines drop order
 pub struct Texture {
-    view: ImageView,
+    view: Option<ImageView>,
     image: vk::Image,
     memory: vk::DeviceMemory,
     context: Arc<VulkanContext>,
 }
 
+// TODO: Make a texture builder to shorten the creation parameters
 impl Texture {
-    pub fn from_file(
+    pub fn new(
         context: Arc<VulkanContext>,
-        command_pool: &CommandPool,
-        graphics_queue: vk::Queue,
-        path: &str,
+        width: u32,
+        height: u32,
+        format: vk::Format,
+        tiling: vk::ImageTiling,
+        usage: vk::ImageUsageFlags,
     ) -> Self {
-        let image = image::open(path).unwrap();
-        let image_as_rgb = image.to_rgba();
-        let width = image_as_rgb.width();
-        let height = image_as_rgb.height();
-        let pixels = image_as_rgb.into_raw();
-        let image_size = (pixels.len() * mem::size_of::<u8>()) as vk::DeviceSize;
-
-        let buffer = Buffer::new(
-            context.clone(),
-            image_size,
-            vk::BufferUsageFlags::TRANSFER_SRC,
-            vk::MemoryPropertyFlags::HOST_VISIBLE,
-        );
-
-        buffer.upload_to_entire_buffer::<u8, _>(&pixels);
-
-        let format = vk::Format::R8G8B8A8_UNORM;
-        let tiling = vk::ImageTiling::OPTIMAL;
-        let usage = vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED;
         let image_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(vk::Extent3D {
@@ -98,37 +82,84 @@ impl Texture {
             memory_handle
         };
 
-        let format = vk::Format::R8G8B8A8_UNORM;
-        command_pool.transition_image_layout(
-            graphics_queue,
-            image,
-            format,
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        );
-
-        command_pool.copy_buffer_to_image(graphics_queue, buffer.buffer(), image, width, height);
-
-        command_pool.transition_image_layout(
-            graphics_queue,
-            image,
-            format,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        );
-
-        let view = ImageView::new(context.clone(), image, format);
-
         Texture {
             image,
-            view,
+            view: None,
             memory,
             context,
         }
     }
 
-    pub fn view(&self) -> &ImageView {
-        &self.view
+    pub fn from_file(
+        context: Arc<VulkanContext>,
+        command_pool: &CommandPool,
+        graphics_queue: vk::Queue,
+        path: &str,
+        format: vk::Format,
+        tiling: vk::ImageTiling,
+        usage: vk::ImageUsageFlags,
+        aspect_mask: vk::ImageAspectFlags,
+    ) -> Self {
+        let image = image::open(path).unwrap();
+        let image_as_rgb = image.to_rgba();
+        let width = image_as_rgb.width();
+        let height = image_as_rgb.height();
+        let pixels = image_as_rgb.into_raw();
+        let image_size = (pixels.len() * mem::size_of::<u8>()) as vk::DeviceSize;
+        let mut texture = Self::new(context.clone(), width, height, format, tiling, usage);
+
+        let buffer = Buffer::new(
+            context.clone(),
+            image_size,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk::MemoryPropertyFlags::HOST_VISIBLE,
+        );
+
+        buffer.upload_to_entire_buffer::<u8, _>(&pixels);
+
+        command_pool.transition_image_layout(
+            graphics_queue,
+            texture.image(),
+            format,
+            vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        );
+
+        command_pool.copy_buffer_to_image(
+            graphics_queue,
+            buffer.buffer(),
+            texture.image(),
+            width,
+            height,
+        );
+
+        command_pool.transition_image_layout(
+            graphics_queue,
+            texture.image(),
+            format,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        );
+
+        texture.create_view(format, aspect_mask);
+        texture
+    }
+
+    pub fn image(&self) -> vk::Image {
+        self.image
+    }
+
+    pub fn create_view(&mut self, format: vk::Format, aspect_mask: vk::ImageAspectFlags) {
+        self.view = Some(ImageView::new(
+            self.context.clone(),
+            self.image(),
+            format,
+            aspect_mask,
+        ));
+    }
+
+    pub fn view(&self) -> Option<&ImageView> {
+        self.view.as_ref()
     }
 }
 

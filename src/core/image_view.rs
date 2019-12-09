@@ -11,7 +11,12 @@ pub struct ImageView {
 }
 
 impl ImageView {
-    pub fn new(context: Arc<VulkanContext>, image: vk::Image, format: vk::Format) -> Self {
+    pub fn new(
+        context: Arc<VulkanContext>,
+        image: vk::Image,
+        format: vk::Format,
+        aspect_mask: vk::ImageAspectFlags,
+    ) -> Self {
         let create_info = vk::ImageViewCreateInfo::builder()
             .image(image)
             .view_type(vk::ImageViewType::TYPE_2D)
@@ -23,7 +28,7 @@ impl ImageView {
                 a: vk::ComponentSwizzle::IDENTITY,
             })
             .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
+                aspect_mask,
                 base_mip_level: 0,
                 level_count: 1,
                 base_array_layer: 0,

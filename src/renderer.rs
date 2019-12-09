@@ -6,7 +6,10 @@ use crate::{
     sync::{SynchronizationSet, SynchronizationSetConstants},
     vertex::Vertex,
 };
-use ash::{version::DeviceV1_0, vk};
+use ash::{
+    version::{DeviceV1_0, InstanceV1_0},
+    vk,
+};
 use nalgebra_glm as glm;
 use std::{mem, sync::Arc, time::Instant};
 
@@ -45,6 +48,7 @@ pub struct Renderer {
     pub transient_command_pool: CommandPool,
     pub uniform_buffers: Vec<Buffer>,
     pub vertex_buffer: Buffer,
+    pub depth_texture: Texture,
     pub texture: Texture,
     pub texture_image_sampler: Sampler,
     pub synchronization_set: SynchronizationSet,
@@ -97,8 +101,14 @@ impl Renderer {
                 .get_device_queue(context.present_queue_family_index(), 0)
         };
 
+        let depth_format = Self::determine_depth_format(
+            context.clone(),
+            vk::ImageTiling::OPTIMAL,
+            vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
+        );
+
         let swapchain = Swapchain::new(context.clone(), dimensions);
-        let render_pass = RenderPass::new(context.clone(), swapchain.properties());
+        let render_pass = RenderPass::new(context.clone(), swapchain.properties(), depth_format);
 
         let ubo_binding = UniformBufferObject::get_descriptor_set_layout_bindings();
         let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
@@ -117,11 +127,42 @@ impl Renderer {
             descriptor_set_layout.layout(),
         );
 
+        let mut depth_texture = Texture::new(
+            context.clone(),
+            swapchain.properties().extent.width,
+            swapchain.properties().extent.height,
+            depth_format,
+            vk::ImageTiling::OPTIMAL,
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+        );
+
+        let command_pool = CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::empty());
+        let transient_command_pool =
+            CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::TRANSIENT);
+
+        command_pool.transition_image_layout(
+            graphics_queue,
+            depth_texture.image(),
+            depth_format,
+            vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        );
+
+        depth_texture.create_view(depth_format, vk::ImageAspectFlags::DEPTH);
+
         // Create one framebuffer for each image in the swapchain
         let framebuffers = swapchain
             .image_views()
             .iter()
-            .map(|view| [view.view()])
+            .map(|view| {
+                [
+                    view.view(),
+                    depth_texture
+                        .view()
+                        .expect("Failed to get an image view for the depth texture")
+                        .view(),
+                ]
+            })
             .map(|attachments| {
                 Framebuffer::new(
                     context.clone(),
@@ -134,10 +175,6 @@ impl Renderer {
 
         let number_of_images = swapchain.images().len();
         let descriptor_pool = DescriptorPool::new(context.clone(), number_of_images as _);
-
-        let command_pool = CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::empty());
-        let transient_command_pool =
-            CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::TRANSIENT);
 
         let vertex_buffer = transient_command_pool.create_device_local_buffer::<u32, _>(
             graphics_queue,
@@ -171,6 +208,10 @@ impl Renderer {
             &command_pool,
             graphics_queue,
             "textures/crate.jpg",
+            vk::Format::R8G8B8A8_UNORM,
+            vk::ImageTiling::OPTIMAL,
+            vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+            vk::ImageAspectFlags::COLOR,
         );
 
         let texture_image_sampler = Sampler::new(context.clone());
@@ -178,7 +219,7 @@ impl Renderer {
         descriptor_pool.update_descriptor_sets(
             &descriptor_sets,
             &uniform_buffers,
-            texture.view(),
+            &texture.view().unwrap(),
             &texture_image_sampler,
             mem::size_of::<UniformBufferObject>() as vk::DeviceSize,
         );
@@ -198,6 +239,7 @@ impl Renderer {
             render_pass,
             swapchain,
             synchronization_set,
+            depth_texture,
             texture,
             texture_image_sampler,
             transient_command_pool,
@@ -316,11 +358,19 @@ impl Renderer {
                 .unwrap()
         };
 
-        let clear_values = [vk::ClearValue {
-            color: vk::ClearColorValue {
-                float32: [0.0, 0.0, 0.0, 1.0],
+        let clear_values = [
+            vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: [0.0, 0.0, 0.0, 1.0],
+                },
             },
-        }];
+            vk::ClearValue {
+                depth_stencil: vk::ClearDepthStencilValue {
+                    depth: 1.0,
+                    stencil: 0,
+                },
+            },
+        ];
 
         let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
             .render_pass(self.render_pass.render_pass())
@@ -470,5 +520,38 @@ impl Renderer {
                 .device_wait_idle()
                 .unwrap()
         };
+    }
+
+    // TODO: Move this to a more specific component
+    pub fn determine_depth_format(
+        context: Arc<VulkanContext>,
+        tiling: vk::ImageTiling,
+        features: vk::FormatFeatureFlags,
+    ) -> vk::Format {
+        let candidates = vec![
+            vk::Format::D32_SFLOAT,
+            vk::Format::D32_SFLOAT_S8_UINT,
+            vk::Format::D24_UNORM_S8_UINT,
+        ];
+        candidates
+            .iter()
+            .copied()
+            .find(|candidate| {
+                let properties = unsafe {
+                    context.instance().get_physical_device_format_properties(
+                        context.physical_device(),
+                        *candidate,
+                    )
+                };
+
+                let linear_tiling_feature_support = tiling == vk::ImageTiling::LINEAR
+                    && properties.linear_tiling_features.contains(features);
+
+                let optimal_tiling_feature_support = tiling == vk::ImageTiling::OPTIMAL
+                    && properties.optimal_tiling_features.contains(features);
+
+                linear_tiling_feature_support || optimal_tiling_feature_support
+            })
+            .expect("Failed to find a supported depth format")
     }
 }

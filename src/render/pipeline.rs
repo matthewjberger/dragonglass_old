@@ -103,6 +103,18 @@ impl GraphicsPipeline {
             .alpha_to_one_enable(false)
             .build();
 
+        let depth_stencil_info = vk::PipelineDepthStencilStateCreateInfo::builder()
+            .depth_test_enable(true)
+            .depth_write_enable(true)
+            .depth_compare_op(vk::CompareOp::LESS)
+            .depth_bounds_test_enable(false)
+            .min_depth_bounds(0.0)
+            .max_depth_bounds(1.0)
+            .stencil_test_enable(false)
+            .front(Default::default())
+            .back(Default::default())
+            .build();
+
         // Create the color blend attachment
         let color_blend_attachment = vk::PipelineColorBlendAttachmentState::builder()
             .color_write_mask(vk::ColorComponentFlags::all())
@@ -136,7 +148,7 @@ impl GraphicsPipeline {
             .viewport_state(&viewport_create_info)
             .rasterization_state(&rasterizer_create_info)
             .multisample_state(&multisampling_create_info)
-            //.depth_stencil_state() // not using depth/stencil tests
+            .depth_stencil_state(&depth_stencil_info)
             .color_blend_state(&color_blending_info)
             //.dynamic_state // no dynamic states
             .layout(pipeline_layout.layout())

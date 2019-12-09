@@ -229,7 +229,12 @@ Creating swapchain.
         let image_views = images
             .iter()
             .map(|image| {
-                ImageView::new(context.clone(), *image, swapchain_properties.format.format)
+                ImageView::new(
+                    context.clone(),
+                    *image,
+                    swapchain_properties.format.format,
+                    vk::ImageAspectFlags::COLOR,
+                )
             })
             .collect::<Vec<_>>();
 
