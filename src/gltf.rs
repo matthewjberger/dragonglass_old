@@ -1,7 +1,4 @@
-use gltf::{
-    animation::{util::ReadOutputs, Interpolation},
-    image::Format,
-};
+use gltf::animation::{util::ReadOutputs, Interpolation};
 use nalgebra::{Matrix4, Quaternion, UnitQuaternion};
 use nalgebra_glm as glm;
 use petgraph::{
@@ -25,7 +22,7 @@ enum TransformationSet {
 }
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Vertex {
     position: Option<glm::Vec3>,
     normal: Option<glm::Vec3>,
@@ -64,6 +61,7 @@ impl Vertex {
     }
 }
 
+#[derive(Default, Debug)]
 pub struct VertexSet {
     pub vertices: Vec<Vertex>,
 }
@@ -167,9 +165,10 @@ pub struct Mesh {
 
 #[derive(Debug)]
 pub struct Primitive {
-    // TODO: Load something for vulkan to use
     pub num_indices: i32,
     pub material_index: Option<usize>,
+    pub vertex_set: VertexSet,
+    pub indices: Vec<u32>,
 }
 
 #[derive(Debug)]
@@ -193,8 +192,8 @@ pub struct Scene {
 }
 
 pub struct GltfAsset {
-    pub texture_ids: Vec<u32>,
     pub gltf: gltf::Document,
+    pub textures: Vec<gltf::image::Data>,
     pub scenes: Vec<Scene>,
     pub animations: Vec<Animation>,
 }
@@ -202,14 +201,13 @@ pub struct GltfAsset {
 impl GltfAsset {
     pub fn from_file(path: &str) -> Self {
         let (gltf, buffers, textures) = gltf::import(path).expect("Couldn't import file!");
-        let texture_ids = prepare_textures(&textures);
         let scenes = prepare_scenes(&gltf, &buffers);
         let animations = prepare_animations(&gltf, &buffers);
 
         GltfAsset {
-            texture_ids,
             gltf,
             scenes,
+            textures,
             animations,
         }
     }
@@ -416,6 +414,8 @@ fn load_mesh(node: &gltf::Node, buffers: &[gltf::buffer::Data]) -> Option<Mesh> 
             let mut primitive_info = Primitive {
                 num_indices: 0,
                 material_index: None,
+                vertex_set,
+                indices,
             };
 
             let material_index = primitive.material().index();
@@ -573,4 +573,10 @@ pub fn calculate_global_transform(node_index: NodeIndex, graph: &NodeGraph) -> g
         .fold(glm::Mat4::identity(), |transform, index| {
             transform * graph[*index].local_transform * graph[*index].animation_transform.matrix()
         })
+}
+
+pub fn create_byte_slice<T>(data: &[T]) -> &[u8] {
+    use std::{mem, slice};
+    let len = mem::size_of::<T>() * data.len();
+    unsafe { slice::from_raw_parts(data.as_ptr() as *const u8, len) }
 }
