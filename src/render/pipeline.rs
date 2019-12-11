@@ -1,11 +1,10 @@
 use crate::{
     core::SwapchainProperties,
     resource::{PipelineLayout, Shader},
-    vertex::Vertex,
     VulkanContext,
 };
 use ash::{version::DeviceV1_0, vk};
-use std::{ffi::CString, sync::Arc};
+use std::{ffi::CString, mem, sync::Arc};
 
 pub struct GraphicsPipeline {
     pipeline: vk::Pipeline,
@@ -40,8 +39,39 @@ impl GraphicsPipeline {
 
         let shader_state_info = [vertex_shader.state_info(), fragment_shader.state_info()];
 
-        let descriptions = [Vertex::get_binding_description()];
-        let attributes = Vertex::get_attribute_descriptions();
+        let vertex_input_binding_description = vk::VertexInputBindingDescription::builder()
+            .binding(0)
+            .stride((8 * mem::size_of::<f32>()) as _)
+            .input_rate(vk::VertexInputRate::VERTEX)
+            .build();
+        let descriptions = [vertex_input_binding_description];
+
+        let position_description = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(0)
+            .format(vk::Format::R32G32B32_SFLOAT)
+            .offset(0)
+            .build();
+
+        let normal_description = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(1)
+            .format(vk::Format::R32G32B32_SFLOAT)
+            .offset((3 * mem::size_of::<f32>()) as _)
+            .build();
+
+        let tex_coord_description = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(2)
+            .format(vk::Format::R32G32_SFLOAT)
+            .offset((6 * mem::size_of::<f32>()) as _)
+            .build();
+
+        let attributes = [
+            position_description,
+            normal_description,
+            tex_coord_description,
+        ];
 
         // Build vertex input creation info
         let vertex_input_create_info = vk::PipelineVertexInputStateCreateInfo::builder()
@@ -86,7 +116,7 @@ impl GraphicsPipeline {
             .polygon_mode(vk::PolygonMode::FILL)
             .line_width(1.0)
             .cull_mode(vk::CullModeFlags::NONE)
-            .front_face(vk::FrontFace::CLOCKWISE)
+            .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .depth_bias_enable(false)
             .depth_bias_constant_factor(0.0)
             .depth_bias_clamp(0.0)

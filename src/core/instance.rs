@@ -65,6 +65,9 @@ impl Instance {
                 .create_instance(&instance_create_info, None)
                 .context(InstanceCreation)?
         };
+
+        // TODO: List supported instance extensions
+
         Ok(Instance { entry, instance })
     }
 
@@ -94,6 +97,21 @@ impl Instance {
         if DebugLayer::validation_layers_enabled() {
             instance_extension_names.push(DebugUtils::name().as_ptr());
         }
+
+        // TODO: This could be used in the future. Currently not supported
+        // on my laptop.
+        //
+        // This extension adds support for passing negative viewport heights.
+        //
+        // The viewport origin in OpenGL is in the lower left of the screen
+        // with Y pointing up, but Vulkan's viewport origin is in the
+        // upper left corner of the screen with Y pointing downwards.
+        //
+        // Flipping the viewport using a negative y height will correct
+        // the issue for compatibility with vertex data set up for OpenGL,
+        // such as the vertex data in gltf models.
+        //instance_extension_names.push(vk::KhrMaintenance1Fn::name().as_ptr());
+
         instance_extension_names
     }
 

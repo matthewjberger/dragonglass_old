@@ -1,10 +1,10 @@
 use crate::{
     context::VulkanContext,
     core::Swapchain,
+    gltf::GltfAsset,
     render::{Framebuffer, GraphicsPipeline, RenderPass},
     resource::{Buffer, CommandPool, DescriptorPool, DescriptorSetLayout, Sampler, Texture},
     sync::{SynchronizationSet, SynchronizationSetConstants},
-    vertex::Vertex,
 };
 use ash::{
     version::{DeviceV1_0, InstanceV1_0},
@@ -57,21 +57,7 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(window: &winit::Window, dimensions: [u32; 2]) -> Self {
-        let color = glm::vec3(1.0, 1.0, 1.0);
-        let vertices: [Vertex; 8] = [
-            // First Quad
-            Vertex::new(glm::vec3(-0.5, -0.5, 0.5), color, glm::vec2(0.0, 0.0)),
-            Vertex::new(glm::vec3(0.5, -0.5, 0.5), color, glm::vec2(1.0, 0.0)),
-            Vertex::new(glm::vec3(0.5, 0.5, 0.5), color, glm::vec2(1.0, 1.0)),
-            Vertex::new(glm::vec3(-0.5, 0.5, 0.5), color, glm::vec2(0.0, 1.0)),
-            // Second Quad
-            Vertex::new(glm::vec3(-0.5, -0.5, -0.5), color, glm::vec2(0.0, 0.0)),
-            Vertex::new(glm::vec3(0.5, -0.5, -0.5), color, glm::vec2(1.0, 0.0)),
-            Vertex::new(glm::vec3(0.5, 0.5, -0.5), color, glm::vec2(1.0, 1.0)),
-            Vertex::new(glm::vec3(-0.5, 0.5, -0.5), color, glm::vec2(0.0, 1.0)),
-        ];
-
-        let indices: [u32; 12] = [0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4];
+        let gltf_asset = GltfAsset::from_file("assets/models/Duck/Duck.gltf");
 
         let context =
             Arc::new(VulkanContext::new(&window).expect("Failed to create VulkanContext"));
@@ -180,16 +166,19 @@ impl Renderer {
         let number_of_images = swapchain.images().len();
         let descriptor_pool = DescriptorPool::new(context.clone(), number_of_images as _);
 
+        let first_node = &gltf_asset.scenes[0].node_graphs[0][petgraph::graph::NodeIndex::new(1)];
+        let first_primitive = &first_node.mesh.as_ref().expect("No Mesh!").primitives[0];
+
         let vertex_buffer = transient_command_pool.create_device_local_buffer(
             graphics_queue,
             vk::BufferUsageFlags::VERTEX_BUFFER,
-            &vertices,
+            &first_primitive.vertex_set.pack_vertices(),
         );
 
         let index_buffer = transient_command_pool.create_device_local_buffer(
             graphics_queue,
             vk::BufferUsageFlags::INDEX_BUFFER,
-            &indices,
+            &first_primitive.indices,
         );
 
         let size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
@@ -211,7 +200,7 @@ impl Renderer {
             context.clone(),
             &command_pool,
             graphics_queue,
-            "assets/textures/crate.jpg",
+            "assets/models/Duck/DuckCM.png",
             vk::Format::R8G8B8A8_UNORM,
             vk::ImageTiling::OPTIMAL,
             vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
@@ -238,7 +227,7 @@ impl Renderer {
             framebuffers,
             graphics_queue,
             index_buffer,
-            number_of_indices: indices.len() as _,
+            number_of_indices: first_primitive.number_of_indices,
             pipeline,
             present_queue,
             render_pass,
@@ -492,13 +481,13 @@ impl Renderer {
             model: glm::rotate(
                 &glm::Mat4::identity(),
                 (elapsed_time * 90.0).to_radians(),
-                &glm::vec3(0.0, 1.0, 0.0),
+                &glm::vec3(0.0, -1.0, 0.0),
             ),
             view: glm::look_at(
-                &glm::vec3(0.0, 0.0, 2.0),
+                &glm::vec3(200.0, 150.0, 200.0),
                 &glm::vec3(0.0, 0.0, 0.0),
                 &glm::vec3(0.0, 1.0, 0.0),
-            ), // TODO: Make Z the up axis
+            ),
             projection: glm::perspective_zo(
                 self.swapchain.properties().aspect_ratio(),
                 90_f32.to_radians(),

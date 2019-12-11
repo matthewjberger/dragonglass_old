@@ -105,8 +105,6 @@ impl Buffer {
         memory_type
     }
 
-    // TODO: Refactor this to use less parameters
-    // Upload to the entire buffer
     pub fn upload_to_entire_buffer<T: Copy>(&self, data: &[T]) {
         let data_pointer = self.map(
             0,

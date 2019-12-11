@@ -6,7 +6,6 @@ mod render;
 mod renderer;
 mod resource;
 mod sync;
-mod vertex;
 
 use app::App;
 use context::VulkanContext;

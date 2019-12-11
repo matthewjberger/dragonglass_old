@@ -67,7 +67,7 @@ pub struct VertexSet {
 }
 
 impl VertexSet {
-    fn pack_vertices(&self) -> Vec<f32> {
+    pub fn pack_vertices(&self) -> Vec<f32> {
         self.vertices
             .iter()
             .map(|vertex| vertex.pack_data())
@@ -77,7 +77,7 @@ impl VertexSet {
 
     // This determines the order that attributes are configured in
     // This must patch the packing order for vertices
-    fn data_lengths(&self) -> Vec<u32> {
+    pub fn data_lengths(&self) -> Vec<u32> {
         let vec2_length = 2;
         let vec3_length = 3;
         let vec4_length = 4;
@@ -165,7 +165,7 @@ pub struct Mesh {
 
 #[derive(Debug)]
 pub struct Primitive {
-    pub num_indices: i32,
+    pub number_of_indices: u32,
     pub material_index: Option<usize>,
     pub vertex_set: VertexSet,
     pub indices: Vec<u32>,
@@ -409,10 +409,8 @@ fn load_mesh(node: &gltf::Node, buffers: &[gltf::buffer::Data]) -> Option<Mesh> 
         for primitive in mesh.primitives() {
             let (vertex_set, indices) = read_buffer_data(&primitive, &buffers);
 
-            // TODO: Prepare primitive for vulkan using the vertex_set and the indices
-            // TODO: Probably add these to a large buffer
             let mut primitive_info = Primitive {
-                num_indices: 0,
+                number_of_indices: indices.len() as u32,
                 material_index: None,
                 vertex_set,
                 indices,
