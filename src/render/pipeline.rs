@@ -26,14 +26,14 @@ impl GraphicsPipeline {
 
         let vertex_shader = Shader::from_file(
             context.clone(),
-            "shaders/shader.vert.spv",
+            "assets/shaders/shader.vert.spv",
             vk::ShaderStageFlags::VERTEX,
             shader_entry_point_name,
         );
 
         let fragment_shader = Shader::from_file(
             context.clone(),
-            "shaders/shader.frag.spv",
+            "assets/shaders/shader.frag.spv",
             vk::ShaderStageFlags::FRAGMENT,
             shader_entry_point_name,
         );

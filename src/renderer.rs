@@ -60,10 +60,10 @@ impl Renderer {
         let color = glm::vec3(1.0, 1.0, 1.0);
         let vertices: [Vertex; 8] = [
             // First Quad
-            Vertex::new(glm::vec3(-0.5, -0.5, 0.0), color, glm::vec2(0.0, 0.0)),
-            Vertex::new(glm::vec3(0.5, -0.5, 0.0), color, glm::vec2(1.0, 0.0)),
-            Vertex::new(glm::vec3(0.5, 0.5, 0.0), color, glm::vec2(1.0, 1.0)),
-            Vertex::new(glm::vec3(-0.5, 0.5, 0.0), color, glm::vec2(0.0, 1.0)),
+            Vertex::new(glm::vec3(-0.5, -0.5, 0.5), color, glm::vec2(0.0, 0.0)),
+            Vertex::new(glm::vec3(0.5, -0.5, 0.5), color, glm::vec2(1.0, 0.0)),
+            Vertex::new(glm::vec3(0.5, 0.5, 0.5), color, glm::vec2(1.0, 1.0)),
+            Vertex::new(glm::vec3(-0.5, 0.5, 0.5), color, glm::vec2(0.0, 1.0)),
             // Second Quad
             Vertex::new(glm::vec3(-0.5, -0.5, -0.5), color, glm::vec2(0.0, 0.0)),
             Vertex::new(glm::vec3(0.5, -0.5, -0.5), color, glm::vec2(1.0, 0.0)),
@@ -211,7 +211,7 @@ impl Renderer {
             context.clone(),
             &command_pool,
             graphics_queue,
-            "textures/crate.jpg",
+            "assets/textures/crate.jpg",
             vk::Format::R8G8B8A8_UNORM,
             vk::ImageTiling::OPTIMAL,
             vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
@@ -499,7 +499,7 @@ impl Renderer {
                 &glm::vec3(0.0, 0.0, 0.0),
                 &glm::vec3(0.0, 1.0, 0.0),
             ), // TODO: Make Z the up axis
-            projection: glm::perspective(
+            projection: glm::perspective_zo(
                 self.swapchain.properties().aspect_ratio(),
                 90_f32.to_radians(),
                 0.1_f32,
