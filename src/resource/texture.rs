@@ -148,7 +148,7 @@ impl Texture {
             vk::MemoryPropertyFlags::HOST_VISIBLE,
         );
 
-        buffer.upload_to_entire_buffer::<u8, _>(&pixels);
+        buffer.upload_to_entire_buffer(&pixels);
 
         command_pool.transition_image_layout(
             graphics_queue,

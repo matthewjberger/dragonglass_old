@@ -107,7 +107,7 @@ impl Buffer {
 
     // TODO: Refactor this to use less parameters
     // Upload to the entire buffer
-    pub fn upload_to_entire_buffer<A, T: Copy>(&self, data: &[T]) {
+    pub fn upload_to_entire_buffer<T: Copy>(&self, data: &[T]) {
         let data_pointer = self.map(
             0,
             (data.len() * std::mem::size_of::<T>()) as vk::DeviceSize,
@@ -117,7 +117,7 @@ impl Buffer {
             // Upload aligned staging data to the mapped buffer
             let mut align = ash::util::Align::new(
                 data_pointer,
-                std::mem::align_of::<A>() as _,
+                std::mem::align_of::<T>() as _,
                 self.memory_requirements.size as _,
             );
             align.copy_from_slice(data);

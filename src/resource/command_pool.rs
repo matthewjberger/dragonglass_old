@@ -69,14 +69,13 @@ impl CommandPool {
         self.command_buffers.clear();
     }
 
-    pub fn create_device_local_buffer<A, T: Copy>(
+    pub fn create_device_local_buffer<T: Copy>(
         &self,
         graphics_queue: vk::Queue,
         usage_flags: vk::BufferUsageFlags,
         vertices: &[T],
     ) -> Buffer {
-        let buffer_size =
-            (vertices.len() * std::mem::size_of::<T>()) as ash::vk::DeviceSize;
+        let buffer_size = (vertices.len() * std::mem::size_of::<T>()) as ash::vk::DeviceSize;
 
         let staging_buffer = Buffer::new(
             self.context.clone(),
@@ -85,7 +84,7 @@ impl CommandPool {
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         );
 
-        staging_buffer.upload_to_entire_buffer::<A, _>(&vertices);
+        staging_buffer.upload_to_entire_buffer(&vertices);
 
         let vertex_buffer = Buffer::new(
             self.context.clone(),

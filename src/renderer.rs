@@ -180,13 +180,13 @@ impl Renderer {
         let number_of_images = swapchain.images().len();
         let descriptor_pool = DescriptorPool::new(context.clone(), number_of_images as _);
 
-        let vertex_buffer = transient_command_pool.create_device_local_buffer::<u32, _>(
+        let vertex_buffer = transient_command_pool.create_device_local_buffer(
             graphics_queue,
             vk::BufferUsageFlags::VERTEX_BUFFER,
             &vertices,
         );
 
-        let index_buffer = transient_command_pool.create_device_local_buffer::<u16, _>(
+        let index_buffer = transient_command_pool.create_device_local_buffer(
             graphics_queue,
             vk::BufferUsageFlags::INDEX_BUFFER,
             &indices,
@@ -509,7 +509,7 @@ impl Renderer {
 
         let ubos = [ubo];
         let buffer = &self.uniform_buffers[current_image as usize];
-        buffer.upload_to_entire_buffer::<u32, _>(&ubos);
+        buffer.upload_to_entire_buffer(&ubos);
     }
 
     pub fn recreate_swapchain(&mut self, _: Option<[u32; 2]>) {
