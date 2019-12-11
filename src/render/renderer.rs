@@ -1,5 +1,5 @@
 use crate::{
-    core::{Swapchain, VulkanContext},
+    core::{ImageView, Swapchain, VulkanContext},
     model::GltfAsset,
     render::{Framebuffer, GraphicsPipeline, RenderPass},
     resource::{Buffer, CommandPool, DescriptorPool, DescriptorSetLayout, Sampler, Texture},
@@ -48,7 +48,9 @@ pub struct Renderer {
     pub uniform_buffers: Vec<Buffer>,
     pub vertex_buffer: Buffer,
     pub depth_texture: Texture,
+    pub depth_texture_view: ImageView,
     pub texture: Texture,
+    pub texture_view: ImageView,
     pub texture_image_sampler: Sampler,
     pub synchronization_set: SynchronizationSet,
     pub current_frame: usize,
@@ -112,14 +114,24 @@ impl Renderer {
             descriptor_set_layout.layout(),
         );
 
-        let mut depth_texture = Texture::new(
-            context.clone(),
-            swapchain.properties().extent.width,
-            swapchain.properties().extent.height,
-            depth_format,
-            vk::ImageTiling::OPTIMAL,
-            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
-        );
+        let create_info = vk::ImageCreateInfo::builder()
+            .image_type(vk::ImageType::TYPE_2D)
+            .extent(vk::Extent3D {
+                width: swapchain.properties().extent.width,
+                height: swapchain.properties().extent.height,
+                depth: 1,
+            })
+            .mip_levels(1)
+            .array_layers(1)
+            .format(depth_format)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .flags(vk::ImageCreateFlags::empty())
+            .build();
+        let depth_texture = Texture::new(context.clone(), create_info);
 
         let command_pool = CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::empty());
         let transient_command_pool =
@@ -133,25 +145,31 @@ impl Renderer {
             vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         );
 
-        depth_texture.create_view(
-            depth_format,
-            vk::ImageAspectFlags::DEPTH,
-            vk::ImageViewType::TYPE_2D,
-        );
+        let create_info = vk::ImageViewCreateInfo::builder()
+            .image(depth_texture.image())
+            .view_type(vk::ImageViewType::TYPE_2D)
+            .format(depth_format)
+            .components(vk::ComponentMapping {
+                r: vk::ComponentSwizzle::IDENTITY,
+                g: vk::ComponentSwizzle::IDENTITY,
+                b: vk::ComponentSwizzle::IDENTITY,
+                a: vk::ComponentSwizzle::IDENTITY,
+            })
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::DEPTH,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .build();
+        let depth_texture_view = ImageView::new(context.clone(), create_info);
 
         // Create one framebuffer for each image in the swapchain
         let framebuffers = swapchain
             .image_views()
             .iter()
-            .map(|view| {
-                [
-                    view.view(),
-                    depth_texture
-                        .view()
-                        .expect("Failed to get an image view for the depth texture")
-                        .view(),
-                ]
-            })
+            .map(|view| [view.view(), depth_texture_view.view()])
             .map(|attachments| {
                 Framebuffer::new(
                     context.clone(),
@@ -195,24 +213,58 @@ impl Renderer {
         let descriptor_sets = descriptor_pool
             .allocate_descriptor_sets(descriptor_set_layout.layout(), uniform_buffers.len() as _);
 
+        let texture_format = vk::Format::R8G8B8A8_UNORM;
+        let create_info = vk::ImageCreateInfo::builder()
+            .image_type(vk::ImageType::TYPE_2D)
+            .extent(vk::Extent3D {
+                width: swapchain.properties().extent.width,
+                height: swapchain.properties().extent.height,
+                depth: 1,
+            })
+            .mip_levels(1)
+            .array_layers(1)
+            .format(texture_format)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .flags(vk::ImageCreateFlags::empty());
         let texture = Texture::from_file(
             context.clone(),
             &command_pool,
             graphics_queue,
             "assets/models/Duck/DuckCM.png",
-            vk::Format::R8G8B8A8_UNORM,
-            vk::ImageTiling::OPTIMAL,
-            vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
-            vk::ImageAspectFlags::COLOR,
-            vk::ImageViewType::TYPE_2D,
+            texture_format,
+            create_info,
         );
+
+        let create_info = vk::ImageViewCreateInfo::builder()
+            .image(texture.image())
+            .view_type(vk::ImageViewType::TYPE_2D)
+            .format(texture_format)
+            .components(vk::ComponentMapping {
+                r: vk::ComponentSwizzle::IDENTITY,
+                g: vk::ComponentSwizzle::IDENTITY,
+                b: vk::ComponentSwizzle::IDENTITY,
+                a: vk::ComponentSwizzle::IDENTITY,
+            })
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .build();
+        let texture_view = ImageView::new(context.clone(), create_info);
 
         let texture_image_sampler = Sampler::new(context.clone());
 
         descriptor_pool.update_descriptor_sets(
             &descriptor_sets,
             &uniform_buffers,
-            &texture.view().unwrap(),
+            &texture_view,
             &texture_image_sampler,
             mem::size_of::<UniformBufferObject>() as vk::DeviceSize,
         );
@@ -233,7 +285,9 @@ impl Renderer {
             swapchain,
             synchronization_set,
             depth_texture,
+            depth_texture_view,
             texture,
+            texture_view,
             texture_image_sampler,
             transient_command_pool,
             uniform_buffers,
@@ -354,7 +408,7 @@ impl Renderer {
         let clear_values = [
             vk::ClearValue {
                 color: vk::ClearColorValue {
-                    float32: [0.0, 0.0, 0.0, 1.0],
+                    float32: [0.39, 0.58, 0.93, 1.0],
                 },
             },
             vk::ClearValue {

@@ -232,13 +232,26 @@ Creating swapchain.
         let image_views = images
             .iter()
             .map(|image| {
-                ImageView::new(
-                    context.clone(),
-                    *image,
-                    swapchain_properties.format.format,
-                    vk::ImageAspectFlags::COLOR,
-                    vk::ImageViewType::TYPE_2D,
-                )
+                let create_info = vk::ImageViewCreateInfo::builder()
+                    .image(*image)
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .format(swapchain_properties.format.format)
+                    .components(vk::ComponentMapping {
+                        r: vk::ComponentSwizzle::IDENTITY,
+                        g: vk::ComponentSwizzle::IDENTITY,
+                        b: vk::ComponentSwizzle::IDENTITY,
+                        a: vk::ComponentSwizzle::IDENTITY,
+                    })
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_mip_level: 0,
+                        level_count: 1,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    })
+                    .build();
+
+                ImageView::new(context.clone(), create_info)
             })
             .collect::<Vec<_>>();
 

@@ -11,32 +11,7 @@ pub struct ImageView {
 }
 
 impl ImageView {
-    pub fn new(
-        context: Arc<VulkanContext>,
-        image: vk::Image,
-        format: vk::Format,
-        aspect_mask: vk::ImageAspectFlags,
-        view_type: vk::ImageViewType,
-    ) -> Self {
-        let create_info = vk::ImageViewCreateInfo::builder()
-            .image(image)
-            .view_type(view_type)
-            .format(format)
-            .components(vk::ComponentMapping {
-                r: vk::ComponentSwizzle::IDENTITY,
-                g: vk::ComponentSwizzle::IDENTITY,
-                b: vk::ComponentSwizzle::IDENTITY,
-                a: vk::ComponentSwizzle::IDENTITY,
-            })
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .build();
-
+    pub fn new(context: Arc<VulkanContext>, create_info: vk::ImageViewCreateInfo) -> Self {
         let view = unsafe {
             context
                 .logical_device()
