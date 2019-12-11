@@ -1,7 +1,6 @@
 use crate::{
-    core::SwapchainProperties,
+    core::{SwapchainProperties, VulkanContext},
     resource::{PipelineLayout, Shader},
-    VulkanContext,
 };
 use ash::{version::DeviceV1_0, vk};
 use std::{ffi::CString, mem, sync::Arc};

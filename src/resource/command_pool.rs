@@ -1,5 +1,5 @@
 // TODO: Make a type alias for the current device version (DeviceV1_0)
-use crate::{resource::Buffer, sync::CurrentFrameSynchronization, VulkanContext};
+use crate::{core::VulkanContext, resource::Buffer, sync::CurrentFrameSynchronization};
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 

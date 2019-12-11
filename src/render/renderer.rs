@@ -1,7 +1,6 @@
 use crate::{
-    context::VulkanContext,
-    core::Swapchain,
-    gltf::GltfAsset,
+    core::{Swapchain, VulkanContext},
+    model::GltfAsset,
     render::{Framebuffer, GraphicsPipeline, RenderPass},
     resource::{Buffer, CommandPool, DescriptorPool, DescriptorSetLayout, Sampler, Texture},
     sync::{SynchronizationSet, SynchronizationSetConstants},

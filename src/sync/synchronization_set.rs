@@ -1,6 +1,6 @@
 use crate::{
+    core::VulkanContext,
     sync::{Fence, Semaphore},
-    VulkanContext,
 };
 use ash::vk;
 use std::sync::Arc;

@@ -375,7 +375,7 @@ fn prepare_scenes(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<
     scenes
 }
 
-fn prepare_textures(textures: &[gltf::image::Data]) -> Vec<u32> {
+fn prepare_textures(_textures: &[gltf::image::Data]) -> Vec<u32> {
     unimplemented!()
 }
 

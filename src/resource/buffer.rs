@@ -1,4 +1,4 @@
-use crate::VulkanContext;
+use crate::core::VulkanContext;
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 

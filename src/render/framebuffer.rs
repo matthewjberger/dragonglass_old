@@ -1,4 +1,4 @@
-use crate::{core::SwapchainProperties, VulkanContext};
+use crate::core::{SwapchainProperties, VulkanContext};
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 

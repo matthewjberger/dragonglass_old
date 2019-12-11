@@ -1,14 +1,11 @@
 mod app;
-mod context;
 mod core;
-mod gltf;
+mod model;
 mod render;
-mod renderer;
 mod resource;
 mod sync;
 
 use app::App;
-use context::VulkanContext;
 
 fn main() {
     env_logger::init();

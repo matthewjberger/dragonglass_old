@@ -1,7 +1,6 @@
 use crate::{
-    core::ImageView,
+    core::{ImageView, VulkanContext},
     resource::{Buffer, CommandPool},
-    VulkanContext,
 };
 use ash::{version::DeviceV1_0, vk};
 use std::{mem, sync::Arc};

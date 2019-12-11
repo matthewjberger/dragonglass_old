@@ -1,4 +1,4 @@
-use crate::renderer::Renderer;
+use crate::render::Renderer;
 use std::time::Instant;
 use winit::{dpi::LogicalSize, Event, EventsLoop, VirtualKeyCode, Window, WindowEvent};
 
