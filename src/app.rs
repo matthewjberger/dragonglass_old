@@ -1,4 +1,4 @@
-use crate::renderer::Renderer;
+use crate::render::Renderer;
 use std::time::Instant;
 use winit::{dpi::LogicalSize, Event, EventsLoop, VirtualKeyCode, Window, WindowEvent};
 
@@ -7,7 +7,7 @@ pub struct App {
     _window: Window, // Needs to live as long the event loop
     renderer: Renderer,
     should_exit: bool,
-    dimensions: Option<[u32; 2]>,
+    resize_dimensions: Option<[u32; 2]>,
 }
 
 impl App {
@@ -27,7 +27,7 @@ impl App {
             _window: window,
             renderer,
             should_exit: false,
-            dimensions: Some([width, height]),
+            resize_dimensions: Some([width, height]),
         }
     }
 
@@ -41,14 +41,14 @@ impl App {
                 break;
             }
 
-            self.renderer.step(self.dimensions, start_time);
+            self.renderer.step(self.resize_dimensions, start_time);
         }
 
         self.renderer.wait_idle();
     }
 
     fn process_events(&mut self) {
-        let mut dimensions: Option<[u32; 2]> = None;
+        let mut resize_dimensions: Option<[u32; 2]> = None;
         let mut should_exit = false;
         self.event_loop.poll_events(|event| match event {
             Event::WindowEvent {
@@ -71,17 +71,17 @@ impl App {
                 event: WindowEvent::Resized(LogicalSize { width, height }),
                 ..
             } => {
-                dimensions = Some([width as u32, height as u32]);
+                resize_dimensions = Some([width as u32, height as u32]);
             }
             _ => {}
         });
-        self.dimensions = dimensions;
+        self.resize_dimensions = resize_dimensions;
         self.should_exit = should_exit;
         self.block_while_minimized();
     }
 
     fn block_while_minimized(&mut self) {
-        if let Some(dimensions) = self.dimensions {
+        if let Some(dimensions) = self.resize_dimensions {
             let is_minimized = dimensions[0] == 0 || dimensions[1] == 0;
             if is_minimized {
                 loop {

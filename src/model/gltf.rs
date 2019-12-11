@@ -41,12 +41,18 @@ impl Vertex {
             data.extend(&position.as_slice().to_vec());
         }
 
-        if let Some(normal) = self.normal {
-            data.extend(&normal.as_slice().to_vec());
-        }
+        //if let Some(normal) = self.normal {
+        //    data.extend(&normal.as_slice().to_vec());
+        //}
+        data.extend(&glm::vec3(0.0, 0.0, 0.0));
 
-        if let Some(tex_coords_0) = self.tex_coords_0 {
-            data.extend(&tex_coords_0.as_slice().to_vec());
+        //if let Some(tex_coords_0) = self.tex_coords_0 {
+        //    data.extend(&tex_coords_0.as_slice().to_vec());
+        //}
+        data.extend(&glm::vec2(0.0, 0.0));
+
+        if let Some(tex_coords_1) = self.tex_coords_1 {
+            data.extend(&tex_coords_1.as_slice().to_vec());
         }
 
         if let Some(joints_0) = self.joints_0 {
@@ -67,7 +73,7 @@ pub struct VertexSet {
 }
 
 impl VertexSet {
-    fn pack_vertices(&self) -> Vec<f32> {
+    pub fn pack_vertices(&self) -> Vec<f32> {
         self.vertices
             .iter()
             .map(|vertex| vertex.pack_data())
@@ -77,7 +83,7 @@ impl VertexSet {
 
     // This determines the order that attributes are configured in
     // This must patch the packing order for vertices
-    fn data_lengths(&self) -> Vec<u32> {
+    pub fn data_lengths(&self) -> Vec<u32> {
         let vec2_length = 2;
         let vec3_length = 3;
         let vec4_length = 4;
@@ -165,7 +171,7 @@ pub struct Mesh {
 
 #[derive(Debug)]
 pub struct Primitive {
-    pub num_indices: i32,
+    pub num_indices: u32,
     pub material_index: Option<usize>,
     pub vertex_set: VertexSet,
     pub indices: Vec<u32>,
@@ -412,7 +418,7 @@ fn load_mesh(node: &gltf::Node, buffers: &[gltf::buffer::Data]) -> Option<Mesh> 
             // TODO: Prepare primitive for vulkan using the vertex_set and the indices
             // TODO: Probably add these to a large buffer
             let mut primitive_info = Primitive {
-                num_indices: 0,
+                num_indices: indices.len() as _,
                 material_index: None,
                 vertex_set,
                 indices,

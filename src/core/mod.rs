@@ -1,4 +1,5 @@
 pub use self::{
+    context::VulkanContext,
     debug_layer::{DebugLayer, LayerName, LayerNameVec},
     image_view::ImageView,
     instance::Instance,
@@ -9,6 +10,7 @@ pub use self::{
     swapchain::{Swapchain, SwapchainProperties},
 };
 
+pub mod context;
 pub mod debug_layer;
 pub mod image_view;
 pub mod instance;

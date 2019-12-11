@@ -1,7 +1,6 @@
 use crate::{
     core::SwapchainProperties,
     resource::{PipelineLayout, Shader},
-    vertex::Vertex,
     VulkanContext,
 };
 use ash::{version::DeviceV1_0, vk};
@@ -24,29 +23,63 @@ impl GraphicsPipeline {
     ) -> Self {
         let shader_entry_point_name = &CString::new("main").unwrap();
 
+        // TODO: Turn this into a shader cache
         let vertex_shader = Shader::from_file(
             context.clone(),
-            "shaders/shader.vert.spv",
+            "assets/shaders/shader.vert.spv",
             vk::ShaderStageFlags::VERTEX,
             shader_entry_point_name,
         );
-
         let fragment_shader = Shader::from_file(
             context.clone(),
-            "shaders/shader.frag.spv",
+            "assets/shaders/shader.frag.spv",
             vk::ShaderStageFlags::FRAGMENT,
             shader_entry_point_name,
         );
 
         let shader_state_info = [vertex_shader.state_info(), fragment_shader.state_info()];
 
-        let descriptions = [Vertex::get_binding_description()];
-        let attributes = Vertex::get_attribute_descriptions();
+        // Vertex input binding description
+        let input_binding_description = vk::VertexInputBindingDescription::builder()
+            .binding(0)
+            // .stride(std::mem::size_of::<Vertex>() as _)
+            .stride(8 * std::mem::size_of::<u32>() as u32)
+            .input_rate(vk::VertexInputRate::VERTEX)
+            .build();
+        let vertex_binding_descriptions = [input_binding_description];
+
+        // Vertex attribute descriptions
+        let position_description = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(0)
+            .format(vk::Format::R32G32B32_SFLOAT)
+            .offset(0)
+            .build();
+
+        let normal_description = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(1)
+            .format(vk::Format::R32G32B32_SFLOAT)
+            .offset(3 * std::mem::size_of::<u32>() as u32)
+            .build();
+
+        let tex_coords_description = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(2)
+            .format(vk::Format::R32G32_SFLOAT)
+            .offset(6 * std::mem::size_of::<u32>() as u32)
+            .build();
+
+        let vertex_attribute_descriptions = [
+            position_description,
+            normal_description,
+            tex_coords_description,
+        ];
 
         // Build vertex input creation info
         let vertex_input_create_info = vk::PipelineVertexInputStateCreateInfo::builder()
-            .vertex_binding_descriptions(&descriptions)
-            .vertex_attribute_descriptions(&attributes)
+            .vertex_binding_descriptions(&vertex_binding_descriptions)
+            .vertex_attribute_descriptions(&vertex_attribute_descriptions)
             .build();
 
         // Build input assembly creation info
@@ -86,7 +119,7 @@ impl GraphicsPipeline {
             .polygon_mode(vk::PolygonMode::FILL)
             .line_width(1.0)
             .cull_mode(vk::CullModeFlags::NONE)
-            .front_face(vk::FrontFace::CLOCKWISE)
+            .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .depth_bias_enable(false)
             .depth_bias_constant_factor(0.0)
             .depth_bias_clamp(0.0)
