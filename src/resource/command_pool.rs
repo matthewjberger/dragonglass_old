@@ -76,7 +76,7 @@ impl CommandPool {
         vertices: &[T],
     ) -> Buffer {
         let buffer_size =
-            (vertices.len() * std::mem::size_of::<T>() as usize) as ash::vk::DeviceSize;
+            (vertices.len() * std::mem::size_of::<T>()) as ash::vk::DeviceSize;
 
         let staging_buffer = Buffer::new(
             self.context.clone(),
