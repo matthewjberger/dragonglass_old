@@ -71,7 +71,7 @@ impl Renderer {
             Vertex::new(glm::vec3(-0.5, 0.5, -0.5), color, glm::vec2(0.0, 1.0)),
         ];
 
-        let indices: [u16; 12] = [0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4];
+        let indices: [u32; 12] = [0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4];
 
         let context =
             Arc::new(VulkanContext::new(&window).expect("Failed to create VulkanContext"));
@@ -459,7 +459,7 @@ impl Renderer {
                 command_buffer,
                 self.index_buffer.buffer(),
                 0,
-                vk::IndexType::UINT16,
+                vk::IndexType::UINT32,
             );
 
         // Bind descriptor sets
