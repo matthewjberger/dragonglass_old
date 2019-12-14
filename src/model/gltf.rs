@@ -66,6 +66,7 @@ pub struct VertexSet {
     pub vertices: Vec<Vertex>,
 }
 
+#[allow(dead_code)]
 impl VertexSet {
     pub fn pack_vertices(&self) -> Vec<f32> {
         self.vertices
@@ -133,6 +134,7 @@ pub struct Transform {
     scale: Option<glm::Vec3>,
 }
 
+#[allow(dead_code)]
 impl Transform {
     pub fn matrix(&self) -> glm::Mat4 {
         let mut matrix = glm::Mat4::identity();
@@ -198,6 +200,7 @@ pub struct GltfAsset {
     pub animations: Vec<Animation>,
 }
 
+#[allow(dead_code)]
 impl GltfAsset {
     pub fn from_file(path: &str) -> Self {
         let (gltf, buffers, textures) = gltf::import(path).expect("Couldn't import file!");
@@ -375,6 +378,7 @@ fn prepare_scenes(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<
     scenes
 }
 
+#[allow(dead_code)]
 fn prepare_textures(_textures: &[gltf::image::Data]) -> Vec<u32> {
     unimplemented!()
 }
@@ -525,6 +529,7 @@ fn read_buffer_data(
     (VertexSet { vertices }, indices)
 }
 
+#[allow(dead_code)]
 pub fn path_between_nodes(
     starting_node_index: NodeIndex,
     node_index: NodeIndex,
@@ -564,6 +569,7 @@ pub fn path_between_nodes(
     indices
 }
 
+#[allow(dead_code)]
 pub fn calculate_global_transform(node_index: NodeIndex, graph: &NodeGraph) -> glm::Mat4 {
     let indices = path_between_nodes(NodeIndex::new(0), node_index, graph);
     indices
@@ -573,6 +579,7 @@ pub fn calculate_global_transform(node_index: NodeIndex, graph: &NodeGraph) -> g
         })
 }
 
+#[allow(dead_code)]
 pub fn create_byte_slice<T>(data: &[T]) -> &[u8] {
     use std::{mem, slice};
     let len = mem::size_of::<T>() * data.len();
