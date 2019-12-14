@@ -1,6 +1,6 @@
-use crate::model::GltfAsset;
 use crate::render::renderer::{
-    MeshComponent, RenderSystem, Renderer, StartTime, TransformComponent, TransformationSystem,
+    MeshComponent, PrepareRendererSystem, RenderSystem, Renderer, StartTime, TransformComponent,
+    TransformationSystem,
 };
 use nalgebra_glm as glm;
 use specs::prelude::*;
@@ -66,34 +66,38 @@ impl App {
 
     pub fn run(&mut self) {
         log::debug!("Running application.");
-        let start_time = Instant::now();
 
-        // Load the models at this time
-        // and pass them to the renderer to prepare
-        // vertex buffers
-        let gltf_asset = GltfAsset::from_file("assets/models/Duck/Duck.gltf");
-        // let gltf_asset2 = GltfAsset::from_file("assets/models/Duck/Duck.gltf");
-        let renderer = Renderer::new(&self.window, &gltf_asset);
-
-        let mut world = World::new();
-        let mut dispatcher = DispatcherBuilder::new()
-            .with(EventSystem, "event_system", &[])
-            .with(TransformationSystem, "transformation_system", &[])
-            .with_thread_local(RenderSystem)
-            .build();
-        dispatcher.setup(&mut world);
+        let renderer = Renderer::new(&self.window);
 
         // Resource fetching will panic without these
         // because of the WriteExpect and ReadExpect lookups
         // on the render system
+        let start_time = Instant::now();
+        let mut world = World::new();
         world.insert(StartTime(start_time));
         world.insert(renderer);
 
-        // Add an entity that uses the gltf asset
-        // that the renderer prepared data buffers for
+        // Register the render preparation system
+        // and its components
+        let mut render_preparation_dispatcher = DispatcherBuilder::new()
+            .with_thread_local(PrepareRendererSystem)
+            .build();
+        render_preparation_dispatcher.setup(&mut world);
+
+        // Register the main systems and their components
+        let mut system_dispatcher = DispatcherBuilder::new()
+            .with(EventSystem, "event_system", &[])
+            .with(TransformationSystem, "transformation_system", &[])
+            .with_thread_local(RenderSystem)
+            .build();
+        system_dispatcher.setup(&mut world);
+
+        // Add renderable entities
         world
             .create_entity()
-            .with(MeshComponent { mesh: gltf_asset })
+            .with(MeshComponent {
+                mesh_name: "assets/models/Duck/Duck.gltf".to_string(),
+            })
             .with(TransformComponent {
                 rotate: glm::rotate(
                     &glm::Mat4::identity(),
@@ -104,6 +108,10 @@ impl App {
             })
             .build();
 
+        // Prepare the renderer
+        // by creating vertex buffers, index buffers, and command buffers
+        render_preparation_dispatcher.dispatch(&world);
+
         loop {
             self.process_events(&mut world);
 
@@ -111,7 +119,7 @@ impl App {
                 break;
             }
 
-            dispatcher.dispatch(&world);
+            system_dispatcher.dispatch(&world);
         }
 
         (*world.read_resource::<Renderer>()).wait_idle();

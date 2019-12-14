@@ -13,6 +13,13 @@ use nalgebra_glm as glm;
 use specs::{prelude::*, Component};
 use std::{mem, sync::Arc};
 
+// TODO: rename this
+pub struct ModelData {
+    pub vertex_buffer: Buffer,
+    pub index_buffer: Buffer,
+    pub number_of_indices: u32,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct UniformBufferObject {
     pub model: glm::Mat4,
@@ -33,10 +40,11 @@ impl UniformBufferObject {
 
 pub struct StartTime(pub std::time::Instant);
 
+// TODO: Rename MeshComponent to something more generic. (RenderComponent?)
 #[derive(Component, Debug)]
 #[storage(VecStorage)]
 pub struct MeshComponent {
-    pub mesh: GltfAsset,
+    pub mesh_name: String, // TODO: Make this a tag rather than a full path
 }
 
 #[derive(Component, Debug)]
@@ -74,17 +82,144 @@ impl<'a> System<'a> for TransformationSystem {
     }
 }
 
+pub struct PrepareRendererSystem;
+
+impl<'a> System<'a> for PrepareRendererSystem {
+    type SystemData = (WriteExpect<'a, Renderer>, ReadStorage<'a, MeshComponent>);
+
+    fn run(&mut self, data: Self::SystemData) {
+        let (mut renderer, meshes) = data;
+        let renderer = &mut renderer;
+
+        // TODO: Make a command in the renderer to reset resources
+
+        // TODO: Batch assets into a large vertex buffer
+        for mesh in meshes.join() {
+            // TODO: batch entire gltf asset into a large vertex and index buffer
+            let asset = GltfAsset::from_file(&mesh.mesh_name);
+            let first_node = &asset.scenes[0].node_graphs[0][petgraph::graph::NodeIndex::new(1)];
+            let first_primitive = &first_node.mesh.as_ref().expect("No Mesh!").primitives[0];
+
+            let vertex_buffer = renderer.transient_command_pool.create_device_local_buffer(
+                renderer.graphics_queue,
+                vk::BufferUsageFlags::VERTEX_BUFFER,
+                &first_primitive.vertex_set.pack_vertices(),
+            );
+
+            let index_buffer = renderer.transient_command_pool.create_device_local_buffer(
+                renderer.graphics_queue,
+                vk::BufferUsageFlags::INDEX_BUFFER,
+                &first_primitive.indices,
+            );
+
+            let model_data = ModelData {
+                vertex_buffer,
+                index_buffer,
+                number_of_indices: first_primitive.number_of_indices,
+            };
+
+            renderer.models.push(model_data);
+        }
+
+        let number_of_framebuffers = renderer.framebuffers.len();
+
+        // Allocate one command buffer per swapchain image
+        renderer
+            .command_pool
+            .allocate_command_buffers(number_of_framebuffers as _);
+
+        // Create a single render pass that will draw each mesh
+        renderer
+            .command_pool
+            .command_buffers()
+            .iter()
+            .enumerate()
+            .for_each(|(index, buffer)| {
+                let command_buffer = buffer;
+                let framebuffer = renderer.framebuffers[index].framebuffer();
+
+                // TODO: Draw different models
+                let model_data = &renderer.models[0];
+                renderer.create_render_pass(
+                    framebuffer,
+                    *command_buffer,
+                    |command_buffer| unsafe {
+                        // Bind pipeline
+                        renderer
+                            .context
+                            .logical_device()
+                            .logical_device()
+                            .cmd_bind_pipeline(
+                                command_buffer,
+                                vk::PipelineBindPoint::GRAPHICS,
+                                renderer.pipeline.pipeline(),
+                            );
+
+                        // Bind vertex buffer
+                        let offsets = [0];
+                        let vertex_buffers = [model_data.vertex_buffer.buffer()];
+                        renderer
+                            .context
+                            .logical_device()
+                            .logical_device()
+                            .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
+
+                        // Bind index buffer
+                        renderer
+                            .context
+                            .logical_device()
+                            .logical_device()
+                            .cmd_bind_index_buffer(
+                                command_buffer,
+                                model_data.index_buffer.buffer(),
+                                0,
+                                vk::IndexType::UINT32,
+                            );
+
+                        // Bind descriptor sets
+                        let null = [];
+                        renderer
+                            .context
+                            .logical_device()
+                            .logical_device()
+                            .cmd_bind_descriptor_sets(
+                                command_buffer,
+                                vk::PipelineBindPoint::GRAPHICS,
+                                renderer.pipeline.layout(),
+                                0,
+                                &renderer.descriptor_sets[index..=index],
+                                &null,
+                            );
+
+                        // Draw
+                        renderer
+                            .context
+                            .logical_device()
+                            .logical_device()
+                            .cmd_draw_indexed(
+                                command_buffer,
+                                model_data.number_of_indices,
+                                1,
+                                0,
+                                0,
+                                0,
+                            );
+                    },
+                );
+            });
+    }
+}
+
 pub struct RenderSystem;
 
 impl<'a> System<'a> for RenderSystem {
     type SystemData = (
         WriteExpect<'a, Renderer>,
-        ReadStorage<'a, MeshComponent>,
         ReadStorage<'a, TransformComponent>,
     );
 
     fn run(&mut self, data: Self::SystemData) {
-        let (mut renderer, mesh, transform) = data;
+        let (mut renderer, transform) = data;
         let renderer = &mut renderer;
 
         let current_frame_synchronization = renderer
@@ -130,7 +265,7 @@ impl<'a> System<'a> for RenderSystem {
             &glm::vec3(0.0, 1.0, 0.0),
         );
 
-        for (_mesh, transform) in (&mesh, &transform).join() {
+        for transform in (&transform).join() {
             let ubo = UniformBufferObject {
                 model: transform.translate * transform.rotate * transform.scale,
                 view,
@@ -182,15 +317,13 @@ pub struct Renderer {
     pub descriptor_sets: Vec<vk::DescriptorSet>,
     pub framebuffers: Vec<Framebuffer>,
     pub graphics_queue: vk::Queue,
-    pub index_buffer: Buffer,
-    pub number_of_indices: u32,
+    pub models: Vec<ModelData>,
     pub pipeline: GraphicsPipeline,
     pub present_queue: vk::Queue,
     pub render_pass: RenderPass,
     pub swapchain: Swapchain,
     pub transient_command_pool: CommandPool,
     pub uniform_buffers: Vec<Buffer>,
-    pub vertex_buffer: Buffer,
     pub depth_texture: Texture,
     pub depth_texture_view: ImageView,
     pub texture: Texture,
@@ -201,7 +334,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(window: &winit::Window, gltf_asset: &GltfAsset) -> Self {
+    pub fn new(window: &winit::Window) -> Self {
         let context =
             Arc::new(VulkanContext::new(&window).expect("Failed to create VulkanContext"));
 
@@ -327,21 +460,6 @@ impl Renderer {
         let number_of_images = swapchain.images().len();
         let descriptor_pool = DescriptorPool::new(context.clone(), number_of_images as _);
 
-        let first_node = &gltf_asset.scenes[0].node_graphs[0][petgraph::graph::NodeIndex::new(1)];
-        let first_primitive = &first_node.mesh.as_ref().expect("No Mesh!").primitives[0];
-
-        let vertex_buffer = transient_command_pool.create_device_local_buffer(
-            graphics_queue,
-            vk::BufferUsageFlags::VERTEX_BUFFER,
-            &first_primitive.vertex_set.pack_vertices(),
-        );
-
-        let index_buffer = transient_command_pool.create_device_local_buffer(
-            graphics_queue,
-            vk::BufferUsageFlags::INDEX_BUFFER,
-            &first_primitive.indices,
-        );
-
         let size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
         let uniform_buffers = (0..swapchain.images().len())
             .map(|_| {
@@ -413,7 +531,7 @@ impl Renderer {
             mem::size_of::<UniformBufferObject>() as vk::DeviceSize,
         );
 
-        let mut vulkan_swapchain = Renderer {
+        Renderer {
             command_pool,
             context,
             descriptor_pool,
@@ -421,8 +539,7 @@ impl Renderer {
             descriptor_sets,
             framebuffers,
             graphics_queue,
-            index_buffer,
-            number_of_indices: first_primitive.number_of_indices,
+            models: Vec::new(),
             pipeline,
             present_queue,
             render_pass,
@@ -435,44 +552,20 @@ impl Renderer {
             texture_image_sampler,
             transient_command_pool,
             uniform_buffers,
-            vertex_buffer,
             current_frame: 0,
-        };
-
-        vulkan_swapchain.create_command_buffers();
-        vulkan_swapchain
+        }
     }
 
-    fn create_command_buffers(&mut self) {
-        // Allocate one command buffer per swapchain image
-        self.command_pool
-            .allocate_command_buffers(self.framebuffers.len() as _);
-        self.command_pool
-            .command_buffers()
-            .iter()
-            .enumerate()
-            .for_each(|(index, buffer)| {
-                let command_buffer = buffer;
-                let framebuffer = self.framebuffers[index].framebuffer();
-                self.record_render_pass(framebuffer, *command_buffer, || unsafe {
-                    self.play_render_commands(
-                        &self.descriptor_sets,
-                        self.number_of_indices,
-                        *command_buffer,
-                        index,
-                    );
-                });
-            });
-    }
-
-    fn record_render_pass<F>(
+    fn create_render_pass<F>(
         &self,
         framebuffer: vk::Framebuffer,
         command_buffer: vk::CommandBuffer,
         mut render_action: F,
     ) where
-        F: FnMut(),
+        F: FnMut(vk::CommandBuffer),
     {
+        // TODO: Move render pass creation into here
+
         // Begin the command buffer
         let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE)
@@ -530,7 +623,7 @@ impl Renderer {
                 );
         }
 
-        render_action();
+        render_action(command_buffer);
 
         unsafe {
             // End render pass
@@ -546,63 +639,6 @@ impl Renderer {
                 .end_command_buffer(command_buffer)
                 .unwrap();
         }
-    }
-
-    unsafe fn play_render_commands(
-        &self,
-        descriptor_sets: &[vk::DescriptorSet],
-        number_of_indices: u32,
-        command_buffer: vk::CommandBuffer,
-        image_index: usize,
-    ) {
-        // Bind pipeline
-        self.context
-            .logical_device()
-            .logical_device()
-            .cmd_bind_pipeline(
-                command_buffer,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline.pipeline(),
-            );
-
-        // Bind vertex buffer
-        let offsets = [0];
-        let vertex_buffers = [self.vertex_buffer.buffer()];
-        self.context
-            .logical_device()
-            .logical_device()
-            .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
-
-        // Bind index buffer
-        self.context
-            .logical_device()
-            .logical_device()
-            .cmd_bind_index_buffer(
-                command_buffer,
-                self.index_buffer.buffer(),
-                0,
-                vk::IndexType::UINT32,
-            );
-
-        // Bind descriptor sets
-        let null = [];
-        self.context
-            .logical_device()
-            .logical_device()
-            .cmd_bind_descriptor_sets(
-                command_buffer,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline.layout(),
-                0,
-                &descriptor_sets[image_index..=image_index],
-                &null,
-            );
-
-        // Draw
-        self.context
-            .logical_device()
-            .logical_device()
-            .cmd_draw_indexed(command_buffer, number_of_indices, 1, 0, 0, 0);
     }
 
     #[allow(dead_code)]
