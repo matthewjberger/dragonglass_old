@@ -10,6 +10,7 @@ use ash::{
     vk,
 };
 use nalgebra_glm as glm;
+use specs::{prelude::*, Component};
 use std::{mem, sync::Arc, time::Instant};
 
 #[derive(Debug, Clone, Copy)]
@@ -27,6 +28,92 @@ impl UniformBufferObject {
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::VERTEX)
             .build()
+    }
+}
+
+pub struct StartTime(pub std::time::Instant);
+
+#[derive(Component, Debug)]
+#[storage(VecStorage)]
+pub struct RenderComponent {
+    pub mesh: GltfAsset,
+}
+
+pub struct RenderSystem;
+
+impl<'a> System<'a> for RenderSystem {
+    type SystemData = (
+        WriteExpect<'a, Renderer>,
+        ReadExpect<'a, StartTime>,
+        ReadStorage<'a, RenderComponent>,
+    );
+
+    fn run(&mut self, data: Self::SystemData) {
+        let (mut renderer, start_time, _items) = data;
+        let renderer = &mut renderer;
+        let start_time = start_time.0;
+
+        let current_frame_synchronization = renderer
+            .synchronization_set
+            .current_frame_synchronization(renderer.current_frame);
+
+        renderer
+            .context
+            .logical_device()
+            .wait_for_fence(&current_frame_synchronization);
+
+        // Acquire the next image from the swapchain
+        let image_index_result = renderer.swapchain.acquire_next_image(
+            current_frame_synchronization.image_available(),
+            vk::Fence::null(),
+        );
+
+        let image_index = match image_index_result {
+            Ok((image_index, _)) => image_index,
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                // TODO: Recreate the swapchain
+                return;
+            }
+            Err(error) => panic!("Error while acquiring next image. Cause: {}", error),
+        };
+        let image_indices = [image_index];
+
+        renderer
+            .context
+            .logical_device()
+            .reset_fence(&current_frame_synchronization);
+
+        renderer.update_uniform_buffers(image_index, start_time);
+
+        let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+        renderer.command_pool.submit_command_buffer(
+            image_index as usize,
+            renderer.graphics_queue,
+            &wait_stages,
+            &current_frame_synchronization,
+        );
+
+        let swapchain_presentation_result = renderer.swapchain.present_rendered_image(
+            &current_frame_synchronization,
+            &image_indices,
+            renderer.present_queue,
+        );
+
+        match swapchain_presentation_result {
+            Ok(is_suboptimal) if is_suboptimal => {
+                // TODO: Recreate the swapchain
+            }
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                // TODO: Recreate the swapchain
+            }
+            Err(error) => panic!("Failed to present queue. Cause: {}", error),
+            _ => {}
+        }
+
+        // TODO: Recreate the swapchain if resize was requested
+
+        renderer.current_frame +=
+            (1 + renderer.current_frame) % SynchronizationSet::MAX_FRAMES_IN_FLIGHT as usize;
     }
 }
 
@@ -57,9 +144,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(window: &winit::Window) -> Self {
-        let gltf_asset = GltfAsset::from_file("assets/models/Duck/Duck.gltf");
-
+    pub fn new(window: &winit::Window, gltf_asset: &GltfAsset) -> Self {
         let context =
             Arc::new(VulkanContext::new(&window).expect("Failed to create VulkanContext"));
 
@@ -301,68 +386,6 @@ impl Renderer {
         vulkan_swapchain
     }
 
-    pub fn step(&mut self, start_time: Instant) {
-        let current_frame_synchronization = self
-            .synchronization_set
-            .current_frame_synchronization(self.current_frame);
-
-        self.context
-            .logical_device()
-            .wait_for_fence(&current_frame_synchronization);
-
-        // Acquire the next image from the swapchain
-        let image_index_result = self.swapchain.acquire_next_image(
-            current_frame_synchronization.image_available(),
-            vk::Fence::null(),
-        );
-
-        let image_index = match image_index_result {
-            Ok((image_index, _)) => image_index,
-            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                // TODO: Recreate the swapchain
-                return;
-            }
-            Err(error) => panic!("Error while acquiring next image. Cause: {}", error),
-        };
-        let image_indices = [image_index];
-
-        self.context
-            .logical_device()
-            .reset_fence(&current_frame_synchronization);
-
-        self.update_uniform_buffers(image_index, start_time);
-
-        let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-        self.command_pool.submit_command_buffer(
-            image_index as usize,
-            self.graphics_queue,
-            &wait_stages,
-            &current_frame_synchronization,
-        );
-
-        let swapchain_presentation_result = self.swapchain.present_rendered_image(
-            &current_frame_synchronization,
-            &image_indices,
-            self.present_queue,
-        );
-
-        match swapchain_presentation_result {
-            Ok(is_suboptimal) if is_suboptimal => {
-                // TODO: Recreate the swapchain
-            }
-            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                // TODO: Recreate the swapchain
-            }
-            Err(error) => panic!("Failed to present queue. Cause: {}", error),
-            _ => {}
-        }
-
-        // TODO: Recreate the swapchain if resize was requested
-
-        self.current_frame +=
-            (1 + self.current_frame) % SynchronizationSet::MAX_FRAMES_IN_FLIGHT as usize;
-    }
-
     fn create_command_buffers(&mut self) {
         // Allocate one command buffer per swapchain image
         self.command_pool
@@ -525,6 +548,7 @@ impl Renderer {
             .cmd_draw_indexed(command_buffer, number_of_indices, 1, 0, 0, 0);
     }
 
+    // TODO: breakout this data to a system
     pub fn update_uniform_buffers(&self, current_image: u32, start_time: Instant) {
         let elapsed_time = start_time.elapsed();
         let elapsed_time =

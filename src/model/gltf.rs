@@ -193,6 +193,7 @@ pub struct Scene {
     pub node_graphs: Vec<NodeGraph>,
 }
 
+#[derive(Debug)]
 pub struct GltfAsset {
     pub gltf: gltf::Document,
     pub textures: Vec<gltf::image::Data>,
@@ -215,14 +216,8 @@ impl GltfAsset {
         }
     }
 
-    pub fn lookup_material(&self, index: usize) -> gltf::Material {
-        self.gltf
-            .materials()
-            .nth(index)
-            .expect("Couldn't get material!")
-    }
-
-    pub fn animate(&mut self, seconds: f32) {
+    // TODO: Do this with an ecs system
+    fn animate(&mut self, seconds: f32) {
         // TODO: Allow for specifying a specific animation by name
         for animation in self.animations.iter_mut() {
             for channel in animation.channels.iter_mut() {

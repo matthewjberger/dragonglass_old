@@ -1,4 +1,5 @@
-use crate::render::Renderer;
+use crate::model::GltfAsset;
+use crate::render::renderer::{RenderComponent, RenderSystem, Renderer, StartTime};
 use specs::prelude::*;
 use std::{collections::HashMap, time::Instant};
 use winit::{
@@ -35,10 +36,6 @@ impl<'a> System<'a> for EventSystem {
             // TODO: Do something with the spacebar
         }
     }
-
-    fn setup(&mut self, world: &mut World) {
-        Self::SystemData::setup(world);
-    }
 }
 
 pub struct App {
@@ -66,29 +63,45 @@ impl App {
 
     pub fn run(&mut self) {
         log::debug!("Running application.");
+        let start_time = Instant::now();
 
-        let mut renderer = Renderer::new(&self.window);
+        // Load the models at this time
+        // and pass them to the renderer to prepare
+        // vertex buffers
+        let gltf_asset = GltfAsset::from_file("assets/models/Duck/Duck.gltf");
+        let renderer = Renderer::new(&self.window, &gltf_asset);
 
         let mut world = World::new();
         let mut dispatcher = DispatcherBuilder::new()
             .with(EventSystem, "event_system", &[])
+            .with_thread_local(RenderSystem)
             .build();
         dispatcher.setup(&mut world);
 
-        let start_time = Instant::now();
+        // Resource fetching will panic without these
+        // because of the WriteExpect and ReadExpect lookups
+        // on the render system
+        world.insert(StartTime(start_time));
+        world.insert(renderer);
+
+        // Add an entity that uses the gltf asset
+        // that the renderer prepared data buffers for
+        world
+            .create_entity()
+            .with(RenderComponent { mesh: gltf_asset })
+            .build();
+
         loop {
             self.process_events(&mut world);
-
-            dispatcher.dispatch(&world);
 
             if self.should_exit {
                 break;
             }
 
-            renderer.step(start_time);
+            dispatcher.dispatch(&world);
         }
 
-        renderer.wait_idle();
+        (*world.read_resource::<Renderer>()).wait_idle();
     }
 
     fn process_events(&mut self, world: &mut World) {
