@@ -1,5 +1,8 @@
 use crate::model::GltfAsset;
-use crate::render::renderer::{RenderComponent, RenderSystem, Renderer, StartTime};
+use crate::render::renderer::{
+    MeshComponent, RenderSystem, Renderer, StartTime, TransformComponent, TransformationSystem,
+};
+use nalgebra_glm as glm;
 use specs::prelude::*;
 use std::{collections::HashMap, time::Instant};
 use winit::{
@@ -69,11 +72,13 @@ impl App {
         // and pass them to the renderer to prepare
         // vertex buffers
         let gltf_asset = GltfAsset::from_file("assets/models/Duck/Duck.gltf");
+        // let gltf_asset2 = GltfAsset::from_file("assets/models/Duck/Duck.gltf");
         let renderer = Renderer::new(&self.window, &gltf_asset);
 
         let mut world = World::new();
         let mut dispatcher = DispatcherBuilder::new()
             .with(EventSystem, "event_system", &[])
+            .with(TransformationSystem, "transformation_system", &[])
             .with_thread_local(RenderSystem)
             .build();
         dispatcher.setup(&mut world);
@@ -88,7 +93,15 @@ impl App {
         // that the renderer prepared data buffers for
         world
             .create_entity()
-            .with(RenderComponent { mesh: gltf_asset })
+            .with(MeshComponent { mesh: gltf_asset })
+            .with(TransformComponent {
+                rotate: glm::rotate(
+                    &glm::Mat4::identity(),
+                    90_f32.to_radians(),
+                    &glm::vec3(0.0, 1.0, 1.0),
+                ),
+                ..Default::default()
+            })
             .build();
 
         loop {

@@ -11,7 +11,7 @@ use ash::{
 };
 use nalgebra_glm as glm;
 use specs::{prelude::*, Component};
-use std::{mem, sync::Arc, time::Instant};
+use std::{mem, sync::Arc};
 
 #[derive(Debug, Clone, Copy)]
 pub struct UniformBufferObject {
@@ -35,8 +35,43 @@ pub struct StartTime(pub std::time::Instant);
 
 #[derive(Component, Debug)]
 #[storage(VecStorage)]
-pub struct RenderComponent {
+pub struct MeshComponent {
     pub mesh: GltfAsset,
+}
+
+#[derive(Component, Debug)]
+#[storage(VecStorage)]
+pub struct TransformComponent {
+    pub translate: glm::Mat4,
+    pub rotate: glm::Mat4,
+    pub scale: glm::Mat4,
+}
+
+impl Default for TransformComponent {
+    fn default() -> Self {
+        Self {
+            translate: glm::Mat4::identity(),
+            rotate: glm::Mat4::identity(),
+            scale: glm::Mat4::identity(),
+        }
+    }
+}
+
+pub struct TransformationSystem;
+
+impl<'a> System<'a> for TransformationSystem {
+    type SystemData = WriteStorage<'a, TransformComponent>;
+
+    fn run(&mut self, data: Self::SystemData) {
+        let mut transforms = data;
+        for transform in (&mut transforms).join() {
+            transform.rotate = glm::rotate(
+                &transform.rotate,
+                0.1_f32.to_radians(),
+                &glm::vec3(0.0, 1.0, 0.0),
+            );
+        }
+    }
 }
 
 pub struct RenderSystem;
@@ -44,14 +79,13 @@ pub struct RenderSystem;
 impl<'a> System<'a> for RenderSystem {
     type SystemData = (
         WriteExpect<'a, Renderer>,
-        ReadExpect<'a, StartTime>,
-        ReadStorage<'a, RenderComponent>,
+        ReadStorage<'a, MeshComponent>,
+        ReadStorage<'a, TransformComponent>,
     );
 
     fn run(&mut self, data: Self::SystemData) {
-        let (mut renderer, start_time, _items) = data;
+        let (mut renderer, mesh, transform) = data;
         let renderer = &mut renderer;
-        let start_time = start_time.0;
 
         let current_frame_synchronization = renderer
             .synchronization_set
@@ -83,15 +117,38 @@ impl<'a> System<'a> for RenderSystem {
             .logical_device()
             .reset_fence(&current_frame_synchronization);
 
-        renderer.update_uniform_buffers(image_index, start_time);
-
-        let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-        renderer.command_pool.submit_command_buffer(
-            image_index as usize,
-            renderer.graphics_queue,
-            &wait_stages,
-            &current_frame_synchronization,
+        let projection = glm::perspective_zo(
+            renderer.swapchain.properties().aspect_ratio(),
+            90_f32.to_radians(),
+            0.1_f32,
+            1000_f32,
         );
+
+        let view = glm::look_at(
+            &glm::vec3(200.0, 150.0, 200.0),
+            &glm::vec3(0.0, 0.0, 0.0),
+            &glm::vec3(0.0, 1.0, 0.0),
+        );
+
+        for (_mesh, transform) in (&mesh, &transform).join() {
+            let ubo = UniformBufferObject {
+                model: transform.translate * transform.rotate * transform.scale,
+                view,
+                projection,
+            };
+
+            let ubos = [ubo];
+            let buffer = &renderer.uniform_buffers[image_index as usize];
+            buffer.upload_to_entire_buffer(&ubos);
+
+            let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+            renderer.command_pool.submit_command_buffer(
+                image_index as usize,
+                renderer.graphics_queue,
+                &wait_stages,
+                &current_frame_synchronization,
+            );
+        }
 
         let swapchain_presentation_result = renderer.swapchain.present_rendered_image(
             &current_frame_synchronization,
@@ -546,36 +603,6 @@ impl Renderer {
             .logical_device()
             .logical_device()
             .cmd_draw_indexed(command_buffer, number_of_indices, 1, 0, 0, 0);
-    }
-
-    // TODO: breakout this data to a system
-    pub fn update_uniform_buffers(&self, current_image: u32, start_time: Instant) {
-        let elapsed_time = start_time.elapsed();
-        let elapsed_time =
-            elapsed_time.as_secs() as f32 + (elapsed_time.subsec_millis() as f32) / 1000_f32;
-
-        let ubo = UniformBufferObject {
-            model: glm::rotate(
-                &glm::Mat4::identity(),
-                (elapsed_time * 90.0).to_radians(),
-                &glm::vec3(0.0, -1.0, 0.0),
-            ),
-            view: glm::look_at(
-                &glm::vec3(200.0, 150.0, 200.0),
-                &glm::vec3(0.0, 0.0, 0.0),
-                &glm::vec3(0.0, 1.0, 0.0),
-            ),
-            projection: glm::perspective_zo(
-                self.swapchain.properties().aspect_ratio(),
-                90_f32.to_radians(),
-                0.1_f32,
-                1000_f32,
-            ),
-        };
-
-        let ubos = [ubo];
-        let buffer = &self.uniform_buffers[current_image as usize];
-        buffer.upload_to_entire_buffer(&ubos);
     }
 
     #[allow(dead_code)]
