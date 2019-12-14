@@ -43,10 +43,8 @@ impl<'a> System<'a> for EventSystem {
 
 pub struct App {
     event_loop: EventsLoop,
-    _window: Window, // Needs to live as long the event loop
-    renderer: Renderer,
+    window: Window,
     should_exit: bool,
-    dimensions: Option<[u32; 2]>,
 }
 
 impl App {
@@ -58,22 +56,20 @@ impl App {
             .with_dimensions((width, height).into())
             .build(&event_loop)
             .expect("Failed to create window.");
-        let renderer = Renderer::new(&window, [width, height]);
 
         App {
             event_loop,
-            _window: window,
-            renderer,
+            window,
             should_exit: false,
-            dimensions: Some([width, height]),
         }
     }
 
     pub fn run(&mut self) {
         log::debug!("Running application.");
 
+        let mut renderer = Renderer::new(&self.window);
+
         let mut world = World::new();
-        // world.insert(InputState::default());
         let mut dispatcher = DispatcherBuilder::new()
             .with(EventSystem, "event_system", &[])
             .build();
@@ -89,14 +85,13 @@ impl App {
                 break;
             }
 
-            self.renderer.step(self.dimensions, start_time);
+            renderer.step(start_time);
         }
 
-        self.renderer.wait_idle();
+        renderer.wait_idle();
     }
 
     fn process_events(&mut self, world: &mut World) {
-        let mut dimensions: Option<[u32; 2]> = None;
         let mut should_exit = false;
         self.event_loop.poll_events(|event| match event {
             Event::WindowEvent {
@@ -125,30 +120,17 @@ impl App {
                 *input_state.keystates.entry(keycode).or_insert(state) = state;
             }
             Event::WindowEvent {
-                event: WindowEvent::Resized(LogicalSize { width, height }),
+                event:
+                    WindowEvent::Resized(LogicalSize {
+                        width: _width,
+                        height: _height,
+                    }),
                 ..
             } => {
-                dimensions = Some([width as u32, height as u32]);
+                // TODO: Handle resizing
             }
             _ => {}
         });
-        self.dimensions = dimensions;
         self.should_exit = should_exit;
-        self.block_while_minimized(world);
-    }
-
-    fn block_while_minimized(&mut self, world: &mut World) {
-        if let Some(dimensions) = self.dimensions {
-            let is_minimized = dimensions[0] == 0 || dimensions[1] == 0;
-            if is_minimized {
-                loop {
-                    self.process_events(world);
-                    let is_minimized = dimensions[0] == 0 || dimensions[1] == 0;
-                    if !is_minimized {
-                        break;
-                    }
-                }
-            }
-        }
     }
 }

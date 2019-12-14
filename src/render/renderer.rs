@@ -57,7 +57,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(window: &winit::Window, dimensions: [u32; 2]) -> Self {
+    pub fn new(window: &winit::Window) -> Self {
         let gltf_asset = GltfAsset::from_file("assets/models/Duck/Duck.gltf");
 
         let context =
@@ -94,6 +94,8 @@ impl Renderer {
             vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
         );
 
+        let logical_size = window.get_inner_size().unwrap();
+        let dimensions = [logical_size.width as u32, logical_size.height as u32];
         let swapchain = Swapchain::new(context.clone(), dimensions);
         let render_pass = RenderPass::new(context.clone(), swapchain.properties(), depth_format);
 
@@ -299,7 +301,7 @@ impl Renderer {
         vulkan_swapchain
     }
 
-    pub fn step(&mut self, dimensions: Option<[u32; 2]>, start_time: Instant) {
+    pub fn step(&mut self, start_time: Instant) {
         let current_frame_synchronization = self
             .synchronization_set
             .current_frame_synchronization(self.current_frame);
@@ -317,7 +319,7 @@ impl Renderer {
         let image_index = match image_index_result {
             Ok((image_index, _)) => image_index,
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                self.recreate_swapchain(dimensions);
+                // TODO: Recreate the swapchain
                 return;
             }
             Err(error) => panic!("Error while acquiring next image. Cause: {}", error),
@@ -346,18 +348,16 @@ impl Renderer {
 
         match swapchain_presentation_result {
             Ok(is_suboptimal) if is_suboptimal => {
-                self.recreate_swapchain(dimensions);
+                // TODO: Recreate the swapchain
             }
             Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                self.recreate_swapchain(dimensions);
+                // TODO: Recreate the swapchain
             }
             Err(error) => panic!("Failed to present queue. Cause: {}", error),
             _ => {}
         }
 
-        if dimensions.is_some() {
-            self.recreate_swapchain(dimensions);
-        }
+        // TODO: Recreate the swapchain if resize was requested
 
         self.current_frame +=
             (1 + self.current_frame) % SynchronizationSet::MAX_FRAMES_IN_FLIGHT as usize;
@@ -554,6 +554,7 @@ impl Renderer {
         buffer.upload_to_entire_buffer(&ubos);
     }
 
+    #[allow(dead_code)]
     pub fn recreate_swapchain(&mut self, _: Option<[u32; 2]>) {
         log::debug!("Recreating swapchain");
         // TODO: Implement swapchain recreation
