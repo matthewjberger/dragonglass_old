@@ -84,7 +84,7 @@ impl CommandPool {
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         );
 
-        staging_buffer.upload_to_entire_buffer(&vertices);
+        staging_buffer.upload_to_buffer(&vertices, 0);
 
         let vertex_buffer = Buffer::new(
             self.context.clone(),

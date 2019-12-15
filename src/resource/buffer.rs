@@ -105,9 +105,9 @@ impl Buffer {
         memory_type
     }
 
-    pub fn upload_to_entire_buffer<T: Copy>(&self, data: &[T]) {
+    pub fn upload_to_buffer<T: Copy>(&self, data: &[T], offset: usize) {
         let data_pointer = self.map(
-            0,
+            offset as _,
             (data.len() * std::mem::size_of::<T>()) as vk::DeviceSize,
             vk::MemoryMapFlags::empty(),
         );

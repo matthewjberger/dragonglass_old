@@ -123,6 +123,139 @@ impl<'a> System<'a> for PrepareRendererSystem {
         }
 
         let number_of_framebuffers = renderer.framebuffers.len();
+        let number_of_images = renderer.swapchain.images().len();
+
+        // Each model requires a descriptor_set for every swapchain image
+        let descriptor_pool = DescriptorPool::new(
+            renderer.context.clone(),
+            (number_of_images * renderer.models.len()) as _,
+        );
+        renderer.descriptor_pools.push(descriptor_pool);
+
+        // TODO: Put the uniform buffer in the model_data
+        // Create a uniform buffer for each mesh
+
+        let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
+        let mut uniform_buffers = Vec::new();
+        let number_of_swapchain_images = renderer.swapchain.images().len();
+        renderer.models.iter().for_each(|_| {
+            (0..number_of_swapchain_images)
+                .map(|_| {
+                    Buffer::new(
+                        renderer.context.clone(),
+                        uniform_buffer_size,
+                        vk::BufferUsageFlags::UNIFORM_BUFFER,
+                        vk::MemoryPropertyFlags::HOST_VISIBLE
+                            | vk::MemoryPropertyFlags::HOST_COHERENT,
+                    )
+                })
+                .for_each(|buffer| uniform_buffers.push(buffer));
+        });
+        renderer.uniform_buffers = uniform_buffers;
+        renderer.descriptor_sets = renderer.descriptor_pools[0].allocate_descriptor_sets(
+            // TODO: May need to move descriptor set layout to model_data
+            renderer.descriptor_set_layout.layout(),
+            renderer.uniform_buffers.len() as _,
+        );
+
+        // TODO: Generalize texture setup and descriptor layout/set setup
+        let texture_format = vk::Format::R8G8B8A8_UNORM;
+        let create_info = vk::ImageCreateInfo::builder()
+            .image_type(vk::ImageType::TYPE_2D)
+            .extent(vk::Extent3D {
+                width: renderer.swapchain.properties().extent.width,
+                height: renderer.swapchain.properties().extent.height,
+                depth: 1,
+            })
+            .mip_levels(1)
+            .array_layers(1)
+            .format(texture_format)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .flags(vk::ImageCreateFlags::empty());
+        let texture = Texture::from_file(
+            renderer.context.clone(),
+            &renderer.command_pool,
+            renderer.graphics_queue,
+            "assets/models/Duck/DuckCM.png",
+            texture_format,
+            create_info,
+        );
+
+        let create_info = vk::ImageViewCreateInfo::builder()
+            .image(texture.image())
+            .view_type(vk::ImageViewType::TYPE_2D)
+            .format(texture_format)
+            .components(vk::ComponentMapping {
+                r: vk::ComponentSwizzle::IDENTITY,
+                g: vk::ComponentSwizzle::IDENTITY,
+                b: vk::ComponentSwizzle::IDENTITY,
+                a: vk::ComponentSwizzle::IDENTITY,
+            })
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .build();
+        let texture_view = ImageView::new(renderer.context.clone(), create_info);
+
+        let texture_image_sampler = Sampler::new(renderer.context.clone());
+
+        renderer
+            .descriptor_sets
+            .iter()
+            .zip(renderer.uniform_buffers.iter())
+            .for_each(|(set, buffer)| {
+                let buffer_info = vk::DescriptorBufferInfo::builder()
+                    .buffer(buffer.buffer())
+                    .offset(0)
+                    .range(uniform_buffer_size)
+                    .build();
+                let buffer_infos = [buffer_info];
+
+                let ubo_descriptor_write = vk::WriteDescriptorSet::builder()
+                    .dst_set(*set)
+                    .dst_binding(0)
+                    .dst_array_element(0)
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .buffer_info(&buffer_infos)
+                    .build();
+
+                let image_info = vk::DescriptorImageInfo::builder()
+                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .image_view(texture_view.view())
+                    .sampler(texture_image_sampler.sampler())
+                    .build();
+                let image_infos = [image_info];
+
+                let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
+                    .dst_set(*set)
+                    .dst_binding(1)
+                    .dst_array_element(0)
+                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .image_info(&image_infos)
+                    .build();
+
+                let descriptor_writes = [ubo_descriptor_write, sampler_descriptor_write];
+
+                unsafe {
+                    renderer
+                        .context
+                        .logical_device()
+                        .logical_device()
+                        .update_descriptor_sets(&descriptor_writes, &[])
+                }
+            });
+
+        renderer.textures.push(texture);
+        renderer.texture_views.push(texture_view);
+        renderer.texture_samplers.push(texture_image_sampler);
 
         // Allocate one command buffer per swapchain image
         renderer
@@ -139,72 +272,73 @@ impl<'a> System<'a> for PrepareRendererSystem {
                 let command_buffer = buffer;
                 let framebuffer = renderer.framebuffers[index].framebuffer();
 
-                // TODO: Draw different models
-                let model_data = &renderer.models[0];
                 renderer.create_render_pass(
                     framebuffer,
                     *command_buffer,
                     |command_buffer| unsafe {
-                        // Bind pipeline
+                        // TODO: Batch models by which shader should be used to render them
                         renderer
-                            .context
-                            .logical_device()
-                            .logical_device()
-                            .cmd_bind_pipeline(
-                                command_buffer,
-                                vk::PipelineBindPoint::GRAPHICS,
-                                renderer.pipeline.pipeline(),
-                            );
+                            .models
+                            .iter()
+                            .enumerate()
+                            .for_each(|(model_index, model_data)| {
+                                // Bind vertex buffer
+                                let offsets = [0];
+                                let vertex_buffers = [model_data.vertex_buffer.buffer()];
+                                renderer
+                                    .context
+                                    .logical_device()
+                                    .logical_device()
+                                    .cmd_bind_vertex_buffers(
+                                        command_buffer,
+                                        0,
+                                        &vertex_buffers,
+                                        &offsets,
+                                    );
 
-                        // Bind vertex buffer
-                        let offsets = [0];
-                        let vertex_buffers = [model_data.vertex_buffer.buffer()];
-                        renderer
-                            .context
-                            .logical_device()
-                            .logical_device()
-                            .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
+                                // Bind index buffer
+                                renderer
+                                    .context
+                                    .logical_device()
+                                    .logical_device()
+                                    .cmd_bind_index_buffer(
+                                        command_buffer,
+                                        model_data.index_buffer.buffer(),
+                                        0,
+                                        vk::IndexType::UINT32,
+                                    );
 
-                        // Bind index buffer
-                        renderer
-                            .context
-                            .logical_device()
-                            .logical_device()
-                            .cmd_bind_index_buffer(
-                                command_buffer,
-                                model_data.index_buffer.buffer(),
-                                0,
-                                vk::IndexType::UINT32,
-                            );
+                                // TODO: Model data should own their descriptor sets
+                                // Bind descriptor sets
+                                renderer
+                                    .context
+                                    .logical_device()
+                                    .logical_device()
+                                    .cmd_bind_descriptor_sets(
+                                        command_buffer,
+                                        vk::PipelineBindPoint::GRAPHICS,
+                                        renderer.pipeline.layout(),
+                                        0,
+                                        // &[renderer.descriptor_sets[index]],
+                                        &[renderer.descriptor_sets
+                                            [(model_index * index) + model_index]],
+                                        &[],
+                                    );
 
-                        // Bind descriptor sets
-                        let null = [];
-                        renderer
-                            .context
-                            .logical_device()
-                            .logical_device()
-                            .cmd_bind_descriptor_sets(
-                                command_buffer,
-                                vk::PipelineBindPoint::GRAPHICS,
-                                renderer.pipeline.layout(),
-                                0,
-                                &renderer.descriptor_sets[index..=index],
-                                &null,
-                            );
-
-                        // Draw
-                        renderer
-                            .context
-                            .logical_device()
-                            .logical_device()
-                            .cmd_draw_indexed(
-                                command_buffer,
-                                model_data.number_of_indices,
-                                1,
-                                0,
-                                0,
-                                0,
-                            );
+                                // Draw
+                                renderer
+                                    .context
+                                    .logical_device()
+                                    .logical_device()
+                                    .cmd_draw_indexed(
+                                        command_buffer,
+                                        model_data.number_of_indices,
+                                        1,
+                                        0,
+                                        0,
+                                        0,
+                                    );
+                            });
                     },
                 );
             });
@@ -266,25 +400,26 @@ impl<'a> System<'a> for RenderSystem {
             &glm::vec3(0.0, 1.0, 0.0),
         );
 
-        for transform in (&transform).join() {
+        for (index, transform) in (&transform).join().enumerate() {
             let ubo = UniformBufferObject {
                 model: transform.translate * transform.rotate * transform.scale,
                 view,
                 projection,
             };
 
+            let offset = index * image_index as usize;
             let ubos = [ubo];
-            let buffer = &renderer.uniform_buffers[image_index as usize];
-            buffer.upload_to_entire_buffer(&ubos);
-
-            let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-            renderer.command_pool.submit_command_buffer(
-                image_index as usize,
-                renderer.graphics_queue,
-                &wait_stages,
-                &current_frame_synchronization,
-            );
+            let buffer = &renderer.uniform_buffers[offset + image_index as usize];
+            buffer.upload_to_buffer(&ubos, 0);
         }
+
+        let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+        renderer.command_pool.submit_command_buffer(
+            image_index as usize,
+            renderer.graphics_queue,
+            &wait_stages,
+            &current_frame_synchronization,
+        );
 
         let swapchain_presentation_result = renderer.swapchain.present_rendered_image(
             &current_frame_synchronization,
@@ -313,7 +448,7 @@ impl<'a> System<'a> for RenderSystem {
 pub struct Renderer {
     context: Arc<VulkanContext>,
     pub command_pool: CommandPool,
-    pub descriptor_pool: DescriptorPool,
+    pub descriptor_pools: Vec<DescriptorPool>,
     pub descriptor_set_layout: DescriptorSetLayout,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
     pub framebuffers: Vec<Framebuffer>,
@@ -327,9 +462,9 @@ pub struct Renderer {
     pub uniform_buffers: Vec<Buffer>,
     pub depth_texture: Texture,
     pub depth_texture_view: ImageView,
-    pub texture: Texture,
-    pub texture_view: ImageView,
-    pub texture_image_sampler: Sampler,
+    pub textures: Vec<Texture>,         // TODO: Make this a cache
+    pub texture_views: Vec<ImageView>,  // TODO: Make this a cache
+    pub texture_samplers: Vec<Sampler>, // TODO: Make this a cache
     pub synchronization_set: SynchronizationSet,
     pub current_frame: usize,
 }
@@ -458,86 +593,12 @@ impl Renderer {
             })
             .collect::<Vec<_>>();
 
-        let number_of_images = swapchain.images().len();
-        let descriptor_pool = DescriptorPool::new(context.clone(), number_of_images as _);
-
-        let size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
-        let uniform_buffers = (0..swapchain.images().len())
-            .map(|_| {
-                Buffer::new(
-                    context.clone(),
-                    size,
-                    vk::BufferUsageFlags::UNIFORM_BUFFER,
-                    vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-                )
-            })
-            .collect::<Vec<_>>();
-
-        let descriptor_sets = descriptor_pool
-            .allocate_descriptor_sets(descriptor_set_layout.layout(), uniform_buffers.len() as _);
-
-        let texture_format = vk::Format::R8G8B8A8_UNORM;
-        let create_info = vk::ImageCreateInfo::builder()
-            .image_type(vk::ImageType::TYPE_2D)
-            .extent(vk::Extent3D {
-                width: swapchain.properties().extent.width,
-                height: swapchain.properties().extent.height,
-                depth: 1,
-            })
-            .mip_levels(1)
-            .array_layers(1)
-            .format(texture_format)
-            .tiling(vk::ImageTiling::OPTIMAL)
-            .initial_layout(vk::ImageLayout::UNDEFINED)
-            .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .samples(vk::SampleCountFlags::TYPE_1)
-            .flags(vk::ImageCreateFlags::empty());
-        let texture = Texture::from_file(
-            context.clone(),
-            &command_pool,
-            graphics_queue,
-            "assets/models/Duck/DuckCM.png",
-            texture_format,
-            create_info,
-        );
-
-        let create_info = vk::ImageViewCreateInfo::builder()
-            .image(texture.image())
-            .view_type(vk::ImageViewType::TYPE_2D)
-            .format(texture_format)
-            .components(vk::ComponentMapping {
-                r: vk::ComponentSwizzle::IDENTITY,
-                g: vk::ComponentSwizzle::IDENTITY,
-                b: vk::ComponentSwizzle::IDENTITY,
-                a: vk::ComponentSwizzle::IDENTITY,
-            })
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .build();
-        let texture_view = ImageView::new(context.clone(), create_info);
-
-        let texture_image_sampler = Sampler::new(context.clone());
-
-        descriptor_pool.update_descriptor_sets(
-            &descriptor_sets,
-            &uniform_buffers,
-            &texture_view,
-            &texture_image_sampler,
-            mem::size_of::<UniformBufferObject>() as vk::DeviceSize,
-        );
-
         Renderer {
             command_pool,
             context,
-            descriptor_pool,
+            descriptor_pools: Vec::new(), // TODO: maybe make this a map and have a main descriptor pool
             descriptor_set_layout,
-            descriptor_sets,
+            descriptor_sets: Vec::new(),
             framebuffers,
             graphics_queue,
             models: Vec::new(),
@@ -548,11 +609,11 @@ impl Renderer {
             synchronization_set,
             depth_texture,
             depth_texture_view,
-            texture,
-            texture_view,
-            texture_image_sampler,
+            textures: Vec::new(),
+            texture_views: Vec::new(),
+            texture_samplers: Vec::new(),
             transient_command_pool,
-            uniform_buffers,
+            uniform_buffers: Vec::new(),
             current_frame: 0,
         }
     }

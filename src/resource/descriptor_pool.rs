@@ -1,8 +1,5 @@
 // TODO: Make a type alias for the current device version (DeviceV1_0)
-use crate::{
-    core::{ImageView, VulkanContext},
-    resource::{Buffer, Sampler},
-};
+use crate::core::VulkanContext;
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -60,60 +57,6 @@ impl DescriptorPool {
                 .allocate_descriptor_sets(&allocation_info)
                 .unwrap()
         }
-    }
-
-    // TODO: Refactor this to use less parameters and make it smaller
-    pub fn update_descriptor_sets(
-        &self,
-        descriptor_sets: &[vk::DescriptorSet],
-        buffers: &[Buffer],
-        image_view: &ImageView,
-        sampler: &Sampler,
-        range: vk::DeviceSize,
-    ) {
-        descriptor_sets
-            .iter()
-            .zip(buffers.iter())
-            .for_each(|(set, buffer)| {
-                let buffer_info = vk::DescriptorBufferInfo::builder()
-                    .buffer(buffer.buffer())
-                    .offset(0)
-                    .range(range)
-                    .build();
-                let buffer_infos = [buffer_info];
-
-                let ubo_descriptor_write = vk::WriteDescriptorSet::builder()
-                    .dst_set(*set)
-                    .dst_binding(0)
-                    .dst_array_element(0)
-                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                    .buffer_info(&buffer_infos)
-                    .build();
-
-                let image_info = vk::DescriptorImageInfo::builder()
-                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                    .image_view(image_view.view())
-                    .sampler(sampler.sampler())
-                    .build();
-                let image_infos = [image_info];
-
-                let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
-                    .dst_set(*set)
-                    .dst_binding(1)
-                    .dst_array_element(0)
-                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                    .image_info(&image_infos)
-                    .build();
-
-                let descriptor_writes = [ubo_descriptor_write, sampler_descriptor_write];
-
-                unsafe {
-                    self.context
-                        .logical_device()
-                        .logical_device()
-                        .update_descriptor_sets(&descriptor_writes, &[])
-                }
-            })
     }
 }
 

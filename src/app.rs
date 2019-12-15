@@ -108,6 +108,17 @@ impl App {
             })
             .build();
 
+        world
+            .create_entity()
+            .with(MeshComponent {
+                mesh_name: "assets/models/Duck/Duck.gltf".to_string(),
+            })
+            .with(TransformComponent {
+                translate: glm::translate(&glm::Mat4::identity(), &glm::vec3(100.0, 0.0, 0.0)),
+                ..Default::default()
+            })
+            .build();
+
         // Prepare the renderer
         // by creating vertex buffers, index buffers, and command buffers
         render_preparation_dispatcher.dispatch(&world);
