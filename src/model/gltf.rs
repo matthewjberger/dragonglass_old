@@ -22,7 +22,7 @@ enum TransformationSet {
 }
 
 #[repr(C)]
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Copy, Clone)]
 pub struct Vertex {
     position: Option<glm::Vec3>,
     normal: Option<glm::Vec3>,

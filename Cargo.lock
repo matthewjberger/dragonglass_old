@@ -337,6 +337,7 @@ version = "0.1.0"
 dependencies = [
  "ash 0.29.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "glob 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "gltf 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "image 0.22.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -410,6 +411,11 @@ dependencies = [
  "color_quant 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "lzw 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
+
+[[package]]
+name = "glob"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "gltf"
@@ -1456,6 +1462,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum generic-array 0.13.2 (registry+https://github.com/rust-lang/crates.io-index)" = "0ed1e761351b56f54eb9dcd0cfaca9fd0daecf93918e1cfc01c8a3d26ee7adcd"
 "checksum getrandom 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)" = "e7db7ca94ed4cd01190ceee0d8a8052f08a247aa1b469a7f68c6a3b71afcf407"
 "checksum gif 0.10.3 (registry+https://github.com/rust-lang/crates.io-index)" = "471d90201b3b223f3451cd4ad53e34295f16a1df17b1edf3736d47761c3981af"
+"checksum glob 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 "checksum gltf 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)" = "2500d406ad7f246dfc12dd3d852d8ad4475d1f0778c545f7ce8c66170b394b47"
 "checksum gltf-derive 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)" = "30a43e632032236653aa18bf110e3953a40b0a84755eab476edfe841e666aab4"
 "checksum gltf-json 0.14.0 (registry+https://github.com/rust-lang/crates.io-index)" = "e8df6444709ac196b1aa89ef098923f2f950b66a2d1b6b17ee36558b0b3ac72d"

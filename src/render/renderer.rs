@@ -10,6 +10,7 @@ use ash::{
     vk,
 };
 use nalgebra_glm as glm;
+use petgraph::{prelude::*, visit::Dfs};
 use specs::{prelude::*, Component};
 use std::{mem, sync::Arc};
 
@@ -96,7 +97,7 @@ impl<'a> System<'a> for PrepareRendererSystem {
         // TODO: Make a command in the renderer to reset resources
 
         let number_of_swapchain_images = renderer.swapchain.images().len();
-        let number_of_meshes = meshes.join().collect::<Vec<_>>().len();
+        let number_of_meshes = meshes.join().count();
 
         let descriptor_pool = DescriptorPool::new(
             renderer.context.clone(),
@@ -107,22 +108,39 @@ impl<'a> System<'a> for PrepareRendererSystem {
         // TODO: Batch assets into a large vertex buffer
         let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
         for mesh in meshes.join() {
-            // TODO: batch entire gltf asset into a large vertex and index buffer
             // TODO: Cache assets
             let asset = GltfAsset::from_file(&mesh.mesh_name);
-            let first_node = &asset.scenes[0].node_graphs[0][petgraph::graph::NodeIndex::new(1)];
-            let first_primitive = &first_node.mesh.as_ref().expect("No Mesh!").primitives[0];
+            let mut scene_vertices: Vec<f32> = Vec::new();
+            let mut scene_indices: Vec<u32> = Vec::new();
+            for scene in asset.scenes.iter() {
+                for graph in scene.node_graphs.iter() {
+                    // Start at the root of the node graph
+                    let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
+
+                    // Walk the scene graph
+                    while let Some(node_index) = dfs.next(&graph) {
+                        // If there is a mesh, handle its primitives
+                        if let Some(mesh) = graph[node_index].mesh.as_ref() {
+                            for primitive_info in mesh.primitives.iter() {
+                                scene_vertices
+                                    .extend(primitive_info.vertex_set.pack_vertices().iter());
+                                scene_indices.extend(primitive_info.indices.iter());
+                            }
+                        }
+                    }
+                }
+            }
 
             let vertex_buffer = renderer.transient_command_pool.create_device_local_buffer(
                 renderer.graphics_queue,
                 vk::BufferUsageFlags::VERTEX_BUFFER,
-                &first_primitive.vertex_set.pack_vertices(),
+                &scene_vertices,
             );
 
             let index_buffer = renderer.transient_command_pool.create_device_local_buffer(
                 renderer.graphics_queue,
                 vk::BufferUsageFlags::INDEX_BUFFER,
-                &first_primitive.indices,
+                &scene_indices,
             );
 
             let uniform_buffers = (0..number_of_swapchain_images)
@@ -145,7 +163,7 @@ impl<'a> System<'a> for PrepareRendererSystem {
             let model_data = ModelData {
                 vertex_buffer,
                 index_buffer,
-                number_of_indices: first_primitive.number_of_indices,
+                number_of_indices: scene_indices.len() as _,
                 uniform_buffers,
                 descriptor_sets,
             };
