@@ -96,6 +96,7 @@ impl<'a> System<'a> for PrepareRendererSystem {
         // TODO: Batch assets into a large vertex buffer
         for mesh in meshes.join() {
             // TODO: batch entire gltf asset into a large vertex and index buffer
+            // TODO: Cache assets
             let asset = GltfAsset::from_file(&mesh.mesh_name);
             let first_node = &asset.scenes[0].node_graphs[0][petgraph::graph::NodeIndex::new(1)];
             let first_primitive = &first_node.mesh.as_ref().expect("No Mesh!").primitives[0];
