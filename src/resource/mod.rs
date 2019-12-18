@@ -1,7 +1,12 @@
 pub use self::{
-    buffer::Buffer, command_pool::CommandPool, descriptor_pool::DescriptorPool,
-    descriptor_set_layout::DescriptorSetLayout, pipeline_layout::PipelineLayout, sampler::Sampler,
-    shader::Shader, texture::Texture,
+    buffer::Buffer,
+    command_pool::CommandPool,
+    descriptor_pool::DescriptorPool,
+    descriptor_set_layout::DescriptorSetLayout,
+    pipeline_layout::PipelineLayout,
+    sampler::Sampler,
+    shader::Shader,
+    texture::{Dimension, Texture, TextureDescription},
 };
 
 pub mod buffer;

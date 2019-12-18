@@ -373,11 +373,6 @@ fn prepare_scenes(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<
     scenes
 }
 
-#[allow(dead_code)]
-fn prepare_textures(_textures: &[gltf::image::Data]) -> Vec<u32> {
-    unimplemented!()
-}
-
 fn visit_children(
     node: &gltf::Node,
     buffers: &[gltf::buffer::Data],

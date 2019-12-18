@@ -10,16 +10,16 @@ use std::{mem, sync::Arc};
 // TODO: Allow creating texture from passed in pixel data
 
 pub struct Dimension {
-    width: u32,
-    height: u32,
+    pub width: u32,
+    pub height: u32,
 }
 
 // These are parameters needed for
 // *both* creating and uploading image data
 pub struct TextureDescription {
-    format: vk::Format,
-    dimensions: Dimension,
-    pixels: Vec<u8>,
+    pub format: vk::Format,
+    pub dimensions: Dimension,
+    pub pixels: Vec<u8>,
 }
 
 // The order of the struct fields matters here
