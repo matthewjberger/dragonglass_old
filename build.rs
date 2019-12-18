@@ -8,7 +8,7 @@ use std::{
 
 type Result<T, E = Box<dyn Error>> = std::result::Result<T, E>;
 
-const SHADER_COMPILER_NAME: &str = "glSlangValidator";
+const SHADER_COMPILER_NAME: &str = "glslangValidator";
 
 fn main() -> Result<()> {
     let shader_directory = "assets/shaders";
