@@ -1,6 +1,7 @@
 use crate::render::{
     component::{MeshComponent, TransformComponent},
-    renderer::{PrepareRendererSystem, RenderSystem, Renderer, TransformationSystem},
+    renderer::Renderer,
+    system::{PrepareRendererSystem, RenderSystem, TransformationSystem},
 };
 use nalgebra_glm as glm;
 use specs::prelude::*;
