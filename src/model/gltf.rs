@@ -1,4 +1,8 @@
-use gltf::animation::{util::ReadOutputs, Interpolation};
+use ash::vk;
+use gltf::{
+    animation::{util::ReadOutputs, Interpolation},
+    image::Format,
+};
 use nalgebra::{Matrix4, Quaternion, UnitQuaternion};
 use nalgebra_glm as glm;
 use petgraph::{
@@ -574,4 +578,17 @@ pub fn create_byte_slice<T>(data: &[T]) -> &[u8] {
     use std::{mem, slice};
     let len = mem::size_of::<T>() * data.len();
     unsafe { slice::from_raw_parts(data.as_ptr() as *const u8, len) }
+}
+
+pub fn convert_to_vulkan_format(format: gltf::image::Format) -> vk::Format {
+    match format {
+        Format::R8 => vk::Format::R8_UNORM,
+        Format::R8G8 => vk::Format::R8G8_UNORM,
+        Format::R8G8B8A8 => vk::Format::R8G8B8A8_UNORM,
+        Format::B8G8R8A8 => vk::Format::B8G8R8A8_UNORM,
+        // 24-bit formats will have an alpha channel added
+        // to make them 32-bit
+        Format::R8G8B8 => vk::Format::R8G8B8_UNORM,
+        Format::B8G8R8 => vk::Format::B8G8R8_UNORM,
+    }
 }
