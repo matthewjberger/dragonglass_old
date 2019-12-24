@@ -194,60 +194,7 @@ impl PrepareRendererSystem {
                                 asset_index,
                             };
 
-                            model_data
-                                .descriptor_sets
-                                .iter()
-                                .zip(model_data.uniform_buffers.iter())
-                                .for_each(|(set, buffer)| {
-                                    let buffer_info = vk::DescriptorBufferInfo::builder()
-                                        .buffer(buffer.buffer())
-                                        .offset(0)
-                                        .range(uniform_buffer_size)
-                                        .build();
-                                    let buffer_infos = [buffer_info];
-
-                                    let ubo_descriptor_write = vk::WriteDescriptorSet::builder()
-                                        .dst_set(*set)
-                                        .dst_binding(0)
-                                        .dst_array_element(0)
-                                        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                                        .buffer_info(&buffer_infos)
-                                        .build();
-
-                                    // TODO: Make material optional
-                                    let texture_view = renderer.texture_views
-                                        [model_data.asset_index]
-                                        [model_data.material_index.unwrap()]
-                                    .view();
-                                    let image_info = vk::DescriptorImageInfo::builder()
-                                        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                                        .image_view(texture_view)
-                                        .sampler(renderer.texture_samplers[0].sampler())
-                                        .build();
-                                    let image_infos = [image_info];
-
-                                    let sampler_descriptor_write =
-                                        vk::WriteDescriptorSet::builder()
-                                            .dst_set(*set)
-                                            .dst_binding(1)
-                                            .dst_array_element(0)
-                                            .descriptor_type(
-                                                vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                                            )
-                                            .image_info(&image_infos)
-                                            .build();
-
-                                    let descriptor_writes =
-                                        [ubo_descriptor_write, sampler_descriptor_write];
-
-                                    unsafe {
-                                        renderer
-                                            .context
-                                            .logical_device()
-                                            .logical_device()
-                                            .update_descriptor_sets(&descriptor_writes, &[])
-                                    }
-                                });
+                            Self::update_model_descriptor_sets(renderer, &model_data);
 
                             renderer.models.push(model_data);
                         }
@@ -356,5 +303,58 @@ impl PrepareRendererSystem {
             texture_views.push(texture_view);
         }
         (textures, texture_views)
+    }
+
+    fn update_model_descriptor_sets(renderer: &mut Renderer, model_data: &ModelData) {
+        model_data
+            .descriptor_sets
+            .iter()
+            .zip(model_data.uniform_buffers.iter())
+            .for_each(|(set, buffer)| {
+                let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
+                let buffer_info = vk::DescriptorBufferInfo::builder()
+                    .buffer(buffer.buffer())
+                    .offset(0)
+                    .range(uniform_buffer_size)
+                    .build();
+                let buffer_infos = [buffer_info];
+
+                let ubo_descriptor_write = vk::WriteDescriptorSet::builder()
+                    .dst_set(*set)
+                    .dst_binding(0)
+                    .dst_array_element(0)
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .buffer_info(&buffer_infos)
+                    .build();
+
+                // TODO: Make material optional
+                let texture_view = renderer.texture_views[model_data.asset_index]
+                    [model_data.material_index.unwrap()]
+                .view();
+                let image_info = vk::DescriptorImageInfo::builder()
+                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .image_view(texture_view)
+                    .sampler(renderer.texture_samplers[0].sampler())
+                    .build();
+                let image_infos = [image_info];
+
+                let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
+                    .dst_set(*set)
+                    .dst_binding(1)
+                    .dst_array_element(0)
+                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .image_info(&image_infos)
+                    .build();
+
+                let descriptor_writes = [ubo_descriptor_write, sampler_descriptor_write];
+
+                unsafe {
+                    renderer
+                        .context
+                        .logical_device()
+                        .logical_device()
+                        .update_descriptor_sets(&descriptor_writes, &[])
+                }
+            });
     }
 }
