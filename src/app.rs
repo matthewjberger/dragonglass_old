@@ -1,10 +1,10 @@
-use crate::render::renderer::{
-    MeshComponent, PrepareRendererSystem, RenderSystem, Renderer, StartTime, TransformComponent,
-    TransformationSystem,
+use crate::render::{
+    component::{MeshComponent, TransformComponent},
+    renderer::{PrepareRendererSystem, RenderSystem, Renderer, TransformationSystem},
 };
 use nalgebra_glm as glm;
 use specs::prelude::*;
-use std::{collections::HashMap, time::Instant};
+use std::collections::HashMap;
 use winit::{
     dpi::LogicalSize, ElementState, Event, EventsLoop, VirtualKeyCode, Window, WindowEvent,
 };
@@ -68,13 +68,11 @@ impl App {
         log::debug!("Running application.");
 
         let renderer = Renderer::new(&self.window);
+        let mut world = World::new();
 
-        // Resource fetching will panic without these
+        // Resource fetching will panic without this
         // because of the WriteExpect and ReadExpect lookups
         // on the render system
-        let start_time = Instant::now();
-        let mut world = World::new();
-        world.insert(StartTime(start_time));
         world.insert(renderer);
 
         // Register the render preparation system

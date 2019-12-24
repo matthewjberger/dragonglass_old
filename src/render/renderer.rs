@@ -1,7 +1,10 @@
 use crate::{
     core::{ImageView, Swapchain, VulkanContext},
     model::GltfAsset,
-    render::{Framebuffer, GraphicsPipeline, RenderPass},
+    render::{
+        component::{MeshComponent, TransformComponent},
+        Framebuffer, GraphicsPipeline, RenderPass,
+    },
     resource::{
         Buffer, CommandPool, DescriptorPool, DescriptorSetLayout, Dimension, Sampler, Texture,
         TextureDescription,
@@ -16,7 +19,7 @@ use gltf::image::Format;
 use image::{ImageBuffer, Pixel, RgbImage};
 use nalgebra_glm as glm;
 use petgraph::{prelude::*, visit::Dfs};
-use specs::{prelude::*, Component};
+use specs::prelude::*;
 use std::{mem, sync::Arc};
 
 // TODO: rename this
@@ -45,33 +48,6 @@ impl UniformBufferObject {
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::VERTEX)
             .build()
-    }
-}
-
-pub struct StartTime(pub std::time::Instant);
-
-// TODO: Rename MeshComponent to something more generic. (RenderComponent?)
-#[derive(Component, Debug)]
-#[storage(VecStorage)]
-pub struct MeshComponent {
-    pub mesh_name: String, // TODO: Make this a tag rather than a full path
-}
-
-#[derive(Component, Debug)]
-#[storage(VecStorage)]
-pub struct TransformComponent {
-    pub translate: glm::Mat4,
-    pub rotate: glm::Mat4,
-    pub scale: glm::Mat4,
-}
-
-impl Default for TransformComponent {
-    fn default() -> Self {
-        Self {
-            translate: glm::Mat4::identity(),
-            rotate: glm::Mat4::identity(),
-            scale: glm::Mat4::identity(),
-        }
     }
 }
 

@@ -3,6 +3,7 @@ pub use self::{
     renderpass::RenderPass,
 };
 
+pub mod component;
 pub mod framebuffer;
 pub mod pipeline;
 pub mod renderer;

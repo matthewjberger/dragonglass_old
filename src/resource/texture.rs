@@ -77,6 +77,7 @@ impl Texture {
     }
 
     // TODO: Refactor this to use less parameters
+    #[allow(dead_code)]
     pub fn from_file(
         context: Arc<VulkanContext>,
         command_pool: &CommandPool,
