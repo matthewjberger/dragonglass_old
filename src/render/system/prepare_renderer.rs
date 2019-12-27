@@ -21,24 +21,17 @@ impl<'a> System<'a> for PrepareRendererSystem {
 
         // TODO: Make a command in the renderer to reset resources
 
-        let number_of_swapchain_images = renderer.swapchain.images().len();
-        let number_of_meshes = meshes.join().count();
-
-        // TODO: This should have n_meshes * n_primitives * n_swapchain_images
-        // TODO: Push this after all model data has been created
-        let descriptor_pool = DescriptorPool::new(
-            renderer.context.clone(),
-            (number_of_meshes * 10 * number_of_swapchain_images) as _,
-        );
-        renderer.descriptor_pools.push(descriptor_pool);
-
         // TODO: Push this after all model data has been created
         let texture_image_sampler = Sampler::new(renderer.context.clone());
         renderer.texture_samplers.push(texture_image_sampler);
 
         // TODO: Batch assets into a large vertex buffer
         for mesh in meshes.join() {
-            Self::load_mesh(renderer, mesh);
+            let asset = GltfAsset::from_file(&mesh.mesh_name);
+            let number_of_meshes = meshes.join().count() as u32;
+            let number_of_materials = asset.textures.len() as u32;
+            Self::setup_descriptor_pool(renderer, number_of_meshes, number_of_materials);
+            Self::load_mesh(renderer, &asset);
         }
 
         let number_of_framebuffers = renderer.framebuffers.len();
@@ -47,87 +40,14 @@ impl<'a> System<'a> for PrepareRendererSystem {
             .command_pool
             .allocate_command_buffers(number_of_framebuffers as _);
 
-        // Create a single render pass that will draw each mesh
-        renderer
-            .command_pool
-            .command_buffers()
-            .iter()
-            .enumerate()
-            .for_each(|(index, buffer)| {
-                let command_buffer = buffer;
-                let framebuffer = renderer.framebuffers[index].framebuffer();
-
-                renderer.create_render_pass(
-                    framebuffer,
-                    *command_buffer,
-                    |command_buffer| unsafe {
-                        // TODO: Batch models by which shader should be used to render them
-                        renderer.models.iter().for_each(|model_data| {
-                            // Bind vertex buffer
-                            let offsets = [0];
-                            let vertex_buffers = [model_data.vertex_buffer.buffer()];
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_bind_vertex_buffers(
-                                    command_buffer,
-                                    0,
-                                    &vertex_buffers,
-                                    &offsets,
-                                );
-
-                            // Bind index buffer
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_bind_index_buffer(
-                                    command_buffer,
-                                    model_data.index_buffer.buffer(),
-                                    0,
-                                    vk::IndexType::UINT32,
-                                );
-
-                            // Bind descriptor sets
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_bind_descriptor_sets(
-                                    command_buffer,
-                                    vk::PipelineBindPoint::GRAPHICS,
-                                    renderer.pipeline.layout(),
-                                    0,
-                                    &[model_data.descriptor_sets[index]],
-                                    &[],
-                                );
-
-                            // Draw
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_draw_indexed(
-                                    command_buffer,
-                                    model_data.number_of_indices,
-                                    1,
-                                    0,
-                                    0,
-                                    0,
-                                );
-                        });
-                    },
-                );
-            });
+        Self::create_render_passes(renderer);
     }
 }
 
 impl PrepareRendererSystem {
-    fn load_mesh(renderer: &mut Renderer, mesh: &MeshComponent) {
+    fn load_mesh(renderer: &mut Renderer, asset: &GltfAsset) {
         let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
         let number_of_swapchain_images = renderer.swapchain.images().len();
-        let asset = GltfAsset::from_file(&mesh.mesh_name);
 
         let (textures, image_views) = Self::load_textures(renderer, &asset);
         renderer.textures.push(textures);
@@ -176,7 +96,7 @@ impl PrepareRendererSystem {
                                 })
                                 .collect::<Vec<_>>();
 
-                            let descriptor_sets = renderer.descriptor_pools[0]
+                            let descriptor_sets = renderer.descriptor_pools[asset_index]
                                 .allocate_descriptor_sets(
                                     renderer.descriptor_set_layout.layout(),
                                     number_of_swapchain_images as _,
@@ -203,6 +123,34 @@ impl PrepareRendererSystem {
                 }
             }
         }
+    }
+
+    fn setup_descriptor_pool(
+        renderer: &mut Renderer,
+        number_of_meshes: u32,
+        number_of_materials: u32,
+    ) {
+        let number_of_swapchain_images = renderer.swapchain.images().len() as u32;
+
+        let number_of_samplers = number_of_materials * number_of_swapchain_images;
+
+        let ubo_pool_size = (4 + number_of_meshes) * number_of_swapchain_images;
+        let sampler_pool_size = number_of_samplers * number_of_swapchain_images;
+        let max_number_of_pools =
+            (2 + number_of_materials + number_of_meshes) * number_of_swapchain_images;
+
+        println!("ubo pool size: {}", ubo_pool_size);
+        println!("sampler pool size: {}", sampler_pool_size);
+        println!("max number of pools: {}", max_number_of_pools);
+
+        // TODO: Push this after all model data has been created
+        let descriptor_pool = DescriptorPool::new(
+            renderer.context.clone(),
+            ubo_pool_size,
+            sampler_pool_size,
+            max_number_of_pools,
+        );
+        renderer.descriptor_pools.push(descriptor_pool);
     }
 
     fn load_textures(renderer: &mut Renderer, asset: &GltfAsset) -> (Vec<Texture>, Vec<ImageView>) {
@@ -355,6 +303,82 @@ impl PrepareRendererSystem {
                         .logical_device()
                         .update_descriptor_sets(&descriptor_writes, &[])
                 }
+            });
+    }
+
+    fn create_render_passes(renderer: &mut Renderer) {
+        // Create a single render pass that will draw each mesh
+        renderer
+            .command_pool
+            .command_buffers()
+            .iter()
+            .enumerate()
+            .for_each(|(index, buffer)| {
+                let command_buffer = buffer;
+                let framebuffer = renderer.framebuffers[index].framebuffer();
+
+                renderer.create_render_pass(
+                    framebuffer,
+                    *command_buffer,
+                    |command_buffer| unsafe {
+                        // TODO: Batch models by which shader should be used to render them
+                        renderer.models.iter().for_each(|model_data| {
+                            // Bind vertex buffer
+                            let offsets = [0];
+                            let vertex_buffers = [model_data.vertex_buffer.buffer()];
+                            renderer
+                                .context
+                                .logical_device()
+                                .logical_device()
+                                .cmd_bind_vertex_buffers(
+                                    command_buffer,
+                                    0,
+                                    &vertex_buffers,
+                                    &offsets,
+                                );
+
+                            // Bind index buffer
+                            renderer
+                                .context
+                                .logical_device()
+                                .logical_device()
+                                .cmd_bind_index_buffer(
+                                    command_buffer,
+                                    model_data.index_buffer.buffer(),
+                                    0,
+                                    vk::IndexType::UINT32,
+                                );
+
+                            // Bind descriptor sets
+                            renderer
+                                .context
+                                .logical_device()
+                                .logical_device()
+                                .cmd_bind_descriptor_sets(
+                                    command_buffer,
+                                    vk::PipelineBindPoint::GRAPHICS,
+                                    renderer.pipeline.layout(),
+                                    0,
+                                    &[model_data.descriptor_sets[index]],
+                                    &[],
+                                );
+
+                            // Draw
+                            renderer
+                                .context
+                                .logical_device()
+                                .logical_device()
+                                .cmd_draw_indexed(
+                                    command_buffer,
+                                    model_data.number_of_indices,
+                                    1,
+                                    0,
+                                    0,
+                                    0,
+                                );
+                        });
+                    },
+                );
             });
     }
 }
