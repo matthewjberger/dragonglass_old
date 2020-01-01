@@ -26,12 +26,12 @@ impl<'a> System<'a> for PrepareRendererSystem {
         renderer.texture_samplers.push(texture_image_sampler);
 
         // TODO: Batch assets into a large vertex buffer
-        for mesh in meshes.join() {
+        for (asset_index, mesh) in meshes.join().enumerate() {
             let asset = GltfAsset::from_file(&mesh.mesh_name);
             let number_of_meshes = meshes.join().count() as u32;
             let number_of_materials = asset.textures.len() as u32;
             Self::setup_descriptor_pool(renderer, number_of_meshes, number_of_materials);
-            Self::load_mesh(renderer, &asset);
+            Self::load_mesh(renderer, &asset, asset_index);
         }
 
         let number_of_framebuffers = renderer.framebuffers.len();
@@ -45,7 +45,7 @@ impl<'a> System<'a> for PrepareRendererSystem {
 }
 
 impl PrepareRendererSystem {
-    fn load_mesh(renderer: &mut Renderer, asset: &GltfAsset) {
+    fn load_mesh(renderer: &mut Renderer, asset: &GltfAsset, asset_index: usize) {
         let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
         let number_of_swapchain_images = renderer.swapchain.images().len();
 
@@ -59,8 +59,6 @@ impl PrepareRendererSystem {
             for graph in scene.node_graphs.iter() {
                 // Start at the root of the node graph
                 let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
-
-                let mut asset_index = 0;
 
                 // Walk the scene graph
                 while let Some(node_index) = dfs.next(&graph) {
@@ -118,7 +116,6 @@ impl PrepareRendererSystem {
 
                             renderer.models.push(model_data);
                         }
-                        asset_index += 1;
                     }
                 }
             }
@@ -139,10 +136,6 @@ impl PrepareRendererSystem {
         let max_number_of_pools =
             (2 + number_of_materials + number_of_meshes) * number_of_swapchain_images;
 
-        println!("ubo pool size: {}", ubo_pool_size);
-        println!("sampler pool size: {}", sampler_pool_size);
-        println!("max number of pools: {}", max_number_of_pools);
-
         // TODO: Push this after all model data has been created
         let descriptor_pool = DescriptorPool::new(
             renderer.context.clone(),
@@ -150,6 +143,7 @@ impl PrepareRendererSystem {
             sampler_pool_size,
             max_number_of_pools,
         );
+        println!("Pushed a descriptor pool!");
         renderer.descriptor_pools.push(descriptor_pool);
     }
 

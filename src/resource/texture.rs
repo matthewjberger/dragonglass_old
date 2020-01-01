@@ -96,7 +96,7 @@ impl Texture {
             pixels: image.into_raw(),
         };
         Self::from_data(
-            context.clone(),
+            context,
             command_pool,
             graphics_queue,
             description,
@@ -122,7 +122,7 @@ impl Texture {
         let texture = Self::new(context.clone(), create_info);
 
         let buffer = Buffer::new(
-            context.clone(),
+            context,
             image_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE,
