@@ -1,24 +1,8 @@
-[package]
-name = "dragonglass"
-version = "0.1.0"
-authors = ["Matthew J. Berger <matthewberger@nevada.unr.edu>"]
-edition = "2018"
+[workspace]
 
-[dependencies]
-winit = "0.19.5"
-ash = "0.29.0"
-env_logger = "0.7.1"
-log = "0.4.8"
-nalgebra = "0.19.0"
-nalgebra-glm = "0.5.0"
-snafu = "0.6.0"
-image = "0.22.3"
-gltf = { version = "0.14.0", features = [ "extras", "names" ] }
-petgraph = "0.4.13"
-specs = { version = "0.15.1", features = [ "specs-derive" ] }
-
-[target.'cfg(target_os = "windows")'.dependencies]
-winapi = { version = "0.3.8", features = ["windef", "libloaderapi"] }
-
-[build-dependencies]
-glob = "0.3.0"
+members = [
+    "src/dragonglass",
+    "src/renderer/model/gltf",
+    "src/renderer/backend/vulkan",
+    "examples",
+]

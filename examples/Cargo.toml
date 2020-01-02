@@ -1,0 +1,17 @@
+[package]
+name = "dragonglass-examples"
+version = "0.1.0"
+authors = ["matthewjberger <matthewberger@nevada.unr.edu>"]
+edition = "2018"
+
+[[bin]]
+name = "scene"
+path = "scene/main.rs"
+
+[dependencies]
+env_logger = "0.7.1"
+log = "0.4.8"
+dragonglass = { path = "../src/dragonglass", version = "0.1.0" }
+
+[build-dependencies]
+glob = "0.3.0"
