@@ -5,24 +5,25 @@ use crate::{
 };
 use ash::{version::DeviceV1_0, vk};
 use dragonglass_model_gltf::GltfAsset;
+use gltf::image::Format;
 use image::{ImageBuffer, Pixel, RgbImage};
 use petgraph::{prelude::*, visit::Dfs};
 use specs::prelude::*;
 use std::mem;
 
 // TODO: Move this somewhere more general
-// pub fn convert_to_vulkan_format(format: gltf::image::Format) -> vk::Format {
-//     match format {
-//         Format::R8 => vk::Format::R8_UNORM,
-//         Format::R8G8 => vk::Format::R8G8_UNORM,
-//         Format::R8G8B8A8 => vk::Format::R8G8B8A8_UNORM,
-//         Format::B8G8R8A8 => vk::Format::B8G8R8A8_UNORM,
-//         // 24-bit formats will have an alpha channel added
-//         // to make them 32-bit
-//         Format::R8G8B8 => vk::Format::R8G8B8_UNORM,
-//         Format::B8G8R8 => vk::Format::B8G8R8_UNORM,
-//     }
-// }
+pub fn convert_to_vulkan_format(format: Format) -> vk::Format {
+    match format {
+        Format::R8 => vk::Format::R8_UNORM,
+        Format::R8G8 => vk::Format::R8G8_UNORM,
+        Format::R8G8B8A8 => vk::Format::R8G8B8A8_UNORM,
+        Format::B8G8R8A8 => vk::Format::B8G8R8A8_UNORM,
+        // 24-bit formats will have an alpha channel added
+        // to make them 32-bit
+        Format::R8G8B8 => vk::Format::R8G8B8_UNORM,
+        Format::B8G8R8 => vk::Format::B8G8R8_UNORM,
+    }
+}
 
 pub struct PrepareRendererSystem;
 
@@ -69,6 +70,7 @@ impl PrepareRendererSystem {
 
         let mut asset_vertices: Vec<f32> = Vec::new();
         let mut asset_indices: Vec<u32> = Vec::new();
+        let mut index_buffer_offset: usize = 0;
         for scene in asset.scenes.iter() {
             for graph in scene.node_graphs.iter() {
                 // Start at the root of the node graph
@@ -79,8 +81,11 @@ impl PrepareRendererSystem {
                     // If there is a mesh, handle its primitives
                     if let Some(mesh) = graph[node_index].mesh.as_ref() {
                         for primitive_info in mesh.primitives.iter() {
-                            asset_vertices.extend(primitive_info.vertex_set.pack_vertices().iter());
-                            asset_indices.extend(primitive_info.indices.iter());
+                            let primitive_vertices = primitive_info.vertex_set.pack_vertices();
+                            let primitive_indices = &primitive_info.indices;
+
+                            asset_vertices.extend(primitive_vertices.iter());
+                            asset_indices.extend(primitive_indices.iter());
 
                             let uniform_buffers = (0..number_of_swapchain_images)
                                 .map(|_| {
@@ -108,11 +113,14 @@ impl PrepareRendererSystem {
                                 descriptor_sets,
                                 material_index: primitive_info.material_index,
                                 asset_index,
+                                first_index: index_buffer_offset as u32,
                             };
 
                             Self::update_model_descriptor_sets(renderer, &model_data);
 
                             renderer.models.push(model_data);
+
+                            index_buffer_offset += primitive_indices.len();
                         }
                     }
                 }
@@ -163,9 +171,7 @@ impl PrepareRendererSystem {
         let mut textures = Vec::new();
         let mut texture_views = Vec::new();
         for texture_properties in asset.textures.iter() {
-            // FIXME: Make this a method
-            //let mut texture_format = convert_to_vulkan_format(texture_properties.format);
-            let mut texture_format = vk::Format::R8G8B8_UNORM;
+            let mut texture_format = convert_to_vulkan_format(texture_properties.format);
 
             let pixels: Vec<u8> = match texture_format {
                 vk::Format::R8G8B8_UNORM => {
@@ -385,7 +391,7 @@ impl PrepareRendererSystem {
                                     command_buffer,
                                     model_data.number_of_indices,
                                     1,
-                                    0,
+                                    model_data.first_index,
                                     0,
                                     0,
                                 );

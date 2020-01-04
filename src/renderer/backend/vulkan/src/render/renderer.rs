@@ -17,6 +17,7 @@ pub struct ModelData {
     pub descriptor_sets: Vec<vk::DescriptorSet>,
     pub material_index: Option<usize>,
     pub asset_index: usize, // The asset this primitive data belongs to
+    pub first_index: u32,
 }
 
 pub struct Renderer {

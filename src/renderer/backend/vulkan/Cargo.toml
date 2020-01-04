@@ -16,6 +16,7 @@ image = "0.22.3"
 dragonglass-model-gltf = { path = "../../model/gltf",  version = "0.1.0" }
 petgraph = "0.4.13"
 specs = { version = "0.15.1", features = [ "specs-derive" ] }
+gltf = "0.14.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3.8", features = ["windef", "libloaderapi"] }

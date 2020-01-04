@@ -106,15 +106,14 @@ impl PartialEq for LayerName {
 
 impl Eq for LayerName {}
 
+#[derive(Default)]
 pub struct LayerNameVec {
     pub layer_names: Vec<LayerName>,
 }
 
 impl LayerNameVec {
     pub fn new() -> Self {
-        Self {
-            layer_names: Vec::new(),
-        }
+        Self::default()
     }
 
     pub fn layer_name_pointers(&self) -> Vec<*const i8> {
