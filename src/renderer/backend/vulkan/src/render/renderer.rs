@@ -12,8 +12,6 @@ use std::sync::Arc;
 
 // TODO: rename this
 pub struct ModelData {
-    pub vertex_buffer: Buffer,
-    pub index_buffer: Buffer,
     pub number_of_indices: u32,
     pub uniform_buffers: Vec<Buffer>,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
@@ -41,6 +39,8 @@ pub struct Renderer {
     pub texture_samplers: Vec<Sampler>,     // TODO: Make this a cache
     pub synchronization_set: SynchronizationSet,
     pub current_frame: usize,
+    pub vertex_buffers: Vec<Buffer>,
+    pub index_buffers: Vec<Buffer>,
 }
 
 impl Renderer {
@@ -79,7 +79,9 @@ impl Renderer {
             vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
         );
 
-        let logical_size = window.get_inner_size().expect("Failed to get the window's inner size!");
+        let logical_size = window
+            .get_inner_size()
+            .expect("Failed to get the window's inner size!");
         let dimensions = [logical_size.width as u32, logical_size.height as u32];
         let swapchain = Swapchain::new(context.clone(), dimensions);
         let render_pass = RenderPass::new(context.clone(), swapchain.properties(), depth_format);
@@ -187,6 +189,8 @@ impl Renderer {
             texture_samplers: Vec::new(),
             transient_command_pool,
             current_frame: 0,
+            vertex_buffers: Vec::new(),
+            index_buffers: Vec::new(),
         }
     }
 

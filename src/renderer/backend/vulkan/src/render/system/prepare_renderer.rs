@@ -1,15 +1,14 @@
-use dragonglass_model_gltf::GltfAsset;
 use crate::{
     core::ImageView,
     render::{component::MeshComponent, system::UniformBufferObject, ModelData, Renderer},
     resource::{Buffer, DescriptorPool, Dimension, Sampler, Texture, TextureDescription},
 };
 use ash::{version::DeviceV1_0, vk};
+use dragonglass_model_gltf::GltfAsset;
 use image::{ImageBuffer, Pixel, RgbImage};
 use petgraph::{prelude::*, visit::Dfs};
 use specs::prelude::*;
 use std::mem;
-
 
 // TODO: Move this somewhere more general
 // pub fn convert_to_vulkan_format(format: gltf::image::Format) -> vk::Format {
@@ -68,8 +67,8 @@ impl PrepareRendererSystem {
         renderer.textures.push(textures);
         renderer.texture_views.push(image_views);
 
-        let mut scene_vertices: Vec<f32> = Vec::new();
-        let mut scene_indices: Vec<u32> = Vec::new();
+        let mut asset_vertices: Vec<f32> = Vec::new();
+        let mut asset_indices: Vec<u32> = Vec::new();
         for scene in asset.scenes.iter() {
             for graph in scene.node_graphs.iter() {
                 // Start at the root of the node graph
@@ -80,22 +79,8 @@ impl PrepareRendererSystem {
                     // If there is a mesh, handle its primitives
                     if let Some(mesh) = graph[node_index].mesh.as_ref() {
                         for primitive_info in mesh.primitives.iter() {
-                            scene_vertices.extend(primitive_info.vertex_set.pack_vertices().iter());
-                            scene_indices.extend(primitive_info.indices.iter());
-
-                            let vertex_buffer =
-                                renderer.transient_command_pool.create_device_local_buffer(
-                                    renderer.graphics_queue,
-                                    vk::BufferUsageFlags::VERTEX_BUFFER,
-                                    &scene_vertices,
-                                );
-
-                            let index_buffer =
-                                renderer.transient_command_pool.create_device_local_buffer(
-                                    renderer.graphics_queue,
-                                    vk::BufferUsageFlags::INDEX_BUFFER,
-                                    &scene_indices,
-                                );
+                            asset_vertices.extend(primitive_info.vertex_set.pack_vertices().iter());
+                            asset_indices.extend(primitive_info.indices.iter());
 
                             let uniform_buffers = (0..number_of_swapchain_images)
                                 .map(|_| {
@@ -118,9 +103,7 @@ impl PrepareRendererSystem {
                             // TODO: Add calculated primitive transform and
                             // change draw call to use dynamic ubos
                             let model_data = ModelData {
-                                vertex_buffer,
-                                index_buffer,
-                                number_of_indices: scene_indices.len() as _,
+                                number_of_indices: asset_indices.len() as _,
                                 uniform_buffers,
                                 descriptor_sets,
                                 material_index: primitive_info.material_index,
@@ -135,6 +118,21 @@ impl PrepareRendererSystem {
                 }
             }
         }
+
+        let vertex_buffer = renderer.transient_command_pool.create_device_local_buffer(
+            renderer.graphics_queue,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            &asset_vertices,
+        );
+
+        let index_buffer = renderer.transient_command_pool.create_device_local_buffer(
+            renderer.graphics_queue,
+            vk::BufferUsageFlags::INDEX_BUFFER,
+            &asset_indices,
+        );
+
+        renderer.vertex_buffers.push(vertex_buffer);
+        renderer.index_buffers.push(index_buffer);
     }
 
     fn setup_descriptor_pool(
@@ -165,7 +163,6 @@ impl PrepareRendererSystem {
         let mut textures = Vec::new();
         let mut texture_views = Vec::new();
         for texture_properties in asset.textures.iter() {
-
             // FIXME: Make this a method
             //let mut texture_format = convert_to_vulkan_format(texture_properties.format);
             let mut texture_format = vk::Format::R8G8B8_UNORM;
@@ -287,8 +284,9 @@ impl PrepareRendererSystem {
                     .build();
 
                 // TODO: Make material optional
-                let texture_view = renderer.texture_views[model_data.asset_index]
-                    [model_data.material_index.expect("Failed to get material index!")]
+                let texture_view = renderer.texture_views[model_data.asset_index][model_data
+                    .material_index
+                    .expect("Failed to get material index!")]
                 .view();
                 let image_info = vk::DescriptorImageInfo::builder()
                     .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
@@ -336,7 +334,9 @@ impl PrepareRendererSystem {
                         renderer.models.iter().for_each(|model_data| {
                             // Bind vertex buffer
                             let offsets = [0];
-                            let vertex_buffers = [model_data.vertex_buffer.buffer()];
+                            let vertex_buffer =
+                                renderer.vertex_buffers[model_data.asset_index].buffer();
+                            let vertex_buffers = [vertex_buffer];
                             renderer
                                 .context
                                 .logical_device()
@@ -349,13 +349,15 @@ impl PrepareRendererSystem {
                                 );
 
                             // Bind index buffer
+                            let index_buffer =
+                                renderer.index_buffers[model_data.asset_index].buffer();
                             renderer
                                 .context
                                 .logical_device()
                                 .logical_device()
                                 .cmd_bind_index_buffer(
                                     command_buffer,
-                                    model_data.index_buffer.buffer(),
+                                    index_buffer,
                                     0,
                                     vk::IndexType::UINT32,
                                 );
