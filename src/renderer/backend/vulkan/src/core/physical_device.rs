@@ -37,7 +37,8 @@ impl PhysicalDevice {
         // TODO: This is called twice on the physical device that is deemed suitable.
         // reduce it to one call, storing the set on the first pass
         let queue_family_index_set =
-            QueueFamilyIndexSet::new(instance.instance(), physical_device, surface).expect("Failed to create queue family index set!");
+            QueueFamilyIndexSet::new(instance.instance(), physical_device, surface)
+                .expect("Failed to create queue family index set!");
 
         Ok(PhysicalDevice {
             physical_device,

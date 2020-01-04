@@ -1,9 +1,6 @@
 pub use self::{
-    framebuffer::Framebuffer,
-    pipeline::GraphicsPipeline,
-    renderer::{ModelData, Renderer},
-    renderpass::RenderPass,
-    system::UniformBufferObject,
+    framebuffer::Framebuffer, pipeline::GraphicsPipeline, renderer::Renderer,
+    renderpass::RenderPass, system::UniformBufferObject,
 };
 
 pub mod component;

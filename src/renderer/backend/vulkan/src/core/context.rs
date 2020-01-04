@@ -35,7 +35,8 @@ impl VulkanContext {
     pub fn new(window: &winit::Window) -> Result<Self> {
         let instance = Instance::new().context(InstanceCreation)?;
         let surface = Surface::new(&instance, window);
-        let physical_device = PhysicalDevice::new(&instance, &surface).expect("Failed to get physical device!");
+        let physical_device =
+            PhysicalDevice::new(&instance, &surface).expect("Failed to get physical device!");
         let logical_device =
             LogicalDevice::new(&instance, &physical_device).context(LogicalDeviceCreation)?;
         Ok(VulkanContext {

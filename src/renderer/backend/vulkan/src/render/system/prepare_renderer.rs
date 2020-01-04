@@ -1,15 +1,18 @@
-use dragonglass_model_gltf::GltfAsset;
 use crate::{
     core::ImageView,
-    render::{component::MeshComponent, system::UniformBufferObject, ModelData, Renderer},
+    render::{
+        component::{MeshComponent, Primitive},
+        system::UniformBufferObject,
+        Renderer,
+    },
     resource::{Buffer, DescriptorPool, Dimension, Sampler, Texture, TextureDescription},
 };
 use ash::{version::DeviceV1_0, vk};
+use dragonglass_model_gltf::GltfAsset;
 use image::{ImageBuffer, Pixel, RgbImage};
 use petgraph::{prelude::*, visit::Dfs};
 use specs::prelude::*;
 use std::mem;
-
 
 // TODO: Move this somewhere more general
 // pub fn convert_to_vulkan_format(format: gltf::image::Format) -> vk::Format {
@@ -48,13 +51,6 @@ impl<'a> System<'a> for PrepareRendererSystem {
             Self::setup_descriptor_pool(renderer, number_of_meshes, number_of_materials);
             Self::load_mesh(renderer, &asset, asset_index);
         }
-
-        let number_of_framebuffers = renderer.framebuffers.len();
-        // Allocate one command buffer per swapchain image
-        renderer
-            .command_pool
-            .allocate_command_buffers(number_of_framebuffers as _);
-
         Self::create_render_passes(renderer);
     }
 }
@@ -68,8 +64,11 @@ impl PrepareRendererSystem {
         renderer.textures.push(textures);
         renderer.texture_views.push(image_views);
 
-        let mut scene_vertices: Vec<f32> = Vec::new();
-        let mut scene_indices: Vec<u32> = Vec::new();
+        let mut asset_vertices: Vec<f32> = Vec::new();
+        let mut asset_indices: Vec<u32> = Vec::new();
+        let mut primitives: Vec<Primitive> = Vec::new();
+        let mut total_asset_vertices: u32 = 0;
+        let mut total_asset_indices: u32 = 0;
         for scene in asset.scenes.iter() {
             for graph in scene.node_graphs.iter() {
                 // Start at the root of the node graph
@@ -80,22 +79,11 @@ impl PrepareRendererSystem {
                     // If there is a mesh, handle its primitives
                     if let Some(mesh) = graph[node_index].mesh.as_ref() {
                         for primitive_info in mesh.primitives.iter() {
-                            scene_vertices.extend(primitive_info.vertex_set.pack_vertices().iter());
-                            scene_indices.extend(primitive_info.indices.iter());
+                            let primitive_vertices = primitive_info.vertex_set.pack_vertices();
+                            let primitive_indices = &primitive_info.indices;
 
-                            let vertex_buffer =
-                                renderer.transient_command_pool.create_device_local_buffer(
-                                    renderer.graphics_queue,
-                                    vk::BufferUsageFlags::VERTEX_BUFFER,
-                                    &scene_vertices,
-                                );
-
-                            let index_buffer =
-                                renderer.transient_command_pool.create_device_local_buffer(
-                                    renderer.graphics_queue,
-                                    vk::BufferUsageFlags::INDEX_BUFFER,
-                                    &scene_indices,
-                                );
+                            asset_vertices.extend(primitive_vertices.iter());
+                            asset_indices.extend(primitive_indices.iter());
 
                             let uniform_buffers = (0..number_of_swapchain_images)
                                 .map(|_| {
@@ -117,24 +105,52 @@ impl PrepareRendererSystem {
 
                             // TODO: Add calculated primitive transform and
                             // change draw call to use dynamic ubos
-                            let model_data = ModelData {
-                                vertex_buffer,
-                                index_buffer,
-                                number_of_indices: scene_indices.len() as _,
+                            let primitive = Primitive {
+                                number_of_indices: asset_indices.len() as _,
                                 uniform_buffers,
                                 descriptor_sets,
                                 material_index: primitive_info.material_index,
                                 asset_index,
+                                index_buffer_offset: (total_asset_indices as usize
+                                    * std::mem::size_of::<u32>())
+                                    as u32,
+                                vertex_buffer_offset: (total_asset_vertices as usize
+                                    * std::mem::size_of::<f32>())
+                                    as i32,
                             };
 
-                            Self::update_model_descriptor_sets(renderer, &model_data);
+                            Self::update_model_descriptor_sets(renderer, &primitive);
 
-                            renderer.models.push(model_data);
+                            primitives.push(primitive);
+
+                            total_asset_vertices += primitive_vertices.len() as u32;
+                            total_asset_indices += primitive_indices.len() as u32;
                         }
                     }
                 }
             }
         }
+
+        let vertex_buffer = renderer.transient_command_pool.create_device_local_buffer(
+            renderer.graphics_queue,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            &asset_vertices,
+        );
+
+        let index_buffer = renderer.transient_command_pool.create_device_local_buffer(
+            renderer.graphics_queue,
+            vk::BufferUsageFlags::INDEX_BUFFER,
+            &asset_indices,
+        );
+
+        // TODO: Group these into a data structure
+        renderer
+            .vertex_buffers
+            .push((vertex_buffer, total_asset_vertices));
+        renderer
+            .index_buffers
+            .push((index_buffer, total_asset_indices));
+        renderer.primitive_sets.push(primitives);
     }
 
     fn setup_descriptor_pool(
@@ -165,7 +181,6 @@ impl PrepareRendererSystem {
         let mut textures = Vec::new();
         let mut texture_views = Vec::new();
         for texture_properties in asset.textures.iter() {
-
             // FIXME: Make this a method
             //let mut texture_format = convert_to_vulkan_format(texture_properties.format);
             let mut texture_format = vk::Format::R8G8B8_UNORM;
@@ -264,11 +279,11 @@ impl PrepareRendererSystem {
         (textures, texture_views)
     }
 
-    fn update_model_descriptor_sets(renderer: &mut Renderer, model_data: &ModelData) {
-        model_data
+    fn update_model_descriptor_sets(renderer: &mut Renderer, primitive: &Primitive) {
+        primitive
             .descriptor_sets
             .iter()
-            .zip(model_data.uniform_buffers.iter())
+            .zip(primitive.uniform_buffers.iter())
             .for_each(|(set, buffer)| {
                 let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
                 let buffer_info = vk::DescriptorBufferInfo::builder()
@@ -287,9 +302,11 @@ impl PrepareRendererSystem {
                     .build();
 
                 // TODO: Make material optional
-                let texture_view = renderer.texture_views[model_data.asset_index]
-                    [model_data.material_index.expect("Failed to get material index!")]
-                .view();
+                let material_index = primitive
+                    .material_index
+                    .expect("Failed to get material index!");
+                let texture_view =
+                    renderer.texture_views[primitive.asset_index][material_index].view();
                 let image_info = vk::DescriptorImageInfo::builder()
                     .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                     .image_view(texture_view)
@@ -318,6 +335,12 @@ impl PrepareRendererSystem {
     }
 
     fn create_render_passes(renderer: &mut Renderer) {
+        let number_of_framebuffers = renderer.framebuffers.len();
+        // Allocate one command buffer per swapchain image
+        renderer
+            .command_pool
+            .allocate_command_buffers(number_of_framebuffers as _);
+
         // Create a single render pass that will draw each mesh
         renderer
             .command_pool
@@ -333,60 +356,69 @@ impl PrepareRendererSystem {
                     *command_buffer,
                     |command_buffer| unsafe {
                         // TODO: Batch models by which shader should be used to render them
-                        renderer.models.iter().for_each(|model_data| {
-                            // Bind vertex buffer
-                            let offsets = [0];
-                            let vertex_buffers = [model_data.vertex_buffer.buffer()];
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_bind_vertex_buffers(
-                                    command_buffer,
-                                    0,
-                                    &vertex_buffers,
-                                    &offsets,
-                                );
+                        renderer.primitive_sets.iter().for_each(|primitive_set| {
+                            for primitive in primitive_set {
+                                let (vertex_buffer, _) =
+                                    &renderer.vertex_buffers[primitive.asset_index];
+                                let (index_buffer, total_indices) =
+                                    &renderer.index_buffers[primitive.asset_index];
 
-                            // Bind index buffer
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_bind_index_buffer(
-                                    command_buffer,
-                                    model_data.index_buffer.buffer(),
-                                    0,
-                                    vk::IndexType::UINT32,
-                                );
+                                // Bind vertex buffer
+                                let offsets = [0];
+                                let vertex_buffers = [vertex_buffer.buffer()];
+                                renderer
+                                    .context
+                                    .logical_device()
+                                    .logical_device()
+                                    .cmd_bind_vertex_buffers(
+                                        command_buffer,
+                                        0,
+                                        &vertex_buffers,
+                                        &offsets,
+                                    );
 
-                            // Bind descriptor sets
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_bind_descriptor_sets(
-                                    command_buffer,
-                                    vk::PipelineBindPoint::GRAPHICS,
-                                    renderer.pipeline.layout(),
-                                    0,
-                                    &[model_data.descriptor_sets[index]],
-                                    &[],
-                                );
+                                // Bind index buffer
+                                renderer
+                                    .context
+                                    .logical_device()
+                                    .logical_device()
+                                    .cmd_bind_index_buffer(
+                                        command_buffer,
+                                        index_buffer.buffer(),
+                                        0,
+                                        vk::IndexType::UINT32,
+                                    );
 
-                            // Draw
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_draw_indexed(
-                                    command_buffer,
-                                    model_data.number_of_indices,
-                                    1,
-                                    0,
-                                    0,
-                                    0,
-                                );
+                                // Bind descriptor sets
+                                renderer
+                                    .context
+                                    .logical_device()
+                                    .logical_device()
+                                    .cmd_bind_descriptor_sets(
+                                        command_buffer,
+                                        vk::PipelineBindPoint::GRAPHICS,
+                                        renderer.pipeline.layout(),
+                                        0,
+                                        &[primitive.descriptor_sets[index]],
+                                        &[],
+                                    );
+
+                                // Draw
+                                renderer
+                                    .context
+                                    .logical_device()
+                                    .logical_device()
+                                    .cmd_draw_indexed(
+                                        command_buffer,
+                                        *total_indices as u32,
+                                        1,
+                                        // primitive.index_buffer_offset,
+                                        // primitive.vertex_buffer_offset,
+                                        0,
+                                        0,
+                                        0,
+                                    );
+                            }
                         });
                     },
                 );

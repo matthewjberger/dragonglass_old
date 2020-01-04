@@ -1,6 +1,8 @@
 use crate::{
     core::{ImageView, Swapchain, VulkanContext},
-    render::{Framebuffer, GraphicsPipeline, RenderPass, UniformBufferObject},
+    render::{
+        component::Primitive, Framebuffer, GraphicsPipeline, RenderPass, UniformBufferObject,
+    },
     resource::{Buffer, CommandPool, DescriptorPool, DescriptorSetLayout, Sampler, Texture},
     sync::SynchronizationSet,
 };
@@ -10,17 +12,6 @@ use ash::{
 };
 use std::sync::Arc;
 
-// TODO: rename this
-pub struct ModelData {
-    pub vertex_buffer: Buffer,
-    pub index_buffer: Buffer,
-    pub number_of_indices: u32,
-    pub uniform_buffers: Vec<Buffer>,
-    pub descriptor_sets: Vec<vk::DescriptorSet>,
-    pub material_index: Option<usize>,
-    pub asset_index: usize, // The asset this primitive data belongs to
-}
-
 pub struct Renderer {
     pub context: Arc<VulkanContext>,
     pub command_pool: CommandPool,
@@ -28,14 +19,16 @@ pub struct Renderer {
     pub descriptor_set_layout: DescriptorSetLayout,
     pub framebuffers: Vec<Framebuffer>,
     pub graphics_queue: vk::Queue,
-    pub models: Vec<ModelData>,
     pub pipeline: GraphicsPipeline,
     pub present_queue: vk::Queue,
     pub render_pass: RenderPass,
+    pub primitive_sets: Vec<Vec<Primitive>>,
     pub swapchain: Swapchain,
     pub transient_command_pool: CommandPool,
     pub depth_texture: Texture,
     pub depth_texture_view: ImageView,
+    pub vertex_buffers: Vec<(Buffer, u32)>,
+    pub index_buffers: Vec<(Buffer, u32)>,
     pub textures: Vec<Vec<Texture>>,        // TODO: Make this a cache
     pub texture_views: Vec<Vec<ImageView>>, // TODO: Make this a cache
     pub texture_samplers: Vec<Sampler>,     // TODO: Make this a cache
@@ -79,7 +72,9 @@ impl Renderer {
             vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
         );
 
-        let logical_size = window.get_inner_size().expect("Failed to get the window's inner size!");
+        let logical_size = window
+            .get_inner_size()
+            .expect("Failed to get the window's inner size!");
         let dimensions = [logical_size.width as u32, logical_size.height as u32];
         let swapchain = Swapchain::new(context.clone(), dimensions);
         let render_pass = RenderPass::new(context.clone(), swapchain.properties(), depth_format);
@@ -174,7 +169,6 @@ impl Renderer {
             descriptor_set_layout,
             framebuffers,
             graphics_queue,
-            models: Vec::new(),
             pipeline,
             present_queue,
             render_pass,
@@ -182,6 +176,9 @@ impl Renderer {
             synchronization_set,
             depth_texture,
             depth_texture_view,
+            primitive_sets: Vec::new(),
+            vertex_buffers: Vec::new(),
+            index_buffers: Vec::new(),
             textures: Vec::new(),
             texture_views: Vec::new(),
             texture_samplers: Vec::new(),

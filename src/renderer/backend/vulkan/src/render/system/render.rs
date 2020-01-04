@@ -32,8 +32,9 @@ impl RenderSystem {
             };
 
             let ubos = [ubo];
-            let buffer = &renderer.models[index].uniform_buffers[image_index];
-            buffer.upload_to_buffer(&ubos, 0);
+            // FIXME: UPDATE UBOS WITH INFO FROM COMPONENTS
+            // let buffer = &renderer.models[index].uniform_buffers[image_index];
+            // buffer.upload_to_buffer(&ubos, 0);
         }
     }
 }
