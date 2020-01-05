@@ -10,32 +10,12 @@ pub struct Sampler {
 }
 
 impl Sampler {
-    pub fn new(context: Arc<VulkanContext>) -> Self {
-        // TODO: Take creation info as a parameter
-        let sampler_info = vk::SamplerCreateInfo::builder()
-            .mag_filter(vk::Filter::LINEAR)
-            .min_filter(vk::Filter::LINEAR)
-            .address_mode_u(vk::SamplerAddressMode::REPEAT)
-            .address_mode_v(vk::SamplerAddressMode::REPEAT)
-            .address_mode_w(vk::SamplerAddressMode::REPEAT)
-            // TODO: Request the anisotropy feature when getting the physical device
-            // .anisotropy_enable(true)
-            // .max_anisotropy(16.0)
-            .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
-            .unnormalized_coordinates(false)
-            .compare_enable(false)
-            .compare_op(vk::CompareOp::ALWAYS)
-            .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
-            .mip_lod_bias(0.0)
-            .min_lod(0.0)
-            .max_lod(0.0)
-            .build();
-
+    pub fn new(context: Arc<VulkanContext>, create_info: vk::SamplerCreateInfo) -> Self {
         let sampler = unsafe {
             context
                 .logical_device()
                 .logical_device()
-                .create_sampler(&sampler_info, None)
+                .create_sampler(&create_info, None)
                 .expect("Failed to create sampler!")
         };
 
