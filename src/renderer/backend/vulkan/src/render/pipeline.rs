@@ -14,27 +14,31 @@ pub struct GraphicsPipeline {
 impl GraphicsPipeline {
     // TODO: Refactor this to use less parameters
     // TODO: Refactor fixed function steps to separate functions
+    // TODO: Take create info as a parameter and construct the pipeline somewhere else
     pub fn new(
         context: Arc<VulkanContext>,
         swapchain_properties: &SwapchainProperties,
         render_pass: vk::RenderPass,
         descriptor_set_layout: vk::DescriptorSetLayout,
     ) -> Self {
-        let shader_entry_point_name = &CString::new("main").expect("Failed to create CString for shader entry point name!");
+        let shader_entry_point_name =
+            &CString::new("main").expect("Failed to create CString for shader entry point name!");
 
         let vertex_shader = Shader::from_file(
             context.clone(),
             "examples/assets/shaders/shader.vert.spv",
             vk::ShaderStageFlags::VERTEX,
             shader_entry_point_name,
-        );
+        )
+        .unwrap();
 
         let fragment_shader = Shader::from_file(
             context.clone(),
             "examples/assets/shaders/shader.frag.spv",
             vk::ShaderStageFlags::FRAGMENT,
             shader_entry_point_name,
-        );
+        )
+        .unwrap();
 
         let shader_state_info = [vertex_shader.state_info(), fragment_shader.state_info()];
 
