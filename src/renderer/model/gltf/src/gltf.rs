@@ -216,8 +216,15 @@ impl GltfAsset {
         }
     }
 
+    pub fn lookup_material(&self, index: usize) -> gltf::Material {
+        self.gltf
+            .materials()
+            .nth(index)
+            .expect("Failed to lookup material on gltf asset!")
+    }
+
     // TODO: Do this with an ecs system
-    fn animate(&mut self, seconds: f32) {
+    pub fn animate(&mut self, seconds: f32) {
         // TODO: Allow for specifying a specific animation by name
         for animation in self.animations.iter_mut() {
             for channel in animation.channels.iter_mut() {

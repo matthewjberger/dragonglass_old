@@ -98,7 +98,7 @@ impl PrepareRendererSystem {
                             // TODO: Add calculated primitive transform and
                             // change draw call to use dynamic ubos
                             let primitive = Primitive {
-                                number_of_indices: asset_indices.len() as _,
+                                number_of_indices: primitive_indices.len() as _,
                                 material_index: primitive_info.material_index,
                                 first_index: first_index as u32,
                             };
@@ -306,8 +306,15 @@ impl PrepareRendererSystem {
                         let material_index = primitive
                             .material_index
                             .expect("Failed to get material index!");
-                        let texture_view = asset.textures[material_index].view.view();
-                        let texture_sampler = asset.textures[material_index].sampler.sampler();
+                        let material = asset.asset.lookup_material(material_index);
+                        let pbr = material.pbr_metallic_roughness();
+                        let base_color_index = pbr
+                            .base_color_texture()
+                            .expect("Failed to get base color texture!")
+                            .texture()
+                            .index();
+                        let texture_view = asset.textures[base_color_index].view.view();
+                        let texture_sampler = asset.textures[base_color_index].sampler.sampler();
 
                         let image_info = vk::DescriptorImageInfo::builder()
                             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
@@ -345,7 +352,7 @@ impl PrepareRendererSystem {
             .command_pool
             .allocate_command_buffers(number_of_framebuffers as _);
 
-        // Create a single render pass that will draw each mesh
+        // Create a single render pass per swapchain image that will draw each mesh
         renderer
             .command_pool
             .command_buffers()
@@ -389,6 +396,8 @@ impl PrepareRendererSystem {
                 );
 
             for mesh in asset.meshes.iter() {
+                let descriptor_set = mesh.descriptor_sets[command_buffer_index];
+
                 renderer
                     .context
                     .logical_device()
@@ -398,7 +407,7 @@ impl PrepareRendererSystem {
                         vk::PipelineBindPoint::GRAPHICS,
                         renderer.pipeline.layout(),
                         0,
-                        &[mesh.descriptor_sets[command_buffer_index]],
+                        &[descriptor_set],
                         &[],
                     );
 

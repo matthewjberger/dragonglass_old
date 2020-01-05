@@ -96,7 +96,8 @@ impl App {
         world
             .create_entity()
             .with(GltfAssetComponent {
-                asset_name: "examples/assets/FlightHelmet/gltf/FlightHelmet.gltf".to_string(),
+                asset_name: "examples/assets/models/FlightHelmet/gltf/FlightHelmet.gltf"
+                    .to_string(),
             })
             .with(TransformComponent {
                 scale: glm::scale(&glm::Mat4::identity(), &glm::vec3(scale, scale, scale)),
