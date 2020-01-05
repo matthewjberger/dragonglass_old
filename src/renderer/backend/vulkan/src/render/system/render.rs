@@ -3,7 +3,9 @@ use crate::{
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
 use ash::vk;
+use dragonglass_model_gltf::gltf::calculate_global_transform;
 use nalgebra_glm as glm;
+use petgraph::{prelude::*, visit::Dfs};
 use specs::prelude::*;
 
 pub struct RenderSystem;
@@ -11,6 +13,7 @@ pub struct RenderSystem;
 impl RenderSystem {
     pub fn update_ubos(data: &<RenderSystem as System>::SystemData, image_index: usize) {
         let (renderer, transform) = data;
+
         let projection = glm::perspective_zo(
             renderer.swapchain.properties().aspect_ratio(),
             90_f32.to_radians(),
@@ -19,21 +22,49 @@ impl RenderSystem {
         );
 
         let view = glm::look_at(
-            &glm::vec3(300.0, 300.0, 300.0),
+            &glm::vec3(100.0, 100.0, 100.0),
             &glm::vec3(0.0, 0.0, 0.0),
             &glm::vec3(0.0, 1.0, 0.0),
         );
 
-        for (index, transform) in (&transform).join().enumerate() {
-            let ubo = UniformBufferObject {
-                model: transform.translate * transform.rotate * transform.scale,
-                view,
-                projection,
-            };
+        for transform in (&transform).join() {
+            // TODO: Add a component when preparing the renderer
+            // that tags the entity with the asset_index
+            // and use it here to update the ubo
+            let asset_index = 0;
+            let vulkan_gltf_asset = &renderer.assets[asset_index];
 
-            let ubos = [ubo];
-            let buffer = &renderer.models[index].uniform_buffers[image_index];
-            buffer.upload_to_buffer(&ubos, 0);
+            for (scene_index, scene) in vulkan_gltf_asset.asset.scenes.iter().enumerate() {
+                for (graph_index, graph) in scene.node_graphs.iter().enumerate() {
+                    let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
+                    while let Some(node_index) = dfs.next(&graph) {
+                        let global_transform = calculate_global_transform(node_index, graph);
+                        if graph[node_index].mesh.as_ref().is_some() {
+                            let mesh = vulkan_gltf_asset
+                                .meshes
+                                .iter()
+                                .find(|mesh|
+                                      // TODO: Implement PartialEq trait for MeshLocation
+                                      mesh.location.scene_index == scene_index
+                                      && mesh.location.graph_index == graph_index
+                                      && mesh.location.node_index == node_index)
+                                .expect("Couldn't find matching mesh!");
+
+                            let local_transformation =
+                                transform.translate * transform.rotate * transform.scale;
+
+                            let ubo = UniformBufferObject {
+                                model: local_transformation * global_transform,
+                                view,
+                                projection,
+                            };
+                            let ubos = [ubo];
+                            let buffer = &mesh.uniform_buffers[image_index];
+                            buffer.upload_to_buffer(&ubos, 0);
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -1,6 +1,9 @@
 use crate::{
     core::ImageView,
-    render::{component::MeshComponent, system::UniformBufferObject, ModelData, Renderer},
+    render::{
+        component::GltfAssetComponent, system::UniformBufferObject, Mesh, MeshLocation, Primitive,
+        Renderer, VulkanGltfAsset, VulkanGltfTexture,
+    },
     resource::{Buffer, DescriptorPool, Dimension, Sampler, Texture, TextureDescription},
 };
 use ash::{version::DeviceV1_0, vk};
@@ -28,58 +31,63 @@ pub fn convert_to_vulkan_format(format: Format) -> vk::Format {
 pub struct PrepareRendererSystem;
 
 impl<'a> System<'a> for PrepareRendererSystem {
-    type SystemData = (WriteExpect<'a, Renderer>, ReadStorage<'a, MeshComponent>);
+    type SystemData = (
+        WriteExpect<'a, Renderer>,
+        ReadStorage<'a, GltfAssetComponent>,
+    );
 
     fn run(&mut self, data: Self::SystemData) {
-        let (mut renderer, meshes) = data;
+        let (mut renderer, assets) = data;
         let renderer = &mut renderer;
 
         // TODO: Make a command in the renderer to reset resources
 
-        // TODO: Push this after all model data has been created
-        let texture_image_sampler = Sampler::new(renderer.context.clone());
-        renderer.texture_samplers.push(texture_image_sampler);
-
         // TODO: Batch assets into a large vertex buffer
-        for (asset_index, mesh) in meshes.join().enumerate() {
-            let asset = GltfAsset::from_file(&mesh.mesh_name);
-            let number_of_meshes = meshes.join().count() as u32;
-            let number_of_materials = asset.textures.len() as u32;
-            Self::setup_descriptor_pool(renderer, number_of_meshes, number_of_materials);
-            Self::load_mesh(renderer, &asset, asset_index);
+        for asset in assets.join() {
+            let asset = GltfAsset::from_file(&asset.asset_name);
+            let vulkan_gltf_asset = Self::load_asset(renderer, asset);
+            renderer.assets.push(vulkan_gltf_asset);
         }
-
-        let number_of_framebuffers = renderer.framebuffers.len();
-        // Allocate one command buffer per swapchain image
-        renderer
-            .command_pool
-            .allocate_command_buffers(number_of_framebuffers as _);
 
         Self::create_render_passes(renderer);
     }
 }
 
 impl PrepareRendererSystem {
-    fn load_mesh(renderer: &mut Renderer, asset: &GltfAsset, asset_index: usize) {
+    fn load_asset(renderer: &mut Renderer, asset: GltfAsset) -> VulkanGltfAsset {
         let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
         let number_of_swapchain_images = renderer.swapchain.images().len();
 
-        let (textures, image_views) = Self::load_textures(renderer, &asset);
-        renderer.textures.push(textures);
-        renderer.texture_views.push(image_views);
+        let descriptor_pool = Self::setup_descriptor_pool(renderer, &asset);
 
         let mut asset_vertices: Vec<f32> = Vec::new();
         let mut asset_indices: Vec<u32> = Vec::new();
-        let mut index_buffer_offset: usize = 0;
-        for scene in asset.scenes.iter() {
-            for graph in scene.node_graphs.iter() {
+        let mut meshes = Vec::new();
+        for (scene_index, scene) in asset.scenes.iter().enumerate() {
+            for (graph_index, graph) in scene.node_graphs.iter().enumerate() {
                 // Start at the root of the node graph
                 let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
-
-                // Walk the scene graph
                 while let Some(node_index) = dfs.next(&graph) {
-                    // If there is a mesh, handle its primitives
                     if let Some(mesh) = graph[node_index].mesh.as_ref() {
+                        let mut primitives = Vec::new();
+                        let mut first_index: usize = 0;
+                        let uniform_buffers = (0..number_of_swapchain_images)
+                            .map(|_| {
+                                Buffer::new(
+                                    renderer.context.clone(),
+                                    uniform_buffer_size,
+                                    vk::BufferUsageFlags::UNIFORM_BUFFER,
+                                    vk::MemoryPropertyFlags::HOST_VISIBLE
+                                        | vk::MemoryPropertyFlags::HOST_COHERENT,
+                                )
+                            })
+                            .collect::<Vec<_>>();
+
+                        let descriptor_sets = descriptor_pool.allocate_descriptor_sets(
+                            renderer.descriptor_set_layout.layout(),
+                            number_of_swapchain_images as _,
+                        );
+
                         for primitive_info in mesh.primitives.iter() {
                             let primitive_vertices = primitive_info.vertex_set.pack_vertices();
                             let primitive_indices = &primitive_info.indices;
@@ -87,41 +95,32 @@ impl PrepareRendererSystem {
                             asset_vertices.extend(primitive_vertices.iter());
                             asset_indices.extend(primitive_indices.iter());
 
-                            let uniform_buffers = (0..number_of_swapchain_images)
-                                .map(|_| {
-                                    Buffer::new(
-                                        renderer.context.clone(),
-                                        uniform_buffer_size,
-                                        vk::BufferUsageFlags::UNIFORM_BUFFER,
-                                        vk::MemoryPropertyFlags::HOST_VISIBLE
-                                            | vk::MemoryPropertyFlags::HOST_COHERENT,
-                                    )
-                                })
-                                .collect::<Vec<_>>();
-
-                            let descriptor_sets = renderer.descriptor_pools[asset_index]
-                                .allocate_descriptor_sets(
-                                    renderer.descriptor_set_layout.layout(),
-                                    number_of_swapchain_images as _,
-                                );
-
                             // TODO: Add calculated primitive transform and
                             // change draw call to use dynamic ubos
-                            let model_data = ModelData {
+                            let primitive = Primitive {
                                 number_of_indices: asset_indices.len() as _,
-                                uniform_buffers,
-                                descriptor_sets,
                                 material_index: primitive_info.material_index,
-                                asset_index,
-                                first_index: index_buffer_offset as u32,
+                                first_index: first_index as u32,
                             };
 
-                            Self::update_model_descriptor_sets(renderer, &model_data);
-
-                            renderer.models.push(model_data);
-
-                            index_buffer_offset += primitive_indices.len();
+                            primitives.push(primitive);
+                            first_index += primitive_indices.len();
                         }
+
+                        let location = MeshLocation {
+                            scene_index,
+                            graph_index,
+                            node_index,
+                        };
+
+                        let mesh = Mesh {
+                            primitives,
+                            uniform_buffers,
+                            descriptor_sets,
+                            location,
+                        };
+
+                        meshes.push(mesh);
                     }
                 }
             }
@@ -139,17 +138,26 @@ impl PrepareRendererSystem {
             &asset_indices,
         );
 
-        renderer.vertex_buffers.push(vertex_buffer);
-        renderer.index_buffers.push(index_buffer);
+        let textures = Self::load_textures(renderer, &asset);
+
+        let vulkan_gltf_asset = VulkanGltfAsset {
+            asset,
+            vertex_buffer,
+            index_buffer,
+            textures,
+            descriptor_pool,
+            meshes,
+        };
+
+        Self::update_model_descriptor_sets(renderer, &vulkan_gltf_asset);
+
+        vulkan_gltf_asset
     }
 
-    fn setup_descriptor_pool(
-        renderer: &mut Renderer,
-        number_of_meshes: u32,
-        number_of_materials: u32,
-    ) {
+    fn setup_descriptor_pool(renderer: &mut Renderer, asset: &GltfAsset) -> DescriptorPool {
+        let number_of_meshes = asset.number_of_meshes();
+        let number_of_materials = asset.textures.len() as u32;
         let number_of_swapchain_images = renderer.swapchain.images().len() as u32;
-
         let number_of_samplers = number_of_materials * number_of_swapchain_images;
 
         let ubo_pool_size = (4 + number_of_meshes) * number_of_swapchain_images;
@@ -157,19 +165,16 @@ impl PrepareRendererSystem {
         let max_number_of_pools =
             (2 + number_of_materials + number_of_meshes) * number_of_swapchain_images;
 
-        // TODO: Push this after all model data has been created
-        let descriptor_pool = DescriptorPool::new(
+        DescriptorPool::new(
             renderer.context.clone(),
             ubo_pool_size,
             sampler_pool_size,
             max_number_of_pools,
-        );
-        renderer.descriptor_pools.push(descriptor_pool);
+        )
     }
 
-    fn load_textures(renderer: &mut Renderer, asset: &GltfAsset) -> (Vec<Texture>, Vec<ImageView>) {
+    fn load_textures(renderer: &mut Renderer, asset: &GltfAsset) -> Vec<VulkanGltfTexture> {
         let mut textures = Vec::new();
-        let mut texture_views = Vec::new();
         for texture_properties in asset.textures.iter() {
             let mut texture_format = convert_to_vulkan_format(texture_properties.format);
 
@@ -259,69 +264,87 @@ impl PrepareRendererSystem {
                     layer_count: 1,
                 })
                 .build();
-            let texture_view = ImageView::new(renderer.context.clone(), create_info);
+            let view = ImageView::new(renderer.context.clone(), create_info);
+            let sampler = Sampler::new(renderer.context.clone());
 
-            textures.push(texture);
-            texture_views.push(texture_view);
+            let vulkan_gltf_texture = VulkanGltfTexture {
+                texture,
+                view,
+                sampler,
+            };
+
+            textures.push(vulkan_gltf_texture);
         }
-        (textures, texture_views)
+        textures
     }
 
-    fn update_model_descriptor_sets(renderer: &mut Renderer, model_data: &ModelData) {
-        model_data
-            .descriptor_sets
-            .iter()
-            .zip(model_data.uniform_buffers.iter())
-            .for_each(|(set, buffer)| {
-                let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
-                let buffer_info = vk::DescriptorBufferInfo::builder()
-                    .buffer(buffer.buffer())
-                    .offset(0)
-                    .range(uniform_buffer_size)
-                    .build();
-                let buffer_infos = [buffer_info];
+    fn update_model_descriptor_sets(renderer: &mut Renderer, asset: &VulkanGltfAsset) {
+        asset.meshes.iter().for_each(|mesh| {
+            mesh.descriptor_sets
+                .iter()
+                .zip(mesh.uniform_buffers.iter())
+                .for_each(|(descriptor_set, buffer)| {
+                    for primitive in mesh.primitives.iter() {
+                        let uniform_buffer_size =
+                            mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
+                        let buffer_info = vk::DescriptorBufferInfo::builder()
+                            .buffer(buffer.buffer())
+                            .offset(0)
+                            .range(uniform_buffer_size)
+                            .build();
+                        let buffer_infos = [buffer_info];
 
-                let ubo_descriptor_write = vk::WriteDescriptorSet::builder()
-                    .dst_set(*set)
-                    .dst_binding(0)
-                    .dst_array_element(0)
-                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                    .buffer_info(&buffer_infos)
-                    .build();
+                        let ubo_descriptor_write = vk::WriteDescriptorSet::builder()
+                            .dst_set(*descriptor_set)
+                            .dst_binding(0)
+                            .dst_array_element(0)
+                            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                            .buffer_info(&buffer_infos)
+                            .build();
 
-                // TODO: Make material optional
-                let texture_view = renderer.texture_views[model_data.asset_index][model_data
-                    .material_index
-                    .expect("Failed to get material index!")]
-                .view();
-                let image_info = vk::DescriptorImageInfo::builder()
-                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                    .image_view(texture_view)
-                    .sampler(renderer.texture_samplers[0].sampler())
-                    .build();
-                let image_infos = [image_info];
+                        // TODO: Make material optional
+                        let material_index = primitive
+                            .material_index
+                            .expect("Failed to get material index!");
+                        let texture_view = asset.textures[material_index].view.view();
+                        let texture_sampler = asset.textures[material_index].sampler.sampler();
 
-                let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
-                    .dst_set(*set)
-                    .dst_binding(1)
-                    .dst_array_element(0)
-                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                    .image_info(&image_infos)
-                    .build();
+                        let image_info = vk::DescriptorImageInfo::builder()
+                            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                            .image_view(texture_view)
+                            .sampler(texture_sampler)
+                            .build();
+                        let image_infos = [image_info];
 
-                let descriptor_writes = [ubo_descriptor_write, sampler_descriptor_write];
+                        let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
+                            .dst_set(*descriptor_set)
+                            .dst_binding(1)
+                            .dst_array_element(0)
+                            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                            .image_info(&image_infos)
+                            .build();
 
-                unsafe {
-                    renderer
-                        .context
-                        .logical_device()
-                        .logical_device()
-                        .update_descriptor_sets(&descriptor_writes, &[])
-                }
-            });
+                        let descriptor_writes = [ubo_descriptor_write, sampler_descriptor_write];
+
+                        unsafe {
+                            renderer
+                                .context
+                                .logical_device()
+                                .logical_device()
+                                .update_descriptor_sets(&descriptor_writes, &[])
+                        }
+                    }
+                });
+        })
     }
 
     fn create_render_passes(renderer: &mut Renderer) {
+        // Allocate one command buffer per swapchain image
+        let number_of_framebuffers = renderer.framebuffers.len();
+        renderer
+            .command_pool
+            .allocate_command_buffers(number_of_framebuffers as _);
+
         // Create a single render pass that will draw each mesh
         renderer
             .command_pool
@@ -331,73 +354,69 @@ impl PrepareRendererSystem {
             .for_each(|(index, buffer)| {
                 let command_buffer = buffer;
                 let framebuffer = renderer.framebuffers[index].framebuffer();
-
-                renderer.create_render_pass(
-                    framebuffer,
-                    *command_buffer,
-                    |command_buffer| unsafe {
-                        // TODO: Batch models by which shader should be used to render them
-                        renderer.models.iter().for_each(|model_data| {
-                            // Bind vertex buffer
-                            let offsets = [0];
-                            let vertex_buffer =
-                                renderer.vertex_buffers[model_data.asset_index].buffer();
-                            let vertex_buffers = [vertex_buffer];
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_bind_vertex_buffers(
-                                    command_buffer,
-                                    0,
-                                    &vertex_buffers,
-                                    &offsets,
-                                );
-
-                            // Bind index buffer
-                            let index_buffer =
-                                renderer.index_buffers[model_data.asset_index].buffer();
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_bind_index_buffer(
-                                    command_buffer,
-                                    index_buffer,
-                                    0,
-                                    vk::IndexType::UINT32,
-                                );
-
-                            // Bind descriptor sets
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_bind_descriptor_sets(
-                                    command_buffer,
-                                    vk::PipelineBindPoint::GRAPHICS,
-                                    renderer.pipeline.layout(),
-                                    0,
-                                    &[model_data.descriptor_sets[index]],
-                                    &[],
-                                );
-
-                            // Draw
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_draw_indexed(
-                                    command_buffer,
-                                    model_data.number_of_indices,
-                                    1,
-                                    model_data.first_index,
-                                    0,
-                                    0,
-                                );
-                        });
-                    },
-                );
+                renderer.create_render_pass(framebuffer, *command_buffer, |command_buffer|
+                    // TODO: Batch models by which shader should be used to render them
+                    // TODO: Gather assets from VulkanGltfAsset components added to entities?? May not be the best way
+                    unsafe {
+                        Self::draw_asset(command_buffer, renderer, index);
+                    });
             });
+    }
+
+    unsafe fn draw_asset(
+        command_buffer: vk::CommandBuffer,
+        renderer: &Renderer,
+        command_buffer_index: usize,
+    ) {
+        renderer.assets.iter().for_each(|asset| {
+            let offsets = [0];
+            let vertex_buffers = [asset.vertex_buffer.buffer()];
+            renderer
+                .context
+                .logical_device()
+                .logical_device()
+                .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
+
+            renderer
+                .context
+                .logical_device()
+                .logical_device()
+                .cmd_bind_index_buffer(
+                    command_buffer,
+                    asset.index_buffer.buffer(),
+                    0,
+                    vk::IndexType::UINT32,
+                );
+
+            for mesh in asset.meshes.iter() {
+                renderer
+                    .context
+                    .logical_device()
+                    .logical_device()
+                    .cmd_bind_descriptor_sets(
+                        command_buffer,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        renderer.pipeline.layout(),
+                        0,
+                        &[mesh.descriptor_sets[command_buffer_index]],
+                        &[],
+                    );
+
+                for primitive in mesh.primitives.iter() {
+                    renderer
+                        .context
+                        .logical_device()
+                        .logical_device()
+                        .cmd_draw_indexed(
+                            command_buffer,
+                            primitive.number_of_indices,
+                            1,
+                            primitive.first_index,
+                            0,
+                            0,
+                        );
+                }
+            }
+        });
     }
 }

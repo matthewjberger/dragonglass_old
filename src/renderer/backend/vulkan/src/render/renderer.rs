@@ -8,15 +8,41 @@ use ash::{
     version::{DeviceV1_0, InstanceV1_0},
     vk,
 };
+use dragonglass_model_gltf::GltfAsset;
+use petgraph::prelude::*;
 use std::sync::Arc;
 
-// TODO: rename this
-pub struct ModelData {
-    pub number_of_indices: u32,
+pub struct VulkanGltfAsset {
+    pub asset: GltfAsset,
+    pub vertex_buffer: Buffer,
+    pub index_buffer: Buffer,
+    pub textures: Vec<VulkanGltfTexture>,
+    pub meshes: Vec<Mesh>,
+    pub descriptor_pool: DescriptorPool,
+}
+
+pub struct VulkanGltfTexture {
+    pub texture: Texture,
+    pub view: ImageView,
+    pub sampler: Sampler,
+}
+
+pub struct Mesh {
+    pub primitives: Vec<Primitive>,
     pub uniform_buffers: Vec<Buffer>,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
+    pub location: MeshLocation,
+}
+
+pub struct MeshLocation {
+    pub scene_index: usize,    // The scene index of the mesh in the parent asset
+    pub graph_index: usize,    // The node graph index of the mesh in the scene
+    pub node_index: NodeIndex, // The node index of the mesh in the node graph
+}
+
+pub struct Primitive {
+    pub number_of_indices: u32,
     pub material_index: Option<usize>,
-    pub asset_index: usize, // The asset this primitive data belongs to
     pub first_index: u32,
 }
 
@@ -27,7 +53,6 @@ pub struct Renderer {
     pub descriptor_set_layout: DescriptorSetLayout,
     pub framebuffers: Vec<Framebuffer>,
     pub graphics_queue: vk::Queue,
-    pub models: Vec<ModelData>,
     pub pipeline: GraphicsPipeline,
     pub present_queue: vk::Queue,
     pub render_pass: RenderPass,
@@ -35,13 +60,9 @@ pub struct Renderer {
     pub transient_command_pool: CommandPool,
     pub depth_texture: Texture,
     pub depth_texture_view: ImageView,
-    pub textures: Vec<Vec<Texture>>,        // TODO: Make this a cache
-    pub texture_views: Vec<Vec<ImageView>>, // TODO: Make this a cache
-    pub texture_samplers: Vec<Sampler>,     // TODO: Make this a cache
     pub synchronization_set: SynchronizationSet,
     pub current_frame: usize,
-    pub vertex_buffers: Vec<Buffer>,
-    pub index_buffers: Vec<Buffer>,
+    pub assets: Vec<VulkanGltfAsset>,
 }
 
 impl Renderer {
@@ -177,7 +198,6 @@ impl Renderer {
             descriptor_set_layout,
             framebuffers,
             graphics_queue,
-            models: Vec::new(),
             pipeline,
             present_queue,
             render_pass,
@@ -185,13 +205,9 @@ impl Renderer {
             synchronization_set,
             depth_texture,
             depth_texture_view,
-            textures: Vec::new(),
-            texture_views: Vec::new(),
-            texture_samplers: Vec::new(),
             transient_command_pool,
             current_frame: 0,
-            vertex_buffers: Vec::new(),
-            index_buffers: Vec::new(),
+            assets: Vec::new(),
         }
     }
 

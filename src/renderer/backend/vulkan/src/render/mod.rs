@@ -1,7 +1,7 @@
 pub use self::{
     framebuffer::Framebuffer,
     pipeline::GraphicsPipeline,
-    renderer::{ModelData, Renderer},
+    renderer::{Mesh, MeshLocation, Primitive, Renderer, VulkanGltfAsset, VulkanGltfTexture},
     renderpass::RenderPass,
     system::UniformBufferObject,
 };

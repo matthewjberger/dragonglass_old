@@ -1,5 +1,5 @@
 use dragonglass_backend_vulkan::render::{
-    component::{MeshComponent, TransformComponent},
+    component::{GltfAssetComponent, TransformComponent},
     renderer::Renderer,
     system::{PrepareRendererSystem, RenderSystem, TransformationSystem},
 };
@@ -92,39 +92,14 @@ impl App {
         system_dispatcher.setup(&mut world);
 
         // Add renderable entities
+        let scale = 600.0;
         world
             .create_entity()
-            .with(MeshComponent {
-                mesh_name: "examples/assets/models/Duck/Duck.gltf".to_string(),
+            .with(GltfAssetComponent {
+                asset_name: "examples/assets/FlightHelmet/gltf/FlightHelmet.gltf".to_string(),
             })
             .with(TransformComponent {
-                rotate: glm::rotate(
-                    &glm::Mat4::identity(),
-                    90_f32.to_radians(),
-                    &glm::vec3(0.0, 1.0, 1.0),
-                ),
-                ..Default::default()
-            })
-            .build();
-
-        world
-            .create_entity()
-            .with(MeshComponent {
-                mesh_name: "examples/assets/models/Duck/Duck.gltf".to_string(),
-            })
-            .with(TransformComponent {
-                translate: glm::translate(&glm::Mat4::identity(), &glm::vec3(100.0, 0.0, 0.0)),
-                ..Default::default()
-            })
-            .build();
-
-        world
-            .create_entity()
-            .with(MeshComponent {
-                mesh_name: "examples/assets/models/Duck/Duck.gltf".to_string(),
-            })
-            .with(TransformComponent {
-                translate: glm::translate(&glm::Mat4::identity(), &glm::vec3(-100.0, 0.0, 0.0)),
+                scale: glm::scale(&glm::Mat4::identity(), &glm::vec3(scale, scale, scale)),
                 ..Default::default()
             })
             .build();

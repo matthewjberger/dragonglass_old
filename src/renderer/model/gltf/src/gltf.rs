@@ -1,6 +1,4 @@
-use gltf::{
-    animation::{util::ReadOutputs, Interpolation},
-};
+use gltf::animation::{util::ReadOutputs, Interpolation};
 use nalgebra::{Matrix4, Quaternion, UnitQuaternion};
 use nalgebra_glm as glm;
 use petgraph::{
@@ -227,8 +225,15 @@ impl GltfAsset {
                     for graph in scene.node_graphs.iter_mut() {
                         for node_index in graph.node_indices() {
                             if graph[node_index].index == channel.node_index {
-                                let mut time = seconds % channel.inputs.last().expect("Failed to get channel's last input!");
-                                let first_input = channel.inputs.first().expect("Failed to get channel's first input!");
+                                let mut time = seconds
+                                    % channel
+                                        .inputs
+                                        .last()
+                                        .expect("Failed to get channel's last input!");
+                                let first_input = channel
+                                    .inputs
+                                    .first()
+                                    .expect("Failed to get channel's first input!");
                                 if time.lt(first_input) {
                                     time = *first_input;
                                 }
@@ -299,6 +304,21 @@ impl GltfAsset {
             }
         }
     }
+
+    pub fn number_of_meshes(&self) -> u32 {
+        let mut number_of_meshes = 0;
+        for scene in self.scenes.iter() {
+            for graph in scene.node_graphs.iter() {
+                let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
+                while let Some(node_index) = dfs.next(&graph) {
+                    if graph[node_index].mesh.as_ref().is_some() {
+                        number_of_meshes += 1;
+                    }
+                }
+            }
+        }
+        number_of_meshes
+    }
 }
 
 // TODO: Write this method for vec3's and vec4's
@@ -321,7 +341,10 @@ fn prepare_animations(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> 
             let interpolation = sampler.interpolation();
             let node_index = channel.target().node().index();
             let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
-            let inputs = reader.read_inputs().expect("Failed to read inputs!").collect::<Vec<_>>();
+            let inputs = reader
+                .read_inputs()
+                .expect("Failed to read inputs!")
+                .collect::<Vec<_>>();
             let outputs = reader.read_outputs().expect("Failed to read outputs!");
             let transformations: TransformationSet;
             match outputs {
@@ -577,4 +600,3 @@ pub fn create_byte_slice<T>(data: &[T]) -> &[u8] {
     let len = mem::size_of::<T>() * data.len();
     unsafe { slice::from_raw_parts(data.as_ptr() as *const u8, len) }
 }
-
