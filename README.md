@@ -2,7 +2,7 @@
 
 Rendering gltf models with Vulkan and Rust
 
-![Damaged Helmet Model](/screenshots/helmet.png?raw=true "Damaged Helmet GLTF Model")
+![Damaged Helmet Model](/screenshots/damaged_helmet.png?raw=true "Damaged Helmet GLTF Model")
 
 ## Running
 
