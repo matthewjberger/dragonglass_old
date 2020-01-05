@@ -92,12 +92,11 @@ impl App {
         system_dispatcher.setup(&mut world);
 
         // Add renderable entities
-        let scale = 600.0;
+        let scale = 100.0;
         world
             .create_entity()
             .with(GltfAssetComponent {
-                asset_name: "examples/assets/models/FlightHelmet/gltf/FlightHelmet.gltf"
-                    .to_string(),
+                asset_name: "examples/assets/models/DamagedHelmet.glb".to_string(),
             })
             .with(TransformComponent {
                 scale: glm::scale(&glm::Mat4::identity(), &glm::vec3(scale, scale, scale)),

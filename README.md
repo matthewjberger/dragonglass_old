@@ -2,6 +2,8 @@
 
 Rendering gltf models with Vulkan and Rust
 
+![Damaged Helmet Model](/screenshots/helmet.png?raw=true "Damaged Helmet GLTF Model")
+
 ## Running
 
 ```
