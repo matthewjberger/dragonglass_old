@@ -31,7 +31,13 @@ impl Shader {
                 .create_shader_module(&shader_create_info, None)
                 .expect("Failed to create shader module")
         };
-        let state_info = Self::create_state_info(module, flags, entry_point_name);
+
+        let state_info = vk::PipelineShaderStageCreateInfo::builder()
+            .stage(flags)
+            .module(module)
+            .name(entry_point_name)
+            .build();
+
         Shader {
             module,
             context,
@@ -41,18 +47,6 @@ impl Shader {
 
     pub fn state_info(&self) -> vk::PipelineShaderStageCreateInfo {
         self.state_info
-    }
-
-    fn create_state_info(
-        module: vk::ShaderModule,
-        flags: vk::ShaderStageFlags,
-        entry_point_name: &CStr,
-    ) -> vk::PipelineShaderStageCreateInfo {
-        vk::PipelineShaderStageCreateInfo::builder()
-            .stage(flags)
-            .module(module)
-            .name(entry_point_name)
-            .build()
     }
 }
 
