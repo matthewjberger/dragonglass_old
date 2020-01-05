@@ -182,12 +182,14 @@ impl Renderer {
             .iter()
             .map(|view| [view.view(), depth_texture_view.view()])
             .map(|attachments| {
-                Framebuffer::new(
-                    context.clone(),
-                    swapchain.properties(),
-                    render_pass.render_pass(),
-                    &attachments,
-                )
+                let create_info = vk::FramebufferCreateInfo::builder()
+                    .render_pass(render_pass.render_pass())
+                    .attachments(&attachments)
+                    .width(swapchain.properties().extent.width)
+                    .height(swapchain.properties().extent.height)
+                    .layers(1)
+                    .build();
+                Framebuffer::new(context.clone(), create_info)
             })
             .collect::<Vec<_>>();
 
