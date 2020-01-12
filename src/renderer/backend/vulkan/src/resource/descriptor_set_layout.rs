@@ -11,15 +11,15 @@ pub struct DescriptorSetLayout {
 }
 
 impl DescriptorSetLayout {
-    pub fn new(context: Arc<VulkanContext>, bindings: &[vk::DescriptorSetLayoutBinding]) -> Self {
-        let layout_info = vk::DescriptorSetLayoutCreateInfo::builder()
-            .bindings(&bindings)
-            .build();
+    pub fn new(
+        context: Arc<VulkanContext>,
+        create_info: vk::DescriptorSetLayoutCreateInfo,
+    ) -> Self {
         let layout = unsafe {
             context
                 .logical_device()
                 .logical_device()
-                .create_descriptor_set_layout(&layout_info, None)
+                .create_descriptor_set_layout(&create_info, None)
                 .expect("Failed to create descriptor set layout!")
         };
 

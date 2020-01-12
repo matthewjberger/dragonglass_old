@@ -116,7 +116,11 @@ impl Renderer {
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .build();
         let bindings = [ubo_binding, sampler_binding];
-        let descriptor_set_layout = DescriptorSetLayout::new(context.clone(), &bindings);
+
+        let layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
+            .bindings(&bindings)
+            .build();
+        let descriptor_set_layout = DescriptorSetLayout::new(context.clone(), layout_create_info);
 
         let pipeline = GraphicsPipeline::new(
             context.clone(),
