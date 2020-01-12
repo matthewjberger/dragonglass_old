@@ -171,7 +171,11 @@ impl GraphicsPipeline {
 
         // Build the pipeline layout info
         let descriptor_set_layouts = [descriptor_set_layout];
-        let pipeline_layout = PipelineLayout::new(context.clone(), &descriptor_set_layouts);
+        let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
+            .set_layouts(&descriptor_set_layouts) // needed for uniforms in shaders
+            // .push_constant_ranges()
+            .build();
+        let pipeline_layout = PipelineLayout::new(context.clone(), pipeline_layout_create_info);
 
         // Create the pipeline info
         let pipeline_info = vk::GraphicsPipelineCreateInfo::builder()

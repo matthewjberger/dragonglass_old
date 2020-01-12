@@ -11,20 +11,12 @@ pub struct PipelineLayout {
 }
 
 impl PipelineLayout {
-    pub fn new(
-        context: Arc<VulkanContext>,
-        descriptor_set_layouts: &[vk::DescriptorSetLayout],
-    ) -> Self {
-        let pipeline_layout_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(&descriptor_set_layouts) // needed for uniforms in shaders
-            // .push_constant_ranges()
-            .build();
-
+    pub fn new(context: Arc<VulkanContext>, create_info: vk::PipelineLayoutCreateInfo) -> Self {
         let layout = unsafe {
             context
                 .logical_device()
                 .logical_device()
-                .create_pipeline_layout(&pipeline_layout_info, None)
+                .create_pipeline_layout(&create_info, None)
                 .expect("Failed to create pipeline layout!")
         };
 
