@@ -84,7 +84,7 @@ impl PrepareRendererSystem {
                             .collect::<Vec<_>>();
 
                         let descriptor_sets = descriptor_pool.allocate_descriptor_sets(
-                            renderer.descriptor_set_layout.layout(),
+                            renderer.pipeline.descriptor_set_layout(),
                             number_of_swapchain_images as _,
                         );
 
