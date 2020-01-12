@@ -1,4 +1,5 @@
 use crate::core::{Instance, LogicalDevice, PhysicalDevice, Surface};
+use ash::{version::InstanceV1_0, vk};
 use snafu::{ResultExt, Snafu};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
@@ -35,7 +36,8 @@ impl VulkanContext {
     pub fn new(window: &winit::Window) -> Result<Self> {
         let instance = Instance::new().context(InstanceCreation)?;
         let surface = Surface::new(&instance, window);
-        let physical_device = PhysicalDevice::new(&instance, &surface).expect("Failed to get physical device!");
+        let physical_device =
+            PhysicalDevice::new(&instance, &surface).expect("Failed to get physical device!");
         let logical_device =
             LogicalDevice::new(&instance, &physical_device).context(LogicalDeviceCreation)?;
         Ok(VulkanContext {
@@ -46,9 +48,35 @@ impl VulkanContext {
         })
     }
 
-    // TODO: Replace accessors with accessors to wrappers
-    // e.g. surface and surface_khr can be replaced with one
-    // method to return the Surface wrapper
+    pub fn determine_depth_format(
+        &self,
+        tiling: vk::ImageTiling,
+        features: vk::FormatFeatureFlags,
+    ) -> vk::Format {
+        let candidates = vec![
+            vk::Format::D32_SFLOAT,
+            vk::Format::D32_SFLOAT_S8_UINT,
+            vk::Format::D24_UNORM_S8_UINT,
+        ];
+        candidates
+            .iter()
+            .copied()
+            .find(|candidate| {
+                let properties = unsafe {
+                    self.instance()
+                        .get_physical_device_format_properties(self.physical_device(), *candidate)
+                };
+
+                let linear_tiling_feature_support = tiling == vk::ImageTiling::LINEAR
+                    && properties.linear_tiling_features.contains(features);
+
+                let optimal_tiling_feature_support = tiling == vk::ImageTiling::OPTIMAL
+                    && properties.optimal_tiling_features.contains(features);
+
+                linear_tiling_feature_support || optimal_tiling_feature_support
+            })
+            .expect("Failed to find a supported depth format")
+    }
 
     pub fn instance(&self) -> &ash::Instance {
         self.instance.instance()

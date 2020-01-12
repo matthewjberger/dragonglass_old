@@ -7,10 +7,7 @@ use crate::{
     },
     sync::SynchronizationSet,
 };
-use ash::{
-    version::{DeviceV1_0, InstanceV1_0},
-    vk,
-};
+use ash::{version::DeviceV1_0, vk};
 use dragonglass_model_gltf::GltfAsset;
 use petgraph::prelude::*;
 use std::{ffi::CString, mem, sync::Arc};
@@ -97,8 +94,7 @@ impl Renderer {
                 .get_device_queue(context.present_queue_family_index(), 0)
         };
 
-        let depth_format = Self::determine_depth_format(
-            context.clone(),
+        let depth_format = context.determine_depth_format(
             vk::ImageTiling::OPTIMAL,
             vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
         );
@@ -302,39 +298,6 @@ impl Renderer {
                 .device_wait_idle()
                 .expect("Failed to wait for the logical device to be idle!")
         };
-    }
-
-    // TODO: Move this to a more specific component
-    pub fn determine_depth_format(
-        context: Arc<VulkanContext>,
-        tiling: vk::ImageTiling,
-        features: vk::FormatFeatureFlags,
-    ) -> vk::Format {
-        let candidates = vec![
-            vk::Format::D32_SFLOAT,
-            vk::Format::D32_SFLOAT_S8_UINT,
-            vk::Format::D24_UNORM_S8_UINT,
-        ];
-        candidates
-            .iter()
-            .copied()
-            .find(|candidate| {
-                let properties = unsafe {
-                    context.instance().get_physical_device_format_properties(
-                        context.physical_device(),
-                        *candidate,
-                    )
-                };
-
-                let linear_tiling_feature_support = tiling == vk::ImageTiling::LINEAR
-                    && properties.linear_tiling_features.contains(features);
-
-                let optimal_tiling_feature_support = tiling == vk::ImageTiling::OPTIMAL
-                    && properties.optimal_tiling_features.contains(features);
-
-                linear_tiling_feature_support || optimal_tiling_feature_support
-            })
-            .expect("Failed to find a supported depth format")
     }
 
     fn create_graphics_pipeline(
