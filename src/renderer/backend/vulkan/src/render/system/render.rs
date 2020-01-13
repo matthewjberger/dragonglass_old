@@ -3,9 +3,7 @@ use crate::{
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
 use ash::vk;
-use dragonglass_model_gltf::gltf::calculate_global_transform;
 use nalgebra_glm as glm;
-use petgraph::{prelude::*, visit::Dfs};
 use specs::prelude::*;
 
 pub struct RenderSystem;
@@ -28,41 +26,28 @@ impl RenderSystem {
         );
 
         for transform in (&transform).join() {
-            // TODO: Add a component when preparing the renderer
-            // that tags the entity with the asset_index
-            // and use it here to update the ubo
+            // TODO: Keep track of the global transform using the gltf document
+            // and render meshes at the correct transform
+            let asset_transformation = transform.translate * transform.rotate * transform.scale;
             let asset_index = 0;
             let vulkan_gltf_asset = &renderer.assets[asset_index];
+            for node in vulkan_gltf_asset.gltf.nodes() {
+                if let Some(mesh) = node.mesh() {
+                    let index = mesh.index();
+                    let vulkan_mesh = vulkan_gltf_asset
+                        .meshes
+                        .iter()
+                        .find(|mesh| mesh.index == index)
+                        .expect("Could not find corresponding mesh!");
 
-            for (scene_index, scene) in vulkan_gltf_asset.asset.scenes.iter().enumerate() {
-                for (graph_index, graph) in scene.node_graphs.iter().enumerate() {
-                    let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
-                    while let Some(node_index) = dfs.next(&graph) {
-                        let global_transform = calculate_global_transform(node_index, graph);
-                        if graph[node_index].mesh.as_ref().is_some() {
-                            let mesh = vulkan_gltf_asset
-                                .meshes
-                                .iter()
-                                .find(|mesh|
-                                      // TODO: Implement PartialEq trait for MeshLocation
-                                      mesh.location.scene_index == scene_index
-                                      && mesh.location.graph_index == graph_index
-                                      && mesh.location.node_index == node_index)
-                                .expect("Couldn't find matching mesh!");
-
-                            let local_transformation =
-                                transform.translate * transform.rotate * transform.scale;
-
-                            let ubo = UniformBufferObject {
-                                model: local_transformation * global_transform,
-                                view,
-                                projection,
-                            };
-                            let ubos = [ubo];
-                            let buffer = &mesh.uniform_buffers[image_index];
-                            buffer.upload_to_buffer(&ubos, 0);
-                        }
-                    }
+                    let ubo = UniformBufferObject {
+                        model: asset_transformation, //* global_transform,
+                        view,
+                        projection,
+                    };
+                    let ubos = [ubo];
+                    let buffer = &vulkan_mesh.uniform_buffers[image_index];
+                    buffer.upload_to_buffer(&ubos, 0);
                 }
             }
         }

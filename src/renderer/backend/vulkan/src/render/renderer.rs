@@ -2,26 +2,27 @@ use crate::{
     core::{ImageView, Swapchain, SwapchainProperties, VulkanContext},
     render::{Framebuffer, GraphicsPipeline, RenderPass, UniformBufferObject},
     resource::{
-        Buffer, CommandPool, DescriptorPool, DescriptorSetLayout, PipelineLayout, Sampler, Shader,
-        Texture,
+        Buffer, CommandPool, DescriptorPool, DescriptorSetLayout, Dimension, PipelineLayout,
+        Sampler, Shader, Texture, TextureDescription,
     },
     sync::SynchronizationSet,
 };
 use ash::{version::DeviceV1_0, vk};
-use dragonglass_model_gltf::GltfAsset;
-use petgraph::prelude::*;
+use gltf::image::Format;
+use image::{ImageBuffer, Pixel, RgbImage};
+use nalgebra_glm as glm;
 use std::{ffi::CString, mem, sync::Arc};
 
 pub struct VulkanGltfAsset {
-    pub asset: GltfAsset,
+    pub gltf: gltf::Document,
     pub vertex_buffer: Buffer,
     pub index_buffer: Buffer,
-    pub textures: Vec<VulkanGltfTexture>,
+    pub textures: Vec<VulkanTexture>,
     pub meshes: Vec<Mesh>,
     pub descriptor_pool: DescriptorPool,
 }
 
-pub struct VulkanGltfTexture {
+pub struct VulkanTexture {
     pub texture: Texture,
     pub view: ImageView,
     pub sampler: Sampler,
@@ -31,18 +32,11 @@ pub struct Mesh {
     pub primitives: Vec<Primitive>,
     pub uniform_buffers: Vec<Buffer>,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
-    pub location: MeshLocation,
-}
-
-pub struct MeshLocation {
-    pub scene_index: usize,    // The scene index of the mesh in the parent asset
-    pub graph_index: usize,    // The node graph index of the mesh in the scene
-    pub node_index: NodeIndex, // The node index of the mesh in the node graph
+    pub index: usize,
 }
 
 pub struct Primitive {
     pub number_of_indices: u32,
-    pub material_index: Option<usize>,
     pub first_index: u32,
 }
 
@@ -496,5 +490,405 @@ impl Renderer {
             pipeline_layout,
             descriptor_set_layout,
         )
+    }
+
+    pub fn load_gltf_asset(&mut self, asset_name: &str) {
+        let (gltf, buffers, asset_textures) =
+            gltf::import(&asset_name).expect("Couldn't import file!");
+
+        let textures = self.load_textures(&asset_textures);
+
+        let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
+        let number_of_meshes = gltf.meshes().len() as u32;
+        let number_of_materials = textures.len() as u32;
+        let number_of_swapchain_images = self.swapchain.images().len() as u32;
+        let number_of_samplers = number_of_materials * number_of_swapchain_images;
+
+        let ubo_pool_size = (4 + number_of_meshes) * number_of_swapchain_images;
+        let sampler_pool_size = number_of_samplers * number_of_swapchain_images;
+        let max_number_of_pools =
+            (2 + number_of_materials + number_of_meshes) * number_of_swapchain_images;
+
+        let descriptor_pool = DescriptorPool::new(
+            self.context.clone(),
+            ubo_pool_size,
+            sampler_pool_size,
+            max_number_of_pools,
+        );
+
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+        let mut asset_meshes = Vec::new();
+        for mesh in gltf.meshes() {
+            let uniform_buffers = (0..number_of_swapchain_images)
+                .map(|_| {
+                    Buffer::new(
+                        self.context.clone(),
+                        uniform_buffer_size,
+                        vk::BufferUsageFlags::UNIFORM_BUFFER,
+                        vk::MemoryPropertyFlags::HOST_VISIBLE
+                            | vk::MemoryPropertyFlags::HOST_COHERENT,
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            let descriptor_sets = descriptor_pool.allocate_descriptor_sets(
+                self.pipeline.descriptor_set_layout(),
+                number_of_swapchain_images as _,
+            );
+
+            let mut all_mesh_primitives = Vec::new();
+            for primitive in mesh.primitives() {
+                for (descriptor_set, uniform_buffer) in
+                    descriptor_sets.iter().zip(uniform_buffers.iter())
+                {
+                    Self::update_model_descriptor_set(
+                        &self,
+                        *descriptor_set,
+                        uniform_buffer,
+                        primitive.material(),
+                        &textures,
+                    );
+                }
+
+                // Start reading primitive data
+                let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+
+                let positions = reader.read_positions().map_or(Vec::new(), |positions| {
+                    positions.map(glm::Vec3::from).collect::<Vec<_>>()
+                });
+
+                let normals = reader.read_normals().map_or(Vec::new(), |normals| {
+                    normals.map(glm::Vec3::from).collect::<Vec<_>>()
+                });
+
+                let convert_coords =
+                    |coords: gltf::mesh::util::ReadTexCoords<'_>| -> Vec<glm::Vec2> {
+                        coords.into_f32().map(glm::Vec2::from).collect::<Vec<_>>()
+                    };
+                let tex_coords_0 = reader.read_tex_coords(0).map_or(Vec::new(), convert_coords);
+
+                // TODO: Add checks to see if normals and tex_coords are even available
+                for (index, position) in positions.iter().enumerate() {
+                    vertices.extend_from_slice(position.as_slice());
+                    vertices.extend_from_slice(normals.get(index).copied().unwrap().as_slice());
+                    vertices
+                        .extend_from_slice(tex_coords_0.get(index).copied().unwrap().as_slice());
+                }
+
+                let first_index = indices.len() as u32;
+
+                let primitive_indices = reader
+                    .read_indices()
+                    .map(|read_indices| read_indices.into_u32().collect::<Vec<_>>())
+                    .expect("Failed to read indices!");
+                indices.extend_from_slice(&primitive_indices);
+
+                let number_of_indices = primitive_indices.len() as u32;
+
+                all_mesh_primitives.push(Primitive {
+                    first_index,
+                    number_of_indices,
+                });
+            }
+
+            asset_meshes.push(Mesh {
+                primitives: all_mesh_primitives,
+                uniform_buffers,
+                descriptor_sets,
+                index: mesh.index(),
+            });
+        }
+
+        let vertex_buffer = self.transient_command_pool.create_device_local_buffer(
+            self.graphics_queue,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            &vertices,
+        );
+
+        let index_buffer = self.transient_command_pool.create_device_local_buffer(
+            self.graphics_queue,
+            vk::BufferUsageFlags::INDEX_BUFFER,
+            &indices,
+        );
+
+        let loaded_asset = VulkanGltfAsset {
+            gltf,
+            vertex_buffer,
+            index_buffer,
+            textures,
+            meshes: asset_meshes,
+            descriptor_pool,
+        };
+
+        self.assets.push(loaded_asset);
+    }
+
+    fn load_textures(&mut self, asset_textures: &[gltf::image::Data]) -> Vec<VulkanTexture> {
+        let mut textures = Vec::new();
+        for texture_properties in asset_textures.iter() {
+            let mut texture_format = Self::convert_to_vulkan_format(texture_properties.format);
+
+            let pixels: Vec<u8> = match texture_format {
+                vk::Format::R8G8B8_UNORM => {
+                    texture_format = vk::Format::R8G8B8A8_UNORM;
+
+                    let image_buffer: RgbImage = ImageBuffer::from_raw(
+                        texture_properties.width,
+                        texture_properties.height,
+                        texture_properties.pixels.to_vec(),
+                    )
+                    .expect("Failed to create an image buffer");
+
+                    image_buffer
+                        .pixels()
+                        .flat_map(|pixel| pixel.to_rgba().channels().to_vec())
+                        .collect::<Vec<_>>()
+                }
+                vk::Format::B8G8R8_UNORM => {
+                    texture_format = vk::Format::R8G8B8A8_UNORM;
+
+                    let image_buffer: RgbImage = ImageBuffer::from_raw(
+                        texture_properties.width,
+                        texture_properties.height,
+                        texture_properties.pixels.to_vec(),
+                    )
+                    .expect("Failed to create an image buffer");
+
+                    image_buffer
+                        .pixels()
+                        .flat_map(|pixel| pixel.to_rgba().channels().to_vec())
+                        .collect::<Vec<_>>()
+                }
+                _ => texture_properties.pixels.to_vec(),
+            };
+
+            let create_info_builder = vk::ImageCreateInfo::builder()
+                .image_type(vk::ImageType::TYPE_2D)
+                .extent(vk::Extent3D {
+                    width: texture_properties.width,
+                    height: texture_properties.height,
+                    depth: 1,
+                })
+                .mip_levels(1)
+                .array_layers(1)
+                .format(texture_format)
+                .tiling(vk::ImageTiling::OPTIMAL)
+                .initial_layout(vk::ImageLayout::UNDEFINED)
+                .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
+                .sharing_mode(vk::SharingMode::EXCLUSIVE)
+                .samples(vk::SampleCountFlags::TYPE_1)
+                .flags(vk::ImageCreateFlags::empty());
+
+            let description = TextureDescription {
+                format: texture_format,
+                dimensions: Dimension {
+                    width: texture_properties.width,
+                    height: texture_properties.height,
+                },
+                pixels,
+            };
+
+            let texture = Texture::from_data(
+                self.context.clone(),
+                &self.command_pool,
+                self.graphics_queue,
+                description,
+                create_info_builder.build(),
+            );
+
+            let create_info = vk::ImageViewCreateInfo::builder()
+                .image(texture.image())
+                .view_type(vk::ImageViewType::TYPE_2D)
+                .format(texture_format)
+                .components(vk::ComponentMapping {
+                    r: vk::ComponentSwizzle::IDENTITY,
+                    g: vk::ComponentSwizzle::IDENTITY,
+                    b: vk::ComponentSwizzle::IDENTITY,
+                    a: vk::ComponentSwizzle::IDENTITY,
+                })
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_mip_level: 0,
+                    level_count: 1,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                })
+                .build();
+            let view = ImageView::new(self.context.clone(), create_info);
+
+            let sampler_info = vk::SamplerCreateInfo::builder()
+                .mag_filter(vk::Filter::LINEAR)
+                .min_filter(vk::Filter::LINEAR)
+                .address_mode_u(vk::SamplerAddressMode::REPEAT)
+                .address_mode_v(vk::SamplerAddressMode::REPEAT)
+                .address_mode_w(vk::SamplerAddressMode::REPEAT)
+                // TODO: Request the anisotropy feature when getting the physical device
+                // .anisotropy_enable(true)
+                // .max_anisotropy(16.0)
+                .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
+                .unnormalized_coordinates(false)
+                .compare_enable(false)
+                .compare_op(vk::CompareOp::ALWAYS)
+                .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
+                .mip_lod_bias(0.0)
+                .min_lod(0.0)
+                .max_lod(0.0)
+                .build();
+            let sampler = Sampler::new(self.context.clone(), sampler_info);
+
+            let vulkan_gltf_texture = VulkanTexture {
+                texture,
+                view,
+                sampler,
+            };
+
+            textures.push(vulkan_gltf_texture);
+        }
+        textures
+    }
+
+    fn update_model_descriptor_set(
+        renderer: &Renderer,
+        descriptor_set: vk::DescriptorSet,
+        uniform_buffer: &Buffer,
+        material: gltf::Material,
+        textures: &[VulkanTexture],
+    ) {
+        let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
+        let buffer_info = vk::DescriptorBufferInfo::builder()
+            .buffer(uniform_buffer.buffer())
+            .offset(0)
+            .range(uniform_buffer_size)
+            .build();
+        let buffer_infos = [buffer_info];
+
+        let ubo_descriptor_write = vk::WriteDescriptorSet::builder()
+            .dst_set(descriptor_set)
+            .dst_binding(0)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+            .buffer_info(&buffer_infos)
+            .build();
+
+        let pbr = material.pbr_metallic_roughness();
+        let base_color_index = pbr
+            .base_color_texture()
+            .expect("Failed to get base color texture!")
+            .texture()
+            .index();
+        let texture_view = textures[base_color_index].view.view();
+        let texture_sampler = textures[base_color_index].sampler.sampler();
+
+        let image_info = vk::DescriptorImageInfo::builder()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(texture_view)
+            .sampler(texture_sampler)
+            .build();
+        let image_infos = [image_info];
+
+        let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
+            .dst_set(descriptor_set)
+            .dst_binding(1)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(&image_infos)
+            .build();
+
+        let descriptor_writes = [ubo_descriptor_write, sampler_descriptor_write];
+
+        unsafe {
+            renderer
+                .context
+                .logical_device()
+                .logical_device()
+                .update_descriptor_sets(&descriptor_writes, &[])
+        }
+    }
+
+    pub fn create_render_passes(&mut self) {
+        // Allocate one command buffer per swapchain image
+        let number_of_framebuffers = self.framebuffers.len();
+        self.command_pool
+            .allocate_command_buffers(number_of_framebuffers as _);
+
+        // Create a single render pass per swapchain image that will draw each mesh
+        self.command_pool
+            .command_buffers()
+            .iter()
+            .enumerate()
+            .for_each(|(index, buffer)| {
+                let command_buffer = buffer;
+                let framebuffer = self.framebuffers[index].framebuffer();
+                self.create_render_pass(framebuffer, *command_buffer, |command_buffer|
+                    // TODO: Batch models by which shader should be used to render them
+                    unsafe {
+                        self.draw_asset(command_buffer, index);
+                    });
+            });
+    }
+
+    unsafe fn draw_asset(&self, command_buffer: vk::CommandBuffer, command_buffer_index: usize) {
+        self.assets.iter().for_each(|asset| {
+            let offsets = [0];
+            let vertex_buffers = [asset.vertex_buffer.buffer()];
+            self.context
+                .logical_device()
+                .logical_device()
+                .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
+
+            self.context
+                .logical_device()
+                .logical_device()
+                .cmd_bind_index_buffer(
+                    command_buffer,
+                    asset.index_buffer.buffer(),
+                    0,
+                    vk::IndexType::UINT32,
+                );
+
+            for mesh in asset.meshes.iter() {
+                let descriptor_set = mesh.descriptor_sets[command_buffer_index];
+
+                self.context
+                    .logical_device()
+                    .logical_device()
+                    .cmd_bind_descriptor_sets(
+                        command_buffer,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        self.pipeline.layout(),
+                        0,
+                        &[descriptor_set],
+                        &[],
+                    );
+
+                for primitive in mesh.primitives.iter() {
+                    self.context
+                        .logical_device()
+                        .logical_device()
+                        .cmd_draw_indexed(
+                            command_buffer,
+                            primitive.number_of_indices,
+                            1,
+                            primitive.first_index,
+                            0,
+                            0,
+                        );
+                }
+            }
+        });
+    }
+
+    pub fn convert_to_vulkan_format(format: Format) -> vk::Format {
+        match format {
+            Format::R8 => vk::Format::R8_UNORM,
+            Format::R8G8 => vk::Format::R8G8_UNORM,
+            Format::R8G8B8A8 => vk::Format::R8G8B8A8_UNORM,
+            Format::B8G8R8A8 => vk::Format::B8G8R8A8_UNORM,
+            // 24-bit formats will have an alpha channel added
+            // to make them 32-bit
+            Format::R8G8B8 => vk::Format::R8G8B8_UNORM,
+            Format::B8G8R8 => vk::Format::B8G8R8_UNORM,
+        }
     }
 }
