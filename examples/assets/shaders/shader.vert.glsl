@@ -1,21 +1,25 @@
 #version 450
 
 layout(location = 0) in vec3 vPosition;
-layout(location = 1) in vec3 vColor;
+layout(location = 1) in vec3 vNormal;
 layout(location = 2) in vec2 vCoords;
 
 layout(binding = 0) uniform UniformBufferObject {
   mat4 model;
   mat4 view;
   mat4 projection;
+  vec3 camera_position;
+  float shininess;
 } ubo;
 
-layout(location = 0) out vec3 fragColor;
-layout(location = 1) out vec2 fragCoords;
+layout(location = 0) out vec3 fragPosition;
+layout(location = 1) out vec3 fragNormal;
+layout(location = 2) out vec2 fragCoords;
 
 void main() {
 
-  fragColor = vColor;
+  fragPosition = vPosition;
+  fragNormal = vNormal;
   fragCoords = vCoords;
 
   gl_Position = ubo.projection * ubo.view * ubo.model * vec4(vPosition, 1.0);

@@ -94,7 +94,8 @@ impl App {
         world
             .create_entity()
             .with(GltfAssetComponent {
-                asset_name: "examples/assets/models/DamagedHelmet.glb".to_string(),
+                asset_name: "examples/assets/models/FlightHelmet/glTF/FlightHelmet.gltf"
+                    .to_string(),
             })
             .with(TransformComponent {
                 ..Default::default()

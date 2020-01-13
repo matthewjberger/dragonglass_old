@@ -22,8 +22,9 @@ impl RenderSystem {
             1000_f32,
         );
 
+        let camera_position = glm::vec3(0.5, 0.0, 0.5);
         let view = glm::look_at(
-            &glm::vec3(2.0, 2.0, 2.0),
+            &camera_position,
             &glm::vec3(0.0, 0.0, 0.0),
             &glm::vec3(0.0, 1.0, 0.0),
         );
@@ -45,6 +46,7 @@ impl RenderSystem {
                         image_index,
                         view,
                         projection,
+                        camera_position,
                     );
                 }
             }
@@ -59,6 +61,7 @@ impl RenderSystem {
         image_index: usize,
         view: glm::Mat4,
         projection: glm::Mat4,
+        camera_position: glm::Vec3,
     ) {
         // TODO: Check that the global transform is correct here
         let transform: Vec<f32> = node
@@ -80,9 +83,11 @@ impl RenderSystem {
                 .expect("Could not find corresponding mesh!");
 
             let ubo = UniformBufferObject {
-                model: global_transform * asset_transform,
+                model: asset_transform * global_transform,
                 view,
                 projection,
+                camera_position,
+                shininess: 32.0,
             };
             let ubos = [ubo];
             let buffer = &vulkan_mesh.uniform_buffers[image_index];
@@ -98,6 +103,7 @@ impl RenderSystem {
                 image_index,
                 view,
                 projection,
+                camera_position,
             )
         }
     }

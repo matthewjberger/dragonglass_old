@@ -15,8 +15,6 @@ use std::{ffi::CString, mem, sync::Arc};
 
 pub struct VulkanGltfAsset {
     pub gltf: gltf::Document,
-    pub vertex_buffer: Buffer,
-    pub index_buffer: Buffer,
     pub textures: Vec<VulkanTexture>,
     pub meshes: Vec<Mesh>,
     pub descriptor_pool: DescriptorPool,
@@ -29,6 +27,8 @@ pub struct VulkanTexture {
 }
 
 pub struct Mesh {
+    pub vertex_buffer: Buffer,
+    pub index_buffer: Buffer,
     pub primitives: Vec<Primitive>,
     pub uniform_buffers: Vec<Buffer>,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
@@ -516,10 +516,11 @@ impl Renderer {
             max_number_of_pools,
         );
 
-        let mut vertices = Vec::new();
-        let mut indices = Vec::new();
         let mut asset_meshes = Vec::new();
         for mesh in gltf.meshes() {
+            let mut vertices = Vec::new();
+            let mut indices = Vec::new();
+
             let uniform_buffers = (0..number_of_swapchain_images)
                 .map(|_| {
                     Buffer::new(
@@ -592,30 +593,30 @@ impl Renderer {
                 });
             }
 
+            let vertex_buffer = self.transient_command_pool.create_device_local_buffer(
+                self.graphics_queue,
+                vk::BufferUsageFlags::VERTEX_BUFFER,
+                &vertices,
+            );
+
+            let index_buffer = self.transient_command_pool.create_device_local_buffer(
+                self.graphics_queue,
+                vk::BufferUsageFlags::INDEX_BUFFER,
+                &indices,
+            );
+
             asset_meshes.push(Mesh {
                 primitives: all_mesh_primitives,
                 uniform_buffers,
                 descriptor_sets,
                 index: mesh.index(),
+                vertex_buffer,
+                index_buffer,
             });
         }
 
-        let vertex_buffer = self.transient_command_pool.create_device_local_buffer(
-            self.graphics_queue,
-            vk::BufferUsageFlags::VERTEX_BUFFER,
-            &vertices,
-        );
-
-        let index_buffer = self.transient_command_pool.create_device_local_buffer(
-            self.graphics_queue,
-            vk::BufferUsageFlags::INDEX_BUFFER,
-            &indices,
-        );
-
         let loaded_asset = VulkanGltfAsset {
             gltf,
-            vertex_buffer,
-            index_buffer,
             textures,
             meshes: asset_meshes,
             descriptor_pool,
@@ -831,22 +832,6 @@ impl Renderer {
     unsafe fn draw_asset(&self, command_buffer: vk::CommandBuffer, command_buffer_index: usize) {
         self.assets.iter().for_each(|asset| {
             let offsets = [0];
-            let vertex_buffers = [asset.vertex_buffer.buffer()];
-            self.context
-                .logical_device()
-                .logical_device()
-                .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
-
-            self.context
-                .logical_device()
-                .logical_device()
-                .cmd_bind_index_buffer(
-                    command_buffer,
-                    asset.index_buffer.buffer(),
-                    0,
-                    vk::IndexType::UINT32,
-                );
-
             for asset_mesh in asset.gltf.meshes() {
                 let index = asset_mesh.index();
                 let mesh = asset
@@ -854,6 +839,22 @@ impl Renderer {
                     .iter()
                     .find(|mesh| mesh.index == index)
                     .expect("Could not find corresponding mesh!");
+
+                let vertex_buffers = [mesh.vertex_buffer.buffer()];
+                self.context
+                    .logical_device()
+                    .logical_device()
+                    .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
+
+                self.context
+                    .logical_device()
+                    .logical_device()
+                    .cmd_bind_index_buffer(
+                        command_buffer,
+                        mesh.index_buffer.buffer(),
+                        0,
+                        vk::IndexType::UINT32,
+                    );
 
                 let descriptor_set = mesh.descriptor_sets[command_buffer_index];
 
