@@ -1,5 +1,8 @@
 use crate::{
-    render::{component::TransformComponent, system::UniformBufferObject, Renderer},
+    render::{
+        component::TransformComponent, renderer::VulkanGltfAsset, system::UniformBufferObject,
+        Renderer,
+    },
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
 use ash::vk;
@@ -20,7 +23,7 @@ impl RenderSystem {
         );
 
         let view = glm::look_at(
-            &glm::vec3(100.0, 100.0, 100.0),
+            &glm::vec3(2.0, 2.0, 2.0),
             &glm::vec3(0.0, 0.0, 0.0),
             &glm::vec3(0.0, 1.0, 0.0),
         );
@@ -28,28 +31,74 @@ impl RenderSystem {
         for transform in (&transform).join() {
             // TODO: Keep track of the global transform using the gltf document
             // and render meshes at the correct transform
-            let asset_transformation = transform.translate * transform.rotate * transform.scale;
+            // TODO: Go through all assets
+            let asset_transform = transform.translate * transform.rotate * transform.scale;
             let asset_index = 0;
             let vulkan_gltf_asset = &renderer.assets[asset_index];
-            for node in vulkan_gltf_asset.gltf.nodes() {
-                if let Some(mesh) = node.mesh() {
-                    let index = mesh.index();
-                    let vulkan_mesh = vulkan_gltf_asset
-                        .meshes
-                        .iter()
-                        .find(|mesh| mesh.index == index)
-                        .expect("Could not find corresponding mesh!");
-
-                    let ubo = UniformBufferObject {
-                        model: asset_transformation, //* global_transform,
+            for scene in vulkan_gltf_asset.gltf.scenes() {
+                for node in scene.nodes() {
+                    Self::visit_node(
+                        &node,
+                        glm::Mat4::identity(),
+                        &vulkan_gltf_asset,
+                        asset_transform,
+                        image_index,
                         view,
                         projection,
-                    };
-                    let ubos = [ubo];
-                    let buffer = &vulkan_mesh.uniform_buffers[image_index];
-                    buffer.upload_to_buffer(&ubos, 0);
+                    );
                 }
             }
+        }
+    }
+
+    pub fn visit_node(
+        node: &gltf::Node,
+        parent_global_transform: glm::Mat4,
+        vulkan_gltf_asset: &VulkanGltfAsset,
+        asset_transform: glm::Mat4,
+        image_index: usize,
+        view: glm::Mat4,
+        projection: glm::Mat4,
+    ) {
+        // TODO: Check that the global transform is correct here
+        let transform: Vec<f32> = node
+            .transform()
+            .matrix()
+            .iter()
+            .flat_map(|array| array.iter())
+            .cloned()
+            .collect();
+        let local_transform = glm::make_mat4(&transform.as_slice());
+        let global_transform = parent_global_transform * local_transform;
+
+        if let Some(mesh) = node.mesh() {
+            let index = mesh.index();
+            let vulkan_mesh = vulkan_gltf_asset
+                .meshes
+                .iter()
+                .find(|mesh| mesh.index == index)
+                .expect("Could not find corresponding mesh!");
+
+            let ubo = UniformBufferObject {
+                model: global_transform * asset_transform,
+                view,
+                projection,
+            };
+            let ubos = [ubo];
+            let buffer = &vulkan_mesh.uniform_buffers[image_index];
+            buffer.upload_to_buffer(&ubos, 0);
+        }
+
+        for child_node in node.children() {
+            Self::visit_node(
+                &child_node,
+                global_transform,
+                vulkan_gltf_asset,
+                asset_transform,
+                image_index,
+                view,
+                projection,
+            )
         }
     }
 }

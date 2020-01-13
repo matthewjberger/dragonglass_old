@@ -847,7 +847,14 @@ impl Renderer {
                     vk::IndexType::UINT32,
                 );
 
-            for mesh in asset.meshes.iter() {
+            for asset_mesh in asset.gltf.meshes() {
+                let index = asset_mesh.index();
+                let mesh = asset
+                    .meshes
+                    .iter()
+                    .find(|mesh| mesh.index == index)
+                    .expect("Could not find corresponding mesh!");
+
                 let descriptor_set = mesh.descriptor_sets[command_buffer_index];
 
                 self.context
