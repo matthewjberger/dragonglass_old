@@ -1,4 +1,4 @@
-pub use self::{prepare_renderer::*, render::*, transformation::*};
+pub use self::render::*;
 use ash::vk;
 use nalgebra_glm as glm;
 
@@ -22,6 +22,4 @@ impl UniformBufferObject {
     }
 }
 
-mod prepare_renderer;
 mod render;
-mod transformation;

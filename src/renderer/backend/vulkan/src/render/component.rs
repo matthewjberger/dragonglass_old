@@ -1,15 +1,12 @@
 use nalgebra_glm as glm;
-use specs::{prelude::*, Component};
 
 // TODO: Rename MeshComponent to something more generic. (RenderComponent?)
-#[derive(Component, Debug)]
-#[storage(VecStorage)]
+#[derive(Debug)]
 pub struct GltfAssetComponent {
     pub asset_name: String, // TODO: Make this a tag rather than a full path
 }
 
-#[derive(Component, Debug)]
-#[storage(VecStorage)]
+#[derive(Debug)]
 pub struct TransformComponent {
     pub translate: glm::Mat4,
     pub rotate: glm::Mat4,

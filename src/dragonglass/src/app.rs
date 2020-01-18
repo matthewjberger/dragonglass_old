@@ -1,9 +1,10 @@
 use dragonglass_backend_vulkan::render::{
     component::{GltfAssetComponent, TransformComponent},
     renderer::Renderer,
-    system::{PrepareRendererSystem, RenderSystem, TransformationSystem},
+    system::render_system,
 };
-use specs::prelude::*;
+use legion::prelude::*;
+use nalgebra_glm as glm;
 use std::collections::HashMap;
 use winit::{
     dpi::LogicalSize, ElementState, Event, EventsLoop, VirtualKeyCode, Window, WindowEvent,
@@ -12,33 +13,16 @@ use winit::{
 #[derive(Default)]
 struct ExitRequested(bool);
 
-#[derive(Default)]
-struct Input(InputState);
-
 type KeyMap = HashMap<VirtualKeyCode, ElementState>;
 
 #[derive(Default)]
-struct InputState {
+struct Input {
     keystates: KeyMap,
 }
 
 // Create a system that does something if a certain key is pressed
 fn is_key_pressed(keystates: &KeyMap, keycode: VirtualKeyCode) -> bool {
     keystates.contains_key(&keycode) && keystates[&keycode] == ElementState::Pressed
-}
-
-#[derive(Default)]
-struct EventSystem;
-
-impl<'a> System<'a> for EventSystem {
-    type SystemData = Read<'a, Input>;
-
-    fn run(&mut self, input_data: Self::SystemData) {
-        let input = &input_data.0;
-        if is_key_pressed(&input.keystates, VirtualKeyCode::Space) {
-            // TODO: Do something with the spacebar
-        }
-    }
 }
 
 pub struct App {
@@ -67,44 +51,72 @@ impl App {
     pub fn run(&mut self) {
         log::debug!("Running application.");
 
-        let renderer = Renderer::new(&self.window);
         let mut world = World::new();
 
-        // Resource fetching will panic without this
-        // because of the WriteExpect and ReadExpect lookups
-        // on the render system
-        world.insert(renderer);
+        let renderer = Renderer::new(&self.window);
+        world.resources.insert(renderer);
 
-        // Register the render preparation system
-        // and its components
-        let mut render_preparation_dispatcher = DispatcherBuilder::new()
-            .with_thread_local(PrepareRendererSystem)
-            .build();
-        render_preparation_dispatcher.setup(&mut world);
+        let input = Input::default();
+        world.resources.insert(input);
 
-        // Register the main systems and their components
-        let mut system_dispatcher = DispatcherBuilder::new()
-            .with(EventSystem, "event_system", &[])
-            .with(TransformationSystem, "transformation_system", &[])
-            .with_thread_local(RenderSystem)
+        // Register the render preparation system and its components
+        let prepare_renderer_system = SystemBuilder::new("prepare_renderer")
+            .write_resource::<Renderer>()
+            .with_query(<Read<GltfAssetComponent>>::query())
+            .build(|_, mut world, renderer, query| {
+                for asset in query.iter(&mut world) {
+                    renderer.load_gltf_asset(&asset.asset_name);
+                }
+                renderer.create_render_passes();
+            });
+        let mut prepare_schedule = Schedule::builder()
+            .add_system(prepare_renderer_system)
             .build();
-        system_dispatcher.setup(&mut world);
+
+        // Setup game loop systems
+        let event_system = SystemBuilder::new("event")
+            .write_resource::<Input>()
+            .with_query(<Read<TransformComponent>>::query())
+            .build(|_, _, input, _| {
+                if is_key_pressed(&input.keystates, VirtualKeyCode::Space) {
+                    // TODO: Do something with the spacebar
+                }
+            });
+
+        let transformation_system = SystemBuilder::new("transformation")
+            .with_query(<Write<TransformComponent>>::query())
+            .build(|_, mut world, _, query| {
+                for mut transform in query.iter(&mut world) {
+                    transform.rotate = glm::rotate(
+                        &transform.rotate,
+                        0.1_f32.to_radians(),
+                        &glm::vec3(0.0, 1.0, 0.0),
+                    );
+                }
+            });
+
+        let mut schedule = Schedule::builder()
+            .add_system(event_system)
+            .flush()
+            .add_system(transformation_system)
+            // More game simulation systems can go here
+            .flush()
+            .add_thread_local(render_system())
+            .build();
 
         // Add renderable entities
-        world
-            .create_entity()
-            .with(GltfAssetComponent {
-                asset_name: "examples/assets/models/FlightHelmet/glTF/FlightHelmet.gltf"
-                    .to_string(),
-            })
-            .with(TransformComponent {
-                ..Default::default()
-            })
-            .build();
+        world.insert(
+            (),
+            vec![(
+                GltfAssetComponent {
+                    asset_name: "examples/assets/models/FlightHelmet/glTF/FlightHelmet.gltf"
+                        .to_string(),
+                },
+                TransformComponent::default(),
+            )],
+        );
 
-        // Prepare the renderer
-        // by creating vertex buffers, index buffers, and command buffers
-        render_preparation_dispatcher.dispatch(&world);
+        prepare_schedule.execute(&mut world);
 
         loop {
             self.process_events(&mut world);
@@ -113,13 +125,21 @@ impl App {
                 break;
             }
 
-            system_dispatcher.dispatch(&world);
+            schedule.execute(&mut world);
         }
 
-        (*world.read_resource::<Renderer>()).wait_idle();
+        let renderer = world
+            .resources
+            .get::<Renderer>()
+            .expect("Failed to get renderer resource!");
+        renderer.wait_idle();
     }
 
     fn process_events(&mut self, world: &mut World) {
+        let mut input = world
+            .resources
+            .get_mut::<Input>()
+            .expect("Failed to get input resource!");
         let mut should_exit = false;
         self.event_loop.poll_events(|event| match event {
             Event::WindowEvent {
@@ -141,11 +161,10 @@ impl App {
                     },
                 ..
             } => {
-                let input_state = &mut world.write_resource::<Input>().0;
                 if keycode == VirtualKeyCode::Escape {
                     should_exit = true;
                 }
-                *input_state.keystates.entry(keycode).or_insert(state) = state;
+                *input.keystates.entry(keycode).or_insert(state) = state;
             }
             Event::WindowEvent {
                 event:

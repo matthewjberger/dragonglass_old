@@ -10,8 +10,7 @@ nalgebra-glm = "0.5.0"
 env_logger = "0.7.1"
 log = "0.4.8"
 snafu = "0.6.0"
-
-specs = { version = "0.15.1", features = [ "specs-derive" ] }
+legion = "0.2.1"
 
 # This needs to be behind a feature flag
 dragonglass-backend-vulkan = { path = "../renderer/backend/vulkan", version = "0.1.0" }
