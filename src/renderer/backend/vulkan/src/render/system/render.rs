@@ -77,7 +77,6 @@ pub fn render_system() -> Box<dyn Runnable> {
                             image_index as usize,
                             view,
                             projection,
-                            camera_position,
                         );
                     }
                 }
@@ -123,7 +122,6 @@ fn visit_node(
     image_index: usize,
     view: glm::Mat4,
     projection: glm::Mat4,
-    camera_position: glm::Vec3,
 ) {
     let transform: Vec<f32> = node
         .transform()
@@ -147,8 +145,6 @@ fn visit_node(
             model: asset_transform * global_transform,
             view,
             projection,
-            camera_position,
-            shininess: 32.0,
         };
         let ubos = [ubo];
         let buffer = &vulkan_mesh.uniform_buffers[image_index];
@@ -164,7 +160,6 @@ fn visit_node(
             image_index,
             view,
             projection,
-            camera_position,
         )
     }
 }
