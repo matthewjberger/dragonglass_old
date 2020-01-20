@@ -8,16 +8,61 @@ use crate::{
     sync::SynchronizationSet,
 };
 use ash::{version::DeviceV1_0, vk};
-use gltf::image::Format;
+use gltf::{animation::util::ReadOutputs, image::Format};
 use image::{ImageBuffer, Pixel, RgbImage};
+use nalgebra::{Matrix4, Quaternion, UnitQuaternion};
 use nalgebra_glm as glm;
-use std::{ffi::CString, mem, sync::Arc};
+use std::{collections::HashMap, ffi::CString, mem, sync::Arc};
 
+#[derive(Debug)]
+pub enum TransformationSet {
+    Translations(Vec<glm::Vec3>),
+    Rotations(Vec<glm::Vec4>),
+    Scales(Vec<glm::Vec3>),
+    MorphTargetWeights(Vec<f32>),
+}
+
+#[derive(Debug, Default)]
+pub struct Transform {
+    translation: Option<glm::Vec3>,
+    rotation: Option<glm::Quat>,
+    scale: Option<glm::Vec3>,
+}
+
+impl Transform {
+    pub fn matrix(&self) -> glm::Mat4 {
+        let mut matrix = glm::Mat4::identity();
+        if let Some(translation) = self.translation {
+            matrix *= Matrix4::new_translation(&translation);
+        }
+        if let Some(rotation) = self.rotation {
+            matrix *= Matrix4::from(UnitQuaternion::from_quaternion(rotation));
+        }
+        if let Some(scale) = self.scale {
+            matrix *= Matrix4::new_nonuniform_scaling(&scale);
+        }
+        matrix
+    }
+}
+
+// TODO: Use hashmaps instead of vecs
 pub struct VulkanGltfAsset {
     pub gltf: gltf::Document,
     pub textures: Vec<VulkanTexture>,
     pub meshes: Vec<Mesh>,
     pub descriptor_pool: DescriptorPool,
+    pub animations: Vec<HashMap<usize, Channel>>,
+    pub nodes: HashMap<usize, Node>,
+}
+
+#[derive(Default)]
+pub struct Node {
+    pub animation_transform: Option<Transform>,
+}
+
+pub struct Channel {
+    pub inputs: Vec<f32>, // This needs to be read from the gltf asset
+    pub transformations: TransformationSet,
 }
 
 pub struct VulkanTexture {
@@ -496,7 +541,12 @@ impl Renderer {
         let (gltf, buffers, asset_textures) =
             gltf::import(&asset_name).expect("Couldn't import file!");
 
+        let asset_animations = gltf
+            .animations()
+            .collect::<Vec<gltf::animation::Animation>>();
+
         let textures = self.load_textures(&asset_textures);
+        let animations = self.load_animations(&asset_animations, &buffers);
 
         let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
         let number_of_meshes = gltf.meshes().len() as u32;
@@ -615,14 +665,79 @@ impl Renderer {
             });
         }
 
+        let mut nodes = HashMap::new();
+        for node in gltf.nodes() {
+            nodes.insert(node.index(), Node::default());
+        }
+
         let loaded_asset = VulkanGltfAsset {
             gltf,
             textures,
             meshes: asset_meshes,
             descriptor_pool,
+            animations,
+            nodes,
         };
 
         self.assets.push(loaded_asset);
+    }
+
+    fn load_animations(
+        &mut self,
+        asset_animations: &[gltf::animation::Animation],
+        buffers: &[gltf::buffer::Data],
+    ) -> Vec<HashMap<usize, Channel>> {
+        let mut animations = Vec::new();
+        for animation in asset_animations.iter() {
+            let mut channels = HashMap::new();
+            for channel in animation.channels() {
+                let reader = channel.reader(|buffer| Some(&buffers[buffer.index()]));
+
+                let inputs = reader
+                    .read_inputs()
+                    .expect("Failed to get animation channel inputs.")
+                    .collect::<Vec<_>>();
+
+                let outputs = reader
+                    .read_outputs()
+                    .expect("Failed to get animation channel outputs.");
+
+                let transformations: TransformationSet;
+
+                match outputs {
+                    ReadOutputs::Translations(translations) => {
+                        let translations = translations.map(glm::Vec3::from).collect::<Vec<_>>();
+                        transformations = TransformationSet::Translations(translations);
+                    }
+                    ReadOutputs::Rotations(rotations) => {
+                        let rotations = rotations
+                            .into_f32()
+                            .map(glm::Vec4::from)
+                            .collect::<Vec<_>>();
+                        transformations = TransformationSet::Rotations(rotations);
+                    }
+                    ReadOutputs::Scales(scales) => {
+                        let scales = scales.map(glm::Vec3::from).collect::<Vec<_>>();
+                        transformations = TransformationSet::Scales(scales);
+                    }
+                    ReadOutputs::MorphTargetWeights(weights) => {
+                        let morph_target_weights = weights.into_f32().collect::<Vec<_>>();
+                        transformations =
+                            TransformationSet::MorphTargetWeights(morph_target_weights);
+                    }
+                }
+
+                let channel_info = Channel {
+                    inputs,
+                    transformations,
+                };
+
+                let node_index = channel.target().node().index();
+                channels.insert(node_index, channel_info);
+            }
+            animations.push(channels);
+        }
+        animations
     }
 
     fn load_textures(&mut self, asset_textures: &[gltf::image::Data]) -> Vec<VulkanTexture> {

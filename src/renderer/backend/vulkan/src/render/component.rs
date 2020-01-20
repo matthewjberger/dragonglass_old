@@ -1,9 +1,9 @@
 use nalgebra_glm as glm;
 
-// TODO: Rename MeshComponent to something more generic. (RenderComponent?)
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct GltfAssetComponent {
     pub asset_name: String, // TODO: Make this a tag rather than a full path
+    pub loaded_asset_index: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -21,4 +21,11 @@ impl Default for TransformComponent {
             scale: glm::Mat4::identity(),
         }
     }
+}
+
+#[derive(Debug, Default)]
+pub struct AnimationComponent {
+    pub current_time: f32,
+    pub previous_time: f32,
+    pub previous_key: usize,
 }

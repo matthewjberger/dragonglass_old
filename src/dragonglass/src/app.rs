@@ -1,5 +1,5 @@
 use dragonglass_backend_vulkan::render::{
-    component::{GltfAssetComponent, TransformComponent},
+    component::{AnimationComponent, GltfAssetComponent, TransformComponent},
     renderer::Renderer,
     system::render_system,
 };
@@ -62,10 +62,11 @@ impl App {
         // Register the render preparation system and its components
         let prepare_renderer_system = SystemBuilder::new("prepare_renderer")
             .write_resource::<Renderer>()
-            .with_query(<Read<GltfAssetComponent>>::query())
+            .with_query(<Write<GltfAssetComponent>>::query())
             .build(|_, mut world, renderer, query| {
-                for asset in query.iter(&mut world) {
+                for mut asset in query.iter(&mut world) {
                     renderer.load_gltf_asset(&asset.asset_name);
+                    asset.loaded_asset_index = Some(renderer.assets.len());
                 }
                 renderer.create_render_passes();
             });
@@ -111,8 +112,10 @@ impl App {
                 GltfAssetComponent {
                     asset_name: "examples/assets/models/FlightHelmet/glTF/FlightHelmet.gltf"
                         .to_string(),
+                    ..Default::default()
                 },
                 TransformComponent::default(),
+                AnimationComponent::default(),
             )],
         );
 

@@ -20,4 +20,5 @@ impl UniformBufferObject {
     }
 }
 
+mod animation;
 mod render;
