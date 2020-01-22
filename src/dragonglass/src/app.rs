@@ -111,7 +111,7 @@ impl App {
             vec![(
                 GltfAssetComponent {
                     //asset_name: "examples/assets/models/FlightHelmet/glTF/FlightHelmet.gltf"
-                    asset_name: "examples/assets/models/BoxAnimated.glb"
+                    asset_name: "examples/assets/models/Buggy.glb"
                         .to_string(),
                 },
                 TransformComponent::default(),
