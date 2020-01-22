@@ -53,7 +53,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                 1000_f32,
             );
 
-            let camera_position = glm::vec3(0.5, 0.0, 0.5);
+            let camera_position = glm::vec3(5.0, 2.0, 5.0);
             let view = glm::look_at(
                 &camera_position,
                 &glm::vec3(0.0, 0.0, 0.0),

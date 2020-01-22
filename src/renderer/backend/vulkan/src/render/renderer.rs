@@ -1,5 +1,5 @@
 use crate::{
-    core::{ImageView, Swapchain, SwapchainProperties, VulkanContext},
+    core::{ImageView, Swapchain, VulkanContext},
     render::{Framebuffer, GraphicsPipeline, RenderPass, UniformBufferObject},
     resource::{
         Buffer, CommandPool, DescriptorPool, DescriptorSetLayout, Dimension, PipelineLayout,
@@ -11,7 +11,12 @@ use ash::{version::DeviceV1_0, vk};
 use gltf::image::Format;
 use image::{ImageBuffer, Pixel, RgbImage};
 use nalgebra_glm as glm;
-use std::{ffi::CString, mem, sync::Arc};
+use std::{collections::HashMap, ffi::CString, mem, slice, sync::Arc};
+
+pub struct PushConstantBlockMaterial {
+    base_color_factor: glm::Vec4,
+    color_texture_set: i32,
+}
 
 pub struct VulkanGltfAsset {
     pub gltf: gltf::Document,
@@ -40,13 +45,18 @@ pub struct Primitive {
     pub first_index: u32,
 }
 
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub enum PipelineType {
+    GltfAsset,
+}
+
 pub struct Renderer {
     pub context: Arc<VulkanContext>,
     pub command_pool: CommandPool,
     pub descriptor_pools: Vec<DescriptorPool>,
     pub framebuffers: Vec<Framebuffer>,
     pub graphics_queue: vk::Queue,
-    pub pipeline: GraphicsPipeline,
+    pub pipelines: HashMap<PipelineType, GraphicsPipeline>,
     pub present_queue: vk::Queue,
     pub render_pass: RenderPass,
     pub swapchain: Swapchain,
@@ -99,12 +109,6 @@ impl Renderer {
         let dimensions = [logical_size.width as u32, logical_size.height as u32];
         let swapchain = Swapchain::new(context.clone(), dimensions);
         let render_pass = RenderPass::new(context.clone(), swapchain.properties(), depth_format);
-
-        let pipeline = Self::create_graphics_pipeline(
-            context.clone(),
-            swapchain.properties(),
-            render_pass.render_pass(),
-        );
 
         let create_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
@@ -180,7 +184,7 @@ impl Renderer {
             descriptor_pools: Vec::new(), // TODO: maybe make this a map and have a main descriptor pool
             framebuffers,
             graphics_queue,
-            pipeline,
+            pipelines: HashMap::new(),
             present_queue,
             render_pass,
             swapchain,
@@ -197,6 +201,7 @@ impl Renderer {
         &self,
         framebuffer: vk::Framebuffer,
         command_buffer: vk::CommandBuffer,
+        pipeline: vk::Pipeline,
         mut render_action: F,
     ) where
         F: FnMut(vk::CommandBuffer),
@@ -215,6 +220,7 @@ impl Renderer {
                 .expect("Failed to begin command buffer for the render pass!")
         };
 
+        // TODO: Pass in clear values
         let clear_values = [
             vk::ClearValue {
                 color: vk::ClearColorValue {
@@ -253,11 +259,7 @@ impl Renderer {
             self.context
                 .logical_device()
                 .logical_device()
-                .cmd_bind_pipeline(
-                    command_buffer,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    self.pipeline.pipeline(),
-                );
+                .cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
         }
 
         render_action(command_buffer);
@@ -294,16 +296,12 @@ impl Renderer {
         };
     }
 
-    fn create_graphics_pipeline(
-        context: Arc<VulkanContext>,
-        swapchain_properties: &SwapchainProperties,
-        render_pass: vk::RenderPass,
-    ) -> GraphicsPipeline {
+    pub fn create_gltf_pipeline(&mut self) {
         let shader_entry_point_name =
             &CString::new("main").expect("Failed to create CString for shader entry point name!");
 
         let vertex_shader = Shader::from_file(
-            context.clone(),
+            self.context.clone(),
             "examples/assets/shaders/shader.vert.spv",
             vk::ShaderStageFlags::VERTEX,
             shader_entry_point_name,
@@ -311,7 +309,7 @@ impl Renderer {
         .unwrap();
 
         let fragment_shader = Shader::from_file(
-            context.clone(),
+            self.context.clone(),
             "examples/assets/shaders/shader.frag.spv",
             vk::ShaderStageFlags::FRAGMENT,
             shader_entry_point_name,
@@ -370,8 +368,8 @@ impl Renderer {
         let viewport = vk::Viewport {
             x: 0.0,
             y: 0.0,
-            width: swapchain_properties.extent.width as _,
-            height: swapchain_properties.extent.height as _,
+            width: self.swapchain.properties().extent.width as _,
+            height: self.swapchain.properties().extent.height as _,
             min_depth: 0.0,
             max_depth: 1.0,
         };
@@ -380,7 +378,7 @@ impl Renderer {
         // Create a stencil
         let scissor = vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
-            extent: swapchain_properties.extent,
+            extent: self.swapchain.properties().extent,
         };
         let scissors = [scissor];
 
@@ -460,13 +458,20 @@ impl Renderer {
         let layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
             .bindings(&bindings)
             .build();
-        let descriptor_set_layout = DescriptorSetLayout::new(context.clone(), layout_create_info);
+        let descriptor_set_layout =
+            DescriptorSetLayout::new(self.context.clone(), layout_create_info);
         let descriptor_set_layouts = [descriptor_set_layout.layout()];
+        let push_constant_range = vk::PushConstantRange::builder()
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .size(mem::size_of::<PushConstantBlockMaterial>() as u32)
+            .build();
+        let push_constant_ranges = [push_constant_range];
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
             .set_layouts(&descriptor_set_layouts) // needed for uniforms in shaders
-            // .push_constant_ranges()
+            .push_constant_ranges(&push_constant_ranges)
             .build();
-        let pipeline_layout = PipelineLayout::new(context.clone(), pipeline_layout_create_info);
+        let pipeline_layout =
+            PipelineLayout::new(self.context.clone(), pipeline_layout_create_info);
 
         // Create the pipeline info
         let pipeline_create_info = vk::GraphicsPipelineCreateInfo::builder()
@@ -480,16 +485,18 @@ impl Renderer {
             .color_blend_state(&color_blending_info)
             //.dynamic_state // no dynamic states
             .layout(pipeline_layout.layout())
-            .render_pass(render_pass)
+            .render_pass(self.render_pass.render_pass())
             .subpass(0)
             .build();
 
-        GraphicsPipeline::new(
-            context,
+        let pipeline = GraphicsPipeline::new(
+            self.context.clone(),
             pipeline_create_info,
             pipeline_layout,
             descriptor_set_layout,
-        )
+        );
+
+        self.pipelines.insert(PipelineType::GltfAsset, pipeline);
     }
 
     pub fn load_gltf_asset(&mut self, asset_name: &str) {
@@ -500,7 +507,7 @@ impl Renderer {
 
         let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
         let number_of_meshes = gltf.meshes().len() as u32;
-        let number_of_materials = textures.len() as u32;
+        let number_of_materials = gltf.materials().len() as u32;
         let number_of_swapchain_images = self.swapchain.images().len() as u32;
         let number_of_samplers = number_of_materials * number_of_swapchain_images;
 
@@ -515,6 +522,8 @@ impl Renderer {
             sampler_pool_size,
             max_number_of_pools,
         );
+
+        let pipeline = &self.pipelines[&PipelineType::GltfAsset];
 
         let mut asset_meshes = Vec::new();
         for mesh in gltf.meshes() {
@@ -534,7 +543,7 @@ impl Renderer {
                 .collect::<Vec<_>>();
 
             let descriptor_sets = descriptor_pool.allocate_descriptor_sets(
-                self.pipeline.descriptor_set_layout(),
+                pipeline.descriptor_set_layout(),
                 number_of_swapchain_images as _,
             );
 
@@ -543,7 +552,7 @@ impl Renderer {
                 for (descriptor_set, uniform_buffer) in
                     descriptor_sets.iter().zip(uniform_buffers.iter())
                 {
-                    Self::update_model_descriptor_set(
+                    Self::update_primitive_descriptor_set(
                         &self,
                         *descriptor_set,
                         uniform_buffer,
@@ -555,26 +564,35 @@ impl Renderer {
                 // Start reading primitive data
                 let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
-                let positions = reader.read_positions().map_or(Vec::new(), |positions| {
-                    positions.map(glm::Vec3::from).collect::<Vec<_>>()
-                });
+                let positions = reader
+                    .read_positions()
+                    .expect("Failed to read any vertex positions from the model. Vertex positions are required.")
+                    .map(glm::Vec3::from)
+                    .collect::<Vec<_>>();
 
-                let normals = reader.read_normals().map_or(Vec::new(), |normals| {
-                    normals.map(glm::Vec3::from).collect::<Vec<_>>()
-                });
+                let normals = reader
+                    .read_normals()
+                    .map_or(vec![glm::vec3(0.0, 0.0, 0.0); positions.len()], |normals| {
+                        normals.map(glm::Vec3::from).collect::<Vec<_>>()
+                    });
 
                 let convert_coords =
                     |coords: gltf::mesh::util::ReadTexCoords<'_>| -> Vec<glm::Vec2> {
                         coords.into_f32().map(glm::Vec2::from).collect::<Vec<_>>()
                     };
-                let tex_coords_0 = reader.read_tex_coords(0).map_or(Vec::new(), convert_coords);
+                let tex_coords_0 = reader
+                    .read_tex_coords(0)
+                    .map_or(vec![glm::vec2(0.0, 0.0); positions.len()], convert_coords);
 
                 // TODO: Add checks to see if normals and tex_coords are even available
-                for (index, position) in positions.iter().enumerate() {
+                for ((position, normal), tex_coord_0) in positions
+                    .iter()
+                    .zip(normals.iter())
+                    .zip(tex_coords_0.iter())
+                {
                     vertices.extend_from_slice(position.as_slice());
-                    vertices.extend_from_slice(normals.get(index).copied().unwrap().as_slice());
-                    vertices
-                        .extend_from_slice(tex_coords_0.get(index).copied().unwrap().as_slice());
+                    vertices.extend_from_slice(normal.as_slice());
+                    vertices.extend_from_slice(tex_coord_0.as_slice());
                 }
 
                 let first_index = indices.len() as u32;
@@ -749,7 +767,7 @@ impl Renderer {
         textures
     }
 
-    fn update_model_descriptor_set(
+    fn update_primitive_descriptor_set(
         renderer: &Renderer,
         descriptor_set: vk::DescriptorSet,
         uniform_buffer: &Buffer,
@@ -773,45 +791,55 @@ impl Renderer {
             .build();
 
         let pbr = material.pbr_metallic_roughness();
-        let base_color_index = pbr
-            .base_color_texture()
-            .expect("Failed to get base color texture!")
-            .texture()
-            .index();
-        let texture_view = textures[base_color_index].view.view();
-        let texture_sampler = textures[base_color_index].sampler.sampler();
 
-        let image_info = vk::DescriptorImageInfo::builder()
-            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(texture_view)
-            .sampler(texture_sampler)
-            .build();
-        let image_infos = [image_info];
+        if let Some(base_color_texture) = pbr.base_color_texture() {
+            let base_color_index = base_color_texture.texture().index();
+            let texture_view = textures[base_color_index].view.view();
+            let texture_sampler = textures[base_color_index].sampler.sampler();
 
-        let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
-            .dst_set(descriptor_set)
-            .dst_binding(1)
-            .dst_array_element(0)
-            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .image_info(&image_infos)
-            .build();
+            let image_info = vk::DescriptorImageInfo::builder()
+                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .image_view(texture_view)
+                .sampler(texture_sampler)
+                .build();
+            let image_infos = [image_info];
 
-        let descriptor_writes = [ubo_descriptor_write, sampler_descriptor_write];
+            let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
+                .dst_set(descriptor_set)
+                .dst_binding(1)
+                .dst_array_element(0)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(&image_infos)
+                .build();
 
-        unsafe {
-            renderer
-                .context
-                .logical_device()
-                .logical_device()
-                .update_descriptor_sets(&descriptor_writes, &[])
+            let descriptor_writes = [ubo_descriptor_write, sampler_descriptor_write];
+
+            unsafe {
+                renderer
+                    .context
+                    .logical_device()
+                    .logical_device()
+                    .update_descriptor_sets(&descriptor_writes, &[])
+            }
+        } else {
+            let descriptor_writes = [ubo_descriptor_write];
+            unsafe {
+                renderer
+                    .context
+                    .logical_device()
+                    .logical_device()
+                    .update_descriptor_sets(&descriptor_writes, &[])
+            }
         }
     }
 
-    pub fn create_render_passes(&mut self) {
+    pub fn create_gltf_render_passes(&mut self) {
         // Allocate one command buffer per swapchain image
         let number_of_framebuffers = self.framebuffers.len();
         self.command_pool
             .allocate_command_buffers(number_of_framebuffers as _);
+
+        let pipeline = self.pipelines[&PipelineType::GltfAsset].pipeline();
 
         // Create a single render pass per swapchain image that will draw each mesh
         self.command_pool
@@ -821,7 +849,7 @@ impl Renderer {
             .for_each(|(index, buffer)| {
                 let command_buffer = buffer;
                 let framebuffer = self.framebuffers[index].framebuffer();
-                self.create_render_pass(framebuffer, *command_buffer, |command_buffer|
+                self.create_render_pass(framebuffer, *command_buffer, pipeline, |command_buffer|
                     // TODO: Batch models by which shader should be used to render them
                     unsafe {
                         self.draw_asset(command_buffer, index);
@@ -830,6 +858,7 @@ impl Renderer {
     }
 
     unsafe fn draw_asset(&self, command_buffer: vk::CommandBuffer, command_buffer_index: usize) {
+        let pipeline = &self.pipelines[&PipelineType::GltfAsset];
         self.assets.iter().for_each(|asset| {
             let offsets = [0];
             for asset_mesh in asset.gltf.meshes() {
@@ -864,21 +893,48 @@ impl Renderer {
                     .cmd_bind_descriptor_sets(
                         command_buffer,
                         vk::PipelineBindPoint::GRAPHICS,
-                        self.pipeline.layout(),
+                        pipeline.layout(),
                         0,
                         &[descriptor_set],
                         &[],
                     );
 
-                for primitive in mesh.primitives.iter() {
+                for (primitive, primitive_info) in
+                    asset_mesh.primitives().zip(mesh.primitives.iter())
+                {
+                    let mut material = PushConstantBlockMaterial {
+                        base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
+                        color_texture_set: -1,
+                    };
+
+                    let primitive_material = primitive.material();
+                    let pbr = primitive_material.pbr_metallic_roughness();
+
+                    if pbr.base_color_texture().is_some() {
+                        material.color_texture_set = 0;
+                    } else {
+                        material.base_color_factor = glm::Vec4::from(pbr.base_color_factor());
+                    }
+
+                    self.context
+                        .logical_device()
+                        .logical_device()
+                        .cmd_push_constants(
+                            command_buffer,
+                            pipeline.layout(),
+                            vk::ShaderStageFlags::FRAGMENT,
+                            0,
+                            Self::byte_slice_from(&material),
+                        );
+
                     self.context
                         .logical_device()
                         .logical_device()
                         .cmd_draw_indexed(
                             command_buffer,
-                            primitive.number_of_indices,
+                            primitive_info.number_of_indices,
                             1,
-                            primitive.first_index,
+                            primitive_info.first_index,
                             0,
                             0,
                         );
@@ -898,5 +954,10 @@ impl Renderer {
             Format::R8G8B8 => vk::Format::R8G8B8_UNORM,
             Format::B8G8R8 => vk::Format::B8G8R8_UNORM,
         }
+    }
+
+    unsafe fn byte_slice_from<T: Sized>(data: &T) -> &[u8] {
+        let data_ptr = (data as *const T) as *const u8;
+        slice::from_raw_parts(data_ptr, std::mem::size_of::<T>())
     }
 }

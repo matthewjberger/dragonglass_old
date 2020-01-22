@@ -64,10 +64,11 @@ impl App {
             .write_resource::<Renderer>()
             .with_query(<Read<GltfAssetComponent>>::query())
             .build(|_, mut world, renderer, query| {
+                renderer.create_gltf_pipeline();
                 for asset in query.iter(&mut world) {
                     renderer.load_gltf_asset(&asset.asset_name);
                 }
-                renderer.create_render_passes();
+                renderer.create_gltf_render_passes();
             });
         let mut prepare_schedule = Schedule::builder()
             .add_system(prepare_renderer_system)
@@ -109,7 +110,8 @@ impl App {
             (),
             vec![(
                 GltfAssetComponent {
-                    asset_name: "examples/assets/models/FlightHelmet/glTF/FlightHelmet.gltf"
+                    //asset_name: "examples/assets/models/FlightHelmet/glTF/FlightHelmet.gltf"
+                    asset_name: "examples/assets/models/BoxAnimated.glb"
                         .to_string(),
                 },
                 TransformComponent::default(),
