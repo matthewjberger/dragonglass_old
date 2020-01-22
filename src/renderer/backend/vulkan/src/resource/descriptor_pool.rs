@@ -11,29 +11,7 @@ pub struct DescriptorPool {
 }
 
 impl DescriptorPool {
-    pub fn new(
-        context: Arc<VulkanContext>,
-        ubo_pool_size: u32,
-        sampler_pool_size: u32,
-        max_sets: u32,
-    ) -> Self {
-        let ubo_pool_size = vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: ubo_pool_size,
-        };
-
-        let sampler_pool_size = vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            descriptor_count: sampler_pool_size,
-        };
-
-        let pool_sizes = [ubo_pool_size, sampler_pool_size];
-
-        let pool_info = vk::DescriptorPoolCreateInfo::builder()
-            .pool_sizes(&pool_sizes)
-            .max_sets(max_sets)
-            .build();
-
+    pub fn new(context: Arc<VulkanContext>, pool_info: vk::DescriptorPoolCreateInfo) -> Self {
         let pool = unsafe {
             context
                 .logical_device()

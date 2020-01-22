@@ -511,18 +511,27 @@ impl Renderer {
         let number_of_swapchain_images = self.swapchain.images().len() as u32;
         let number_of_samplers = number_of_materials * number_of_swapchain_images;
 
-        let ubo_pool_size = (4 + number_of_meshes) * number_of_swapchain_images;
-        let sampler_pool_size = number_of_samplers * number_of_swapchain_images;
-        let max_number_of_pools =
-            (2 + number_of_materials + number_of_meshes) * number_of_swapchain_images;
+        // TODO: Move descriptor pool creation to method
+        let ubo_pool_size = vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::UNIFORM_BUFFER,
+            descriptor_count: (4 + number_of_meshes) * number_of_swapchain_images,
+        };
 
-        let descriptor_pool = DescriptorPool::new(
-            self.context.clone(),
-            ubo_pool_size,
-            sampler_pool_size,
-            max_number_of_pools,
-        );
+        let sampler_pool_size = vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: number_of_samplers * number_of_swapchain_images,
+        };
 
+        let pool_sizes = [ubo_pool_size, sampler_pool_size];
+
+        let pool_info = vk::DescriptorPoolCreateInfo::builder()
+            .pool_sizes(&pool_sizes)
+            .max_sets((2 + number_of_materials + number_of_meshes) * number_of_swapchain_images)
+            .build();
+
+        let descriptor_pool = DescriptorPool::new(self.context.clone(), pool_info);
+
+        // TODO: Refactor this to something cleaner
         let mut asset_meshes = Vec::new();
         for scene in gltf.scenes() {
             let mut meshes = Vec::new();
