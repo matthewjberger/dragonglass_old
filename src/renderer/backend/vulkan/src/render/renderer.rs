@@ -21,7 +21,7 @@ pub struct PushConstantBlockMaterial {
 pub struct VulkanGltfAsset {
     pub gltf: gltf::Document,
     pub textures: Vec<VulkanTexture>,
-    pub meshes: Vec<Mesh>,
+    pub meshes: Vec<Vec<Mesh>>,
     pub descriptor_pool: DescriptorPool,
 }
 
@@ -37,7 +37,7 @@ pub struct Mesh {
     pub primitives: Vec<Primitive>,
     pub uniform_buffers: Vec<Buffer>,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
-    pub index: usize,
+    pub node_index: usize,
 }
 
 pub struct Primitive {
@@ -523,10 +523,45 @@ impl Renderer {
             max_number_of_pools,
         );
 
-        let pipeline = &self.pipelines[&PipelineType::GltfAsset];
-
         let mut asset_meshes = Vec::new();
-        for mesh in gltf.meshes() {
+        for scene in gltf.scenes() {
+            let mut meshes = Vec::new();
+            for node in scene.nodes() {
+                self.visit_node(
+                    &node,
+                    &textures,
+                    uniform_buffer_size,
+                    number_of_swapchain_images,
+                    &descriptor_pool,
+                    &buffers,
+                    &mut meshes,
+                );
+            }
+            asset_meshes.push(meshes);
+        }
+
+        let loaded_asset = VulkanGltfAsset {
+            gltf,
+            textures,
+            meshes: asset_meshes,
+            descriptor_pool,
+        };
+
+        self.assets.push(loaded_asset);
+    }
+
+    fn visit_node(
+        &mut self,
+        node: &gltf::Node,
+        textures: &[VulkanTexture],
+        uniform_buffer_size: vk::DeviceSize,
+        number_of_swapchain_images: u32,
+        descriptor_pool: &DescriptorPool,
+        buffers: &[gltf::buffer::Data],
+        mut meshes: &mut Vec<Mesh>,
+    ) {
+        let pipeline = &self.pipelines[&PipelineType::GltfAsset];
+        if let Some(mesh) = node.mesh() {
             let mut vertices = Vec::new();
             let mut indices = Vec::new();
 
@@ -623,24 +658,27 @@ impl Renderer {
                 &indices,
             );
 
-            asset_meshes.push(Mesh {
+            meshes.push(Mesh {
                 primitives: all_mesh_primitives,
                 uniform_buffers,
                 descriptor_sets,
-                index: mesh.index(),
+                node_index: node.index(),
                 vertex_buffer,
                 index_buffer,
             });
         }
 
-        let loaded_asset = VulkanGltfAsset {
-            gltf,
-            textures,
-            meshes: asset_meshes,
-            descriptor_pool,
-        };
-
-        self.assets.push(loaded_asset);
+        for child_node in node.children() {
+            self.visit_node(
+                &child_node,
+                &textures,
+                uniform_buffer_size,
+                number_of_swapchain_images,
+                &descriptor_pool,
+                &buffers,
+                &mut meshes,
+            );
+        }
     }
 
     fn load_textures(&mut self, asset_textures: &[gltf::image::Data]) -> Vec<VulkanTexture> {
@@ -858,18 +896,40 @@ impl Renderer {
     }
 
     unsafe fn draw_asset(&self, command_buffer: vk::CommandBuffer, command_buffer_index: usize) {
-        let pipeline = &self.pipelines[&PipelineType::GltfAsset];
         self.assets.iter().for_each(|asset| {
-            let offsets = [0];
-            for asset_mesh in asset.gltf.meshes() {
-                let index = asset_mesh.index();
-                let mesh = asset
-                    .meshes
-                    .iter()
-                    .find(|mesh| mesh.index == index)
-                    .expect("Could not find corresponding mesh!");
+            for (scene_index, scene) in asset.gltf.scenes().enumerate() {
+                let meshes = &asset.meshes[scene_index];
+                for node in scene.nodes() {
+                    self.draw_mesh(
+                        &node,
+                        scene_index as u32,
+                        &meshes,
+                        command_buffer,
+                        command_buffer_index,
+                    );
+                }
+            }
+        });
+    }
 
-                let vertex_buffers = [mesh.vertex_buffer.buffer()];
+    fn draw_mesh(
+        &self,
+        node: &gltf::Node,
+        scene_index: u32,
+        meshes: &[Mesh],
+        command_buffer: vk::CommandBuffer,
+        command_buffer_index: usize,
+    ) {
+        let offsets = [0];
+        let pipeline = &self.pipelines[&PipelineType::GltfAsset];
+        if let Some(mesh) = node.mesh() {
+            let mesh_info = meshes
+                .iter()
+                .find(|mesh| mesh.node_index == node.index())
+                .expect("Could not find corresponding mesh!");
+
+            let vertex_buffers = [mesh_info.vertex_buffer.buffer()];
+            unsafe {
                 self.context
                     .logical_device()
                     .logical_device()
@@ -880,12 +940,12 @@ impl Renderer {
                     .logical_device()
                     .cmd_bind_index_buffer(
                         command_buffer,
-                        mesh.index_buffer.buffer(),
+                        mesh_info.index_buffer.buffer(),
                         0,
                         vk::IndexType::UINT32,
                     );
 
-                let descriptor_set = mesh.descriptor_sets[command_buffer_index];
+                let descriptor_set = mesh_info.descriptor_sets[command_buffer_index];
 
                 self.context
                     .logical_device()
@@ -898,24 +958,24 @@ impl Renderer {
                         &[descriptor_set],
                         &[],
                     );
+            }
 
-                for (primitive, primitive_info) in
-                    asset_mesh.primitives().zip(mesh.primitives.iter())
-                {
-                    let mut material = PushConstantBlockMaterial {
-                        base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
-                        color_texture_set: -1,
-                    };
+            for (primitive, primitive_info) in mesh.primitives().zip(mesh_info.primitives.iter()) {
+                let mut material = PushConstantBlockMaterial {
+                    base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
+                    color_texture_set: -1,
+                };
 
-                    let primitive_material = primitive.material();
-                    let pbr = primitive_material.pbr_metallic_roughness();
+                let primitive_material = primitive.material();
+                let pbr = primitive_material.pbr_metallic_roughness();
 
-                    if pbr.base_color_texture().is_some() {
-                        material.color_texture_set = 0;
-                    } else {
-                        material.base_color_factor = glm::Vec4::from(pbr.base_color_factor());
-                    }
+                if pbr.base_color_texture().is_some() {
+                    material.color_texture_set = 0;
+                } else {
+                    material.base_color_factor = glm::Vec4::from(pbr.base_color_factor());
+                }
 
+                unsafe {
                     self.context
                         .logical_device()
                         .logical_device()
@@ -940,7 +1000,17 @@ impl Renderer {
                         );
                 }
             }
-        });
+        }
+
+        for child_node in node.children() {
+            self.draw_mesh(
+                &child_node,
+                scene_index as u32,
+                &meshes,
+                command_buffer,
+                command_buffer_index,
+            );
+        }
     }
 
     pub fn convert_to_vulkan_format(format: Format) -> vk::Format {
