@@ -1,8 +1,7 @@
 use crate::{
     render::{
-        component::TransformComponent, system::UniformBufferObject,
+        component::TransformComponent, pipeline_gltf::VulkanGltfAsset, system::UniformBufferObject,
         Renderer,
-        pipeline_gltf::VulkanGltfAsset,
     },
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
@@ -26,7 +25,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                 .wait_for_fence(&current_frame_synchronization);
 
             // Acquire the next image from the swapchain
-            let image_index_result = renderer.swapchain.acquire_next_image(
+            let image_index_result = renderer.vulkan_swapchain.swapchain.acquire_next_image(
                 current_frame_synchronization.image_available(),
                 vk::Fence::null(),
             );
@@ -48,7 +47,11 @@ pub fn render_system() -> Box<dyn Runnable> {
             // Update UBOS
 
             let projection = glm::perspective_zo(
-                renderer.swapchain.properties().aspect_ratio(),
+                renderer
+                    .vulkan_swapchain
+                    .swapchain
+                    .properties()
+                    .aspect_ratio(),
                 90_f32.to_radians(),
                 0.1_f32,
                 1000_f32,
@@ -67,7 +70,8 @@ pub fn render_system() -> Box<dyn Runnable> {
                 // TODO: Go through all assets
                 let asset_transform = transform.translate * transform.rotate * transform.scale;
                 let asset_index = 0;
-                let vulkan_gltf_asset = &renderer.pipeline_gltf.as_ref().unwrap().assets[asset_index];
+                let vulkan_gltf_asset =
+                    &renderer.pipeline_gltf.as_ref().unwrap().assets[asset_index];
                 for (scene_index, scene) in vulkan_gltf_asset.gltf.scenes().enumerate() {
                     for node in scene.nodes() {
                         visit_node(
@@ -92,11 +96,12 @@ pub fn render_system() -> Box<dyn Runnable> {
                 &current_frame_synchronization,
             );
 
-            let swapchain_presentation_result = renderer.swapchain.present_rendered_image(
-                &current_frame_synchronization,
-                &image_indices,
-                renderer.present_queue,
-            );
+            let swapchain_presentation_result =
+                renderer.vulkan_swapchain.swapchain.present_rendered_image(
+                    &current_frame_synchronization,
+                    &image_indices,
+                    renderer.present_queue,
+                );
 
             match swapchain_presentation_result {
                 Ok(is_suboptimal) if is_suboptimal => {

@@ -127,8 +127,18 @@ impl GltfPipeline {
         let viewport = vk::Viewport {
             x: 0.0,
             y: 0.0,
-            width: renderer.swapchain.properties().extent.width as _,
-            height: renderer.swapchain.properties().extent.height as _,
+            width: renderer
+                .vulkan_swapchain
+                .swapchain
+                .properties()
+                .extent
+                .width as _,
+            height: renderer
+                .vulkan_swapchain
+                .swapchain
+                .properties()
+                .extent
+                .height as _,
             min_depth: 0.0,
             max_depth: 1.0,
         };
@@ -137,7 +147,7 @@ impl GltfPipeline {
         // Create a stencil
         let scissor = vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
-            extent: renderer.swapchain.properties().extent,
+            extent: renderer.vulkan_swapchain.swapchain.properties().extent,
         };
         let scissors = [scissor];
 
@@ -244,7 +254,7 @@ impl GltfPipeline {
             .color_blend_state(&color_blending_info)
             //.dynamic_state // no dynamic states
             .layout(pipeline_layout.layout())
-            .render_pass(renderer.render_pass.render_pass())
+            .render_pass(renderer.vulkan_swapchain.render_pass.render_pass())
             .subpass(0)
             .build();
 
@@ -271,7 +281,7 @@ impl GltfPipeline {
 
     pub fn create_gltf_render_passes(&self, renderer: &mut Renderer) {
         // Allocate one command buffer per swapchain image
-        let number_of_framebuffers = renderer.framebuffers.len();
+        let number_of_framebuffers = renderer.vulkan_swapchain.framebuffers.len();
         renderer
             .command_pool
             .allocate_command_buffers(number_of_framebuffers as _);
@@ -284,7 +294,7 @@ impl GltfPipeline {
             .enumerate()
             .for_each(|(index, buffer)| {
                 let command_buffer = buffer;
-                let framebuffer = renderer.framebuffers[index].framebuffer();
+                let framebuffer = renderer.vulkan_swapchain.framebuffers[index].framebuffer();
                 self.create_render_pass(&renderer, framebuffer, *command_buffer, |command_buffer|
                     // TODO: Batch models by which shader should be used to render them
                     unsafe {
@@ -463,11 +473,11 @@ impl GltfPipeline {
         ];
 
         let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
-            .render_pass(renderer.render_pass.render_pass())
+            .render_pass(renderer.vulkan_swapchain.render_pass.render_pass())
             .framebuffer(framebuffer)
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
-                extent: renderer.swapchain.properties().extent,
+                extent: renderer.vulkan_swapchain.swapchain.properties().extent,
             })
             .clear_values(&clear_values)
             .build();
@@ -524,7 +534,7 @@ impl GltfPipeline {
         let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
         let number_of_meshes = gltf.meshes().len() as u32;
         let number_of_materials = gltf.materials().len() as u32;
-        let number_of_swapchain_images = renderer.swapchain.images().len() as u32;
+        let number_of_swapchain_images = renderer.vulkan_swapchain.swapchain.images().len() as u32;
         let number_of_samplers = number_of_materials * number_of_swapchain_images;
 
         // TODO: Move descriptor pool creation to method
