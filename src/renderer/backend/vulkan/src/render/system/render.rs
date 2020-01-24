@@ -1,14 +1,14 @@
 use crate::{
     render::{
-        component::TransformComponent, system::UniformBufferObject,
-        Renderer,
-        pipeline_gltf::VulkanGltfAsset,
+        component::TransformComponent, pipeline_gltf::calculate_global_transform,
+        system::UniformBufferObject, Renderer,
     },
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
 use ash::vk;
 use legion::prelude::*;
 use nalgebra_glm as glm;
+use petgraph::{graph::NodeIndex, visit::Dfs};
 
 pub fn render_system() -> Box<dyn Runnable> {
     SystemBuilder::new("render")
@@ -26,7 +26,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                 .wait_for_fence(&current_frame_synchronization);
 
             // Acquire the next image from the swapchain
-            let image_index_result = renderer.swapchain.acquire_next_image(
+            let image_index_result = renderer.vulkan_swapchain.swapchain.acquire_next_image(
                 current_frame_synchronization.image_available(),
                 vk::Fence::null(),
             );
@@ -48,7 +48,11 @@ pub fn render_system() -> Box<dyn Runnable> {
             // Update UBOS
 
             let projection = glm::perspective_zo(
-                renderer.swapchain.properties().aspect_ratio(),
+                renderer
+                    .vulkan_swapchain
+                    .swapchain
+                    .properties()
+                    .aspect_ratio(),
                 90_f32.to_radians(),
                 0.1_f32,
                 1000_f32,
@@ -67,19 +71,25 @@ pub fn render_system() -> Box<dyn Runnable> {
                 // TODO: Go through all assets
                 let asset_transform = transform.translate * transform.rotate * transform.scale;
                 let asset_index = 0;
-                let vulkan_gltf_asset = &renderer.pipeline_gltf.as_ref().unwrap().assets[asset_index];
-                for (scene_index, scene) in vulkan_gltf_asset.gltf.scenes().enumerate() {
-                    for node in scene.nodes() {
-                        visit_node(
-                            &node,
-                            glm::Mat4::identity(),
-                            &vulkan_gltf_asset,
-                            asset_transform,
-                            image_index as usize,
-                            view,
-                            projection,
-                            scene_index,
-                        );
+                let vulkan_gltf_asset =
+                    &renderer.pipeline_gltf.as_ref().unwrap().assets[asset_index];
+
+                for scene in vulkan_gltf_asset.scenes.iter() {
+                    for graph in scene.node_graphs.iter() {
+                        let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
+                        while let Some(node_index) = dfs.next(&graph) {
+                            let global_transform = calculate_global_transform(node_index, graph);
+                            if let Some(mesh) = &graph[node_index].mesh {
+                                let ubo = UniformBufferObject {
+                                    model: asset_transform * global_transform,
+                                    view,
+                                    projection,
+                                };
+                                let ubos = [ubo];
+                                let buffer = &mesh.uniform_buffers[image_index as usize];
+                                buffer.upload_to_buffer(&ubos, 0);
+                            }
+                        }
                     }
                 }
             }
@@ -92,11 +102,12 @@ pub fn render_system() -> Box<dyn Runnable> {
                 &current_frame_synchronization,
             );
 
-            let swapchain_presentation_result = renderer.swapchain.present_rendered_image(
-                &current_frame_synchronization,
-                &image_indices,
-                renderer.present_queue,
-            );
+            let swapchain_presentation_result =
+                renderer.vulkan_swapchain.swapchain.present_rendered_image(
+                    &current_frame_synchronization,
+                    &image_indices,
+                    renderer.present_queue,
+                );
 
             match swapchain_presentation_result {
                 Ok(is_suboptimal) if is_suboptimal => {
@@ -114,54 +125,4 @@ pub fn render_system() -> Box<dyn Runnable> {
             renderer.current_frame +=
                 (1 + renderer.current_frame) % SynchronizationSet::MAX_FRAMES_IN_FLIGHT as usize;
         })
-}
-
-fn visit_node(
-    node: &gltf::Node,
-    parent_global_transform: glm::Mat4,
-    vulkan_gltf_asset: &VulkanGltfAsset,
-    asset_transform: glm::Mat4,
-    image_index: usize,
-    view: glm::Mat4,
-    projection: glm::Mat4,
-    scene_index: usize,
-) {
-    let transform: Vec<f32> = node
-        .transform()
-        .matrix()
-        .iter()
-        .flat_map(|array| array.iter())
-        .cloned()
-        .collect();
-    let local_transform = glm::make_mat4(&transform.as_slice());
-    let global_transform = parent_global_transform * local_transform;
-
-    if node.mesh().is_some() {
-        let vulkan_mesh = vulkan_gltf_asset.meshes[scene_index]
-            .iter()
-            .find(|mesh| mesh.node_index == node.index())
-            .expect("Could not find corresponding mesh!");
-
-        let ubo = UniformBufferObject {
-            model: asset_transform * global_transform,
-            view,
-            projection,
-        };
-        let ubos = [ubo];
-        let buffer = &vulkan_mesh.uniform_buffers[image_index];
-        buffer.upload_to_buffer(&ubos, 0);
-    }
-
-    for child_node in node.children() {
-        visit_node(
-            &child_node,
-            global_transform,
-            vulkan_gltf_asset,
-            asset_transform,
-            image_index,
-            view,
-            projection,
-            scene_index,
-        )
-    }
 }

@@ -1,26 +1,22 @@
 use crate::{
     core::{ImageView, Swapchain, VulkanContext},
-    render::{Framebuffer,RenderPass, pipeline_gltf::GltfPipeline},
+    render::{pipeline_gltf::GltfPipeline, Framebuffer, RenderPass},
     resource::{CommandPool, Texture},
     sync::SynchronizationSet,
 };
 use ash::{version::DeviceV1_0, vk};
-use std::{ sync::Arc};
+use std::sync::Arc;
 
 pub struct Renderer {
     pub context: Arc<VulkanContext>,
-    pub command_pool: CommandPool,
-    pub framebuffers: Vec<Framebuffer>,
+    pub vulkan_swapchain: VulkanSwapchain,
     pub graphics_queue: vk::Queue,
     pub pipeline_gltf: Option<GltfPipeline>,
     pub present_queue: vk::Queue,
-    pub render_pass: RenderPass,
-    pub swapchain: Swapchain,
-    pub transient_command_pool: CommandPool,
-    pub depth_texture: Texture,
-    pub depth_texture_view: ImageView,
     pub synchronization_set: SynchronizationSet,
     pub current_frame: usize,
+    pub command_pool: CommandPool,
+    pub transient_command_pool: CommandPool,
 }
 
 impl Renderer {
@@ -53,15 +49,69 @@ impl Renderer {
                 .get_device_queue(context.present_queue_family_index(), 0)
         };
 
-        let depth_format = context.determine_depth_format(
-            vk::ImageTiling::OPTIMAL,
-            vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
-        );
+        let command_pool = CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::empty());
+
+        let transient_command_pool =
+            CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::TRANSIENT);
 
         let logical_size = window
             .get_inner_size()
             .expect("Failed to get the window's inner size!");
         let dimensions = [logical_size.width as u32, logical_size.height as u32];
+
+        let vulkan_swapchain =
+            VulkanSwapchain::new(context.clone(), dimensions, graphics_queue, &command_pool);
+
+        Renderer {
+            context,
+            graphics_queue,
+            pipeline_gltf: None,
+            present_queue,
+            synchronization_set,
+            current_frame: 0,
+            vulkan_swapchain,
+            command_pool,
+            transient_command_pool,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn recreate_swapchain(&mut self, _: Option<[u32; 2]>) {
+        log::debug!("Recreating swapchain");
+        // TODO: Implement swapchain recreation
+    }
+
+    pub fn wait_idle(&self) {
+        unsafe {
+            self.context
+                .logical_device()
+                .logical_device()
+                .device_wait_idle()
+                .expect("Failed to wait for the logical device to be idle!")
+        };
+    }
+}
+
+pub struct VulkanSwapchain {
+    pub swapchain: Swapchain,
+    pub render_pass: RenderPass,
+    pub depth_texture: Texture,
+    pub depth_texture_view: ImageView,
+    pub framebuffers: Vec<Framebuffer>,
+}
+
+impl VulkanSwapchain {
+    pub fn new(
+        context: Arc<VulkanContext>,
+        dimensions: [u32; 2],
+        graphics_queue: vk::Queue,
+        command_pool: &CommandPool,
+    ) -> Self {
+        let depth_format = context.determine_depth_format(
+            vk::ImageTiling::OPTIMAL,
+            vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT,
+        );
+
         let swapchain = Swapchain::new(context.clone(), dimensions);
         let render_pass = RenderPass::new(context.clone(), swapchain.properties(), depth_format);
 
@@ -83,10 +133,6 @@ impl Renderer {
             .flags(vk::ImageCreateFlags::empty())
             .build();
         let depth_texture = Texture::new(context.clone(), create_info);
-
-        let command_pool = CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::empty());
-        let transient_command_pool =
-            CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::TRANSIENT);
 
         command_pool.transition_image_layout(
             graphics_queue,
@@ -133,36 +179,12 @@ impl Renderer {
             })
             .collect::<Vec<_>>();
 
-        Renderer {
-            command_pool,
-            context,
-            framebuffers,
-            graphics_queue,
-            pipeline_gltf: None,
-            present_queue,
-            render_pass,
+        VulkanSwapchain {
             swapchain,
-            synchronization_set,
+            render_pass,
             depth_texture,
             depth_texture_view,
-            transient_command_pool,
-            current_frame: 0,
+            framebuffers,
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn recreate_swapchain(&mut self, _: Option<[u32; 2]>) {
-        log::debug!("Recreating swapchain");
-        // TODO: Implement swapchain recreation
-    }
-
-    pub fn wait_idle(&self) {
-        unsafe {
-            self.context
-                .logical_device()
-                .logical_device()
-                .device_wait_idle()
-                .expect("Failed to wait for the logical device to be idle!")
-        };
     }
 }
