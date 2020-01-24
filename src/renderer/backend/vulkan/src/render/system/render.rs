@@ -1,7 +1,8 @@
 use crate::{
     render::{
-        component::TransformComponent, renderer::VulkanGltfAsset, system::UniformBufferObject,
+        component::TransformComponent, system::UniformBufferObject,
         Renderer,
+        pipeline_gltf::VulkanGltfAsset,
     },
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
@@ -66,7 +67,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                 // TODO: Go through all assets
                 let asset_transform = transform.translate * transform.rotate * transform.scale;
                 let asset_index = 0;
-                let vulkan_gltf_asset = &renderer.assets[asset_index];
+                let vulkan_gltf_asset = &renderer.pipeline_gltf.as_ref().unwrap().assets[asset_index];
                 for (scene_index, scene) in vulkan_gltf_asset.gltf.scenes().enumerate() {
                     for node in scene.nodes() {
                         visit_node(
@@ -135,7 +136,7 @@ fn visit_node(
     let local_transform = glm::make_mat4(&transform.as_slice());
     let global_transform = parent_global_transform * local_transform;
 
-    if let Some(_) = node.mesh() {
+    if node.mesh().is_some() {
         let vulkan_mesh = vulkan_gltf_asset.meshes[scene_index]
             .iter()
             .find(|mesh| mesh.node_index == node.index())

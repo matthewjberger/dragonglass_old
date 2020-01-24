@@ -1,6 +1,7 @@
 use dragonglass_backend_vulkan::render::{
     component::{GltfAssetComponent, TransformComponent},
-    renderer::Renderer,
+    GltfPipeline,
+    renderer::{Renderer},
     system::render_system,
 };
 use legion::prelude::*;
@@ -63,12 +64,10 @@ impl App {
         let prepare_renderer_system = SystemBuilder::new("prepare_renderer")
             .write_resource::<Renderer>()
             .with_query(<Read<GltfAssetComponent>>::query())
-            .build(|_, mut world, renderer, query| {
-                renderer.create_gltf_pipeline();
-                for asset in query.iter(&mut world) {
-                    renderer.load_gltf_asset(&asset.asset_name);
-                }
-                renderer.create_gltf_render_passes();
+            .build(|_, mut world, mut renderer, query| {
+                let asset_names = query.iter(&mut world).map(|asset| asset.asset_name.to_string()).collect::<Vec<_>>();
+                let pipeline_gltf = GltfPipeline::new(&mut renderer, &asset_names);
+                renderer.pipeline_gltf = Some(pipeline_gltf);
             });
         let mut prepare_schedule = Schedule::builder()
             .add_system(prepare_renderer_system)
