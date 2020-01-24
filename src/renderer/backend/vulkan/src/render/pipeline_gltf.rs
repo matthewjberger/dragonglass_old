@@ -7,10 +7,19 @@ use crate::{
     },
 };
 use ash::{version::DeviceV1_0, vk};
-use gltf::image::Format;
+use gltf::{
+    animation::{util::ReadOutputs, Interpolation},
+    image::Format,
+};
 use image::{ImageBuffer, Pixel, RgbImage};
+use nalgebra::{Matrix4, Quaternion, UnitQuaternion};
 use nalgebra_glm as glm;
-use std::{ffi::CString, mem, slice};
+use petgraph::{
+    graph::{Graph, NodeIndex},
+    prelude::*,
+    visit::Dfs,
+};
+use std::{collections::HashMap, ffi::CString, mem, slice};
 
 pub struct PushConstantBlockMaterial {
     base_color_factor: glm::Vec4,
@@ -19,8 +28,9 @@ pub struct PushConstantBlockMaterial {
 
 pub struct VulkanGltfAsset {
     pub gltf: gltf::Document,
+    pub scenes: Vec<Scene>,
     pub textures: Vec<VulkanTexture>,
-    pub meshes: Vec<Vec<Mesh>>,
+    pub vulkan_meshes: HashMap<usize, VulkanMesh>,
     pub descriptor_pool: DescriptorPool,
 }
 
@@ -30,18 +40,12 @@ pub struct VulkanTexture {
     pub sampler: Sampler,
 }
 
-pub struct Mesh {
+pub struct VulkanMesh {
     pub vertex_buffer: Buffer,
     pub index_buffer: Buffer,
     pub primitives: Vec<Primitive>,
     pub uniform_buffers: Vec<Buffer>,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
-    pub node_index: usize,
-}
-
-pub struct Primitive {
-    pub number_of_indices: u32,
-    pub first_index: u32,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -311,17 +315,17 @@ impl GltfPipeline {
     ) {
         self.assets.iter().for_each(|asset| {
             for (scene_index, scene) in asset.gltf.scenes().enumerate() {
-                let meshes = &asset.meshes[scene_index];
-                for node in scene.nodes() {
-                    self.draw_mesh(
-                        &renderer,
-                        &node,
-                        scene_index as u32,
-                        &meshes,
-                        command_buffer,
-                        command_buffer_index,
-                    );
-                }
+                // let meshes = &asset.meshes[scene_index];
+                // for node in scene.nodes() {
+                //     self.draw_mesh(
+                //         &renderer,
+                //         &node,
+                //         scene_index as u32,
+                //         &meshes,
+                //         command_buffer,
+                //         command_buffer_index,
+                //     );
+                // }
             }
         });
     }
@@ -335,102 +339,102 @@ impl GltfPipeline {
         command_buffer: vk::CommandBuffer,
         command_buffer_index: usize,
     ) {
-        let offsets = [0];
-        if let Some(mesh) = node.mesh() {
-            let mesh_info = meshes
-                .iter()
-                .find(|mesh| mesh.node_index == node.index())
-                .expect("Could not find corresponding mesh!");
+        // let offsets = [0];
+        // if let Some(mesh) = node.mesh() {
+        //     let mesh_info = meshes
+        //         .iter()
+        //         .find(|mesh| mesh.node_index == node.index())
+        //         .expect("Could not find corresponding mesh!");
 
-            let vertex_buffers = [mesh_info.vertex_buffer.buffer()];
-            unsafe {
-                renderer
-                    .context
-                    .logical_device()
-                    .logical_device()
-                    .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
+        //     let vertex_buffers = [mesh_info.vertex_buffer.buffer()];
+        //     unsafe {
+        //         renderer
+        //             .context
+        //             .logical_device()
+        //             .logical_device()
+        //             .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
 
-                renderer
-                    .context
-                    .logical_device()
-                    .logical_device()
-                    .cmd_bind_index_buffer(
-                        command_buffer,
-                        mesh_info.index_buffer.buffer(),
-                        0,
-                        vk::IndexType::UINT32,
-                    );
+        //         renderer
+        //             .context
+        //             .logical_device()
+        //             .logical_device()
+        //             .cmd_bind_index_buffer(
+        //                 command_buffer,
+        //                 mesh_info.index_buffer.buffer(),
+        //                 0,
+        //                 vk::IndexType::UINT32,
+        //             );
 
-                let descriptor_set = mesh_info.descriptor_sets[command_buffer_index];
+        //         let descriptor_set = mesh_info.descriptor_sets[command_buffer_index];
 
-                renderer
-                    .context
-                    .logical_device()
-                    .logical_device()
-                    .cmd_bind_descriptor_sets(
-                        command_buffer,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        self.pipeline.layout(),
-                        0,
-                        &[descriptor_set],
-                        &[],
-                    );
-            }
+        //         renderer
+        //             .context
+        //             .logical_device()
+        //             .logical_device()
+        //             .cmd_bind_descriptor_sets(
+        //                 command_buffer,
+        //                 vk::PipelineBindPoint::GRAPHICS,
+        //                 self.pipeline.layout(),
+        //                 0,
+        //                 &[descriptor_set],
+        //                 &[],
+        //             );
+        //     }
 
-            for (primitive, primitive_info) in mesh.primitives().zip(mesh_info.primitives.iter()) {
-                let mut material = PushConstantBlockMaterial {
-                    base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
-                    color_texture_set: -1,
-                };
+        //     for (primitive, primitive_info) in mesh.primitives().zip(mesh_info.primitives.iter()) {
+        //         let mut material = PushConstantBlockMaterial {
+        //             base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
+        //             color_texture_set: -1,
+        //         };
 
-                let primitive_material = primitive.material();
-                let pbr = primitive_material.pbr_metallic_roughness();
+        //         let primitive_material = primitive.material();
+        //         let pbr = primitive_material.pbr_metallic_roughness();
 
-                if pbr.base_color_texture().is_some() {
-                    material.color_texture_set = 0;
-                } else {
-                    material.base_color_factor = glm::Vec4::from(pbr.base_color_factor());
-                }
+        //         if pbr.base_color_texture().is_some() {
+        //             material.color_texture_set = 0;
+        //         } else {
+        //             material.base_color_factor = glm::Vec4::from(pbr.base_color_factor());
+        //         }
 
-                unsafe {
-                    renderer
-                        .context
-                        .logical_device()
-                        .logical_device()
-                        .cmd_push_constants(
-                            command_buffer,
-                            self.pipeline.layout(),
-                            vk::ShaderStageFlags::FRAGMENT,
-                            0,
-                            Self::byte_slice_from(&material),
-                        );
+        //         unsafe {
+        //             renderer
+        //                 .context
+        //                 .logical_device()
+        //                 .logical_device()
+        //                 .cmd_push_constants(
+        //                     command_buffer,
+        //                     self.pipeline.layout(),
+        //                     vk::ShaderStageFlags::FRAGMENT,
+        //                     0,
+        //                     Self::byte_slice_from(&material),
+        //                 );
 
-                    renderer
-                        .context
-                        .logical_device()
-                        .logical_device()
-                        .cmd_draw_indexed(
-                            command_buffer,
-                            primitive_info.number_of_indices,
-                            1,
-                            primitive_info.first_index,
-                            0,
-                            0,
-                        );
-                }
-            }
-        }
+        //             renderer
+        //                 .context
+        //                 .logical_device()
+        //                 .logical_device()
+        //                 .cmd_draw_indexed(
+        //                     command_buffer,
+        //                     primitive_info.number_of_indices,
+        //                     1,
+        //                     primitive_info.first_index,
+        //                     0,
+        //                     0,
+        //                 );
+        //         }
+        //     }
+        // }
 
-        for child_node in node.children() {
-            self.draw_mesh(
-                &renderer,
-                &child_node,
-                scene_index as u32,
-                &meshes,
-                command_buffer,
-                command_buffer_index,
-            );
-        }
+        // for child_node in node.children() {
+        //     self.draw_mesh(
+        //         &renderer,
+        //         &child_node,
+        //         scene_index as u32,
+        //         &meshes,
+        //         command_buffer,
+        //         command_buffer_index,
+        //     );
+        // }
     }
 
     pub fn create_render_pass<F>(
@@ -930,4 +934,286 @@ impl GltfPipeline {
         let data_ptr = (data as *const T) as *const u8;
         slice::from_raw_parts(data_ptr, std::mem::size_of::<T>())
     }
+}
+
+// GLTF loading
+
+// TODO: Load bounding volumes using ncollide
+
+pub type NodeGraph = Graph<Node, ()>;
+
+#[derive(Debug)]
+enum TransformationSet {
+    Translations(Vec<glm::Vec3>),
+    Rotations(Vec<glm::Vec4>),
+    Scales(Vec<glm::Vec3>),
+    MorphTargetWeights(Vec<f32>),
+}
+
+#[derive(Debug)]
+pub struct Joint {
+    pub index: usize,
+    pub inverse_bind_matrix: glm::Mat4,
+}
+
+#[derive(Debug, Default)]
+pub struct Transform {
+    translation: Option<glm::Vec3>,
+    rotation: Option<glm::Quat>,
+    scale: Option<glm::Vec3>,
+}
+
+impl Transform {
+    pub fn matrix(&self) -> glm::Mat4 {
+        let mut matrix = glm::Mat4::identity();
+        if let Some(translation) = self.translation {
+            matrix *= Matrix4::new_translation(&translation);
+        }
+        if let Some(rotation) = self.rotation {
+            matrix *= Matrix4::from(UnitQuaternion::from_quaternion(rotation));
+        }
+        if let Some(scale) = self.scale {
+            matrix *= Matrix4::new_nonuniform_scaling(&scale);
+        }
+        matrix
+    }
+}
+
+pub struct Mesh {
+    pub primitives: Vec<Primitive>,
+}
+
+pub struct Primitive {
+    pub number_of_indices: u32,
+    pub first_index: u32,
+    pub material_index: Option<usize>,
+}
+
+pub struct Node {
+    pub local_transform: glm::Mat4,
+    pub animation_transform: Transform,
+    pub mesh: Option<Mesh>,
+    pub index: usize,
+}
+
+pub struct Scene {
+    pub node_graphs: Vec<NodeGraph>,
+}
+
+// TODO: Make graph a collection of collections of graphs belonging to the scene (Vec<Vec<NodeGraph>>)
+// TODO: Load names for scenes and nodes
+fn prepare_scenes(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<Scene> {
+    let mut scenes: Vec<Scene> = Vec::new();
+    for scene in gltf.scenes() {
+        let mut node_graphs: Vec<NodeGraph> = Vec::new();
+        for node in scene.nodes() {
+            let mut node_graph = NodeGraph::new();
+            visit_children(&node, &buffers, &mut node_graph, NodeIndex::new(0_usize));
+            node_graphs.push(node_graph);
+        }
+        scenes.push(Scene { node_graphs });
+    }
+    scenes
+}
+
+fn visit_children(
+    node: &gltf::Node,
+    buffers: &[gltf::buffer::Data],
+    node_graph: &mut NodeGraph,
+    parent_index: NodeIndex,
+) {
+    let node_info = Node {
+        local_transform: determine_transform(node),
+        animation_transform: Transform::default(),
+        mesh: load_mesh(node, buffers),
+        index: node.index(),
+    };
+
+    let node_index = node_graph.add_node(node_info);
+    if parent_index != node_index {
+        node_graph.add_edge(parent_index, node_index, ());
+    }
+
+    for child in node.children() {
+        visit_children(&child, buffers, node_graph, node_index);
+    }
+}
+
+fn load_mesh(node: &gltf::Node, buffers: &[gltf::buffer::Data]) -> Option<Mesh> {
+    if let Some(mesh) = node.mesh() {
+        // let uniform_buffers = (0..number_of_swapchain_images)
+        //     .map(|_| {
+        //         Buffer::new(
+        //             renderer.context.clone(),
+        //             uniform_buffer_size,
+        //             vk::BufferUsageFlags::UNIFORM_BUFFER,
+        //             vk::MemoryPropertyFlags::HOST_VISIBLE
+        //                 | vk::MemoryPropertyFlags::HOST_COHERENT,
+        //         )
+        //     })
+        //     .collect::<Vec<_>>();
+
+        // let descriptor_sets = descriptor_pool.allocate_descriptor_sets(
+        //     self.pipeline.descriptor_set_layout(),
+        //     number_of_swapchain_images as _,
+        // );
+
+        let mut all_primitive_info = Vec::new();
+        for primitive in mesh.primitives() {
+            let (vertex_set, indices, primitive_info) = load_primitive(&primitive, &buffers);
+            all_primitive_info.push(primitive_info);
+        }
+
+        // let vertex_buffer = renderer.transient_command_pool.create_device_local_buffer(
+        //     renderer.graphics_queue,
+        //     vk::BufferUsageFlags::VERTEX_BUFFER,
+        //     &vertices,
+        // );
+
+        // let index_buffer = renderer.transient_command_pool.create_device_local_buffer(
+        //     renderer.graphics_queue,
+        //     vk::BufferUsageFlags::INDEX_BUFFER,
+        //     &indices,
+        // );
+
+        Some(Mesh {
+            primitives: all_primitive_info,
+        })
+    } else {
+        None
+    }
+}
+
+fn determine_transform(node: &gltf::Node) -> glm::Mat4 {
+    let transform: Vec<f32> = node
+        .transform()
+        .matrix()
+        .iter()
+        .flat_map(|array| array.iter())
+        .cloned()
+        .collect();
+    glm::make_mat4(&transform.as_slice())
+}
+
+fn load_primitive(
+    primitive: &gltf::Primitive,
+    buffers: &[gltf::buffer::Data],
+) -> (Vec<f32>, Vec<u32>, Primitive) {
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+
+    // for (descriptor_set, uniform_buffer) in
+    //     descriptor_sets.iter().zip(uniform_buffers.iter())
+    // {
+    //     Self::update_primitive_descriptor_set(
+    //         &renderer,
+    //         *descriptor_set,
+    //         uniform_buffer,
+    //         primitive.material(),
+    //         &textures,
+    //     );
+    // }
+
+    // Start reading primitive data
+    let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+
+    let positions = reader
+        .read_positions()
+        .expect(
+            "Failed to read any vertex positions from the model. Vertex positions are required.",
+        )
+        .map(glm::Vec3::from)
+        .collect::<Vec<_>>();
+
+    let normals = reader
+        .read_normals()
+        .map_or(vec![glm::vec3(0.0, 0.0, 0.0); positions.len()], |normals| {
+            normals.map(glm::Vec3::from).collect::<Vec<_>>()
+        });
+
+    let convert_coords = |coords: gltf::mesh::util::ReadTexCoords<'_>| -> Vec<glm::Vec2> {
+        coords.into_f32().map(glm::Vec2::from).collect::<Vec<_>>()
+    };
+    let tex_coords_0 = reader
+        .read_tex_coords(0)
+        .map_or(vec![glm::vec2(0.0, 0.0); positions.len()], convert_coords);
+
+    // TODO: Add checks to see if normals and tex_coords are even available
+    for ((position, normal), tex_coord_0) in positions
+        .iter()
+        .zip(normals.iter())
+        .zip(tex_coords_0.iter())
+    {
+        vertices.extend_from_slice(position.as_slice());
+        vertices.extend_from_slice(normal.as_slice());
+        vertices.extend_from_slice(tex_coord_0.as_slice());
+    }
+
+    let first_index = indices.len() as u32;
+
+    let primitive_indices = reader
+        .read_indices()
+        .map(|read_indices| read_indices.into_u32().collect::<Vec<_>>())
+        .expect("Failed to read indices!");
+    indices.extend_from_slice(&primitive_indices);
+
+    let number_of_indices = primitive_indices.len() as u32;
+
+    (
+        vertices,
+        indices,
+        Primitive {
+            first_index,
+            number_of_indices,
+            material_index: primitive.material().index(),
+        },
+    )
+}
+
+pub fn path_between_nodes(
+    starting_node_index: NodeIndex,
+    node_index: NodeIndex,
+    graph: &NodeGraph,
+) -> Vec<NodeIndex> {
+    let mut indices = Vec::new();
+    let mut dfs = Dfs::new(&graph, starting_node_index);
+    while let Some(current_node_index) = dfs.next(&graph) {
+        let mut incoming_walker = graph
+            .neighbors_directed(current_node_index, Incoming)
+            .detach();
+        let mut outgoing_walker = graph
+            .neighbors_directed(current_node_index, Outgoing)
+            .detach();
+
+        if let Some(parent) = incoming_walker.next_node(&graph) {
+            while let Some(last_index) = indices.last() {
+                if *last_index == parent {
+                    break;
+                }
+                // Discard indices for transforms that are no longer needed
+                indices.pop();
+            }
+        }
+
+        indices.push(current_node_index);
+
+        if node_index == current_node_index {
+            break;
+        }
+
+        // If the node has no children, don't store the index
+        if outgoing_walker.next(&graph).is_none() {
+            indices.pop();
+        }
+    }
+    indices
+}
+
+pub fn calculate_global_transform(node_index: NodeIndex, graph: &NodeGraph) -> glm::Mat4 {
+    let indices = path_between_nodes(NodeIndex::new(0), node_index, graph);
+    indices
+        .iter()
+        .fold(glm::Mat4::identity(), |transform, index| {
+            transform * graph[*index].local_transform * graph[*index].animation_transform.matrix()
+        })
 }
