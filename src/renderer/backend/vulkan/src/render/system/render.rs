@@ -64,29 +64,30 @@ pub fn render_system() -> Box<dyn Runnable> {
                 &glm::vec3(0.0, 1.0, 0.0),
             );
 
-            for transform in query.iter(&mut world) {
-                // TODO: Keep track of the global transform using the gltf document
-                // and render meshes at the correct transform
-                // TODO: Go through all assets
-                let asset_transform = transform.translate * transform.rotate * transform.scale;
-                let asset_index = 0;
-                let vulkan_gltf_asset =
-                    &renderer.pipeline_gltf.as_ref().unwrap().assets[asset_index];
-                for (scene_index, scene) in vulkan_gltf_asset.gltf.scenes().enumerate() {
-                    for node in scene.nodes() {
-                        visit_node(
-                            &node,
-                            glm::Mat4::identity(),
-                            &vulkan_gltf_asset,
-                            asset_transform,
-                            image_index as usize,
-                            view,
-                            projection,
-                            scene_index,
-                        );
-                    }
-                }
-            }
+            // FIXME
+            // for transform in query.iter(&mut world) {
+            //     // TODO: Keep track of the global transform using the gltf document
+            //     // and render meshes at the correct transform
+            //     // TODO: Go through all assets
+            //     let asset_transform = transform.translate * transform.rotate * transform.scale;
+            //     let asset_index = 0;
+            //     let vulkan_gltf_asset =
+            //         &renderer.pipeline_gltf.as_ref().unwrap().assets[asset_index];
+            //     for (scene_index, scene) in vulkan_gltf_asset.gltf.scenes().enumerate() {
+            //         for node in scene.nodes() {
+            //             visit_node(
+            //                 &node,
+            //                 glm::Mat4::identity(),
+            //                 &vulkan_gltf_asset,
+            //                 asset_transform,
+            //                 image_index as usize,
+            //                 view,
+            //                 projection,
+            //                 scene_index,
+            //             );
+            //         }
+            //     }
+            // }
 
             let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
             renderer.command_pool.submit_command_buffer(
@@ -121,52 +122,53 @@ pub fn render_system() -> Box<dyn Runnable> {
         })
 }
 
-fn visit_node(
-    node: &gltf::Node,
-    parent_global_transform: glm::Mat4,
-    vulkan_gltf_asset: &VulkanGltfAsset,
-    asset_transform: glm::Mat4,
-    image_index: usize,
-    view: glm::Mat4,
-    projection: glm::Mat4,
-    scene_index: usize,
-) {
-    let transform: Vec<f32> = node
-        .transform()
-        .matrix()
-        .iter()
-        .flat_map(|array| array.iter())
-        .cloned()
-        .collect();
-    let local_transform = glm::make_mat4(&transform.as_slice());
-    let global_transform = parent_global_transform * local_transform;
+// FIXME
+// fn visit_node(
+//     node: &gltf::Node,
+//     parent_global_transform: glm::Mat4,
+//     vulkan_gltf_asset: &VulkanGltfAsset,
+//     asset_transform: glm::Mat4,
+//     image_index: usize,
+//     view: glm::Mat4,
+//     projection: glm::Mat4,
+//     scene_index: usize,
+// ) {
+//     let transform: Vec<f32> = node
+//         .transform()
+//         .matrix()
+//         .iter()
+//         .flat_map(|array| array.iter())
+//         .cloned()
+//         .collect();
+//     let local_transform = glm::make_mat4(&transform.as_slice());
+//     let global_transform = parent_global_transform * local_transform;
 
-    if node.mesh().is_some() {
-        let vulkan_mesh = vulkan_gltf_asset.meshes[scene_index]
-            .iter()
-            .find(|mesh| mesh.node_index == node.index())
-            .expect("Could not find corresponding mesh!");
+//     if node.mesh().is_some() {
+//         let vulkan_mesh = vulkan_gltf_asset.meshes[scene_index]
+//             .iter()
+//             .find(|mesh| mesh.node_index == node.index())
+//             .expect("Could not find corresponding mesh!");
 
-        let ubo = UniformBufferObject {
-            model: asset_transform * global_transform,
-            view,
-            projection,
-        };
-        let ubos = [ubo];
-        let buffer = &vulkan_mesh.uniform_buffers[image_index];
-        buffer.upload_to_buffer(&ubos, 0);
-    }
+//         let ubo = UniformBufferObject {
+//             model: asset_transform * global_transform,
+//             view,
+//             projection,
+//         };
+//         let ubos = [ubo];
+//         let buffer = &vulkan_mesh.uniform_buffers[image_index];
+//         buffer.upload_to_buffer(&ubos, 0);
+//     }
 
-    for child_node in node.children() {
-        visit_node(
-            &child_node,
-            global_transform,
-            vulkan_gltf_asset,
-            asset_transform,
-            image_index,
-            view,
-            projection,
-            scene_index,
-        )
-    }
-}
+//     for child_node in node.children() {
+//         visit_node(
+//             &child_node,
+//             global_transform,
+//             vulkan_gltf_asset,
+//             asset_transform,
+//             image_index,
+//             view,
+//             projection,
+//             scene_index,
+//         )
+//     }
+// }

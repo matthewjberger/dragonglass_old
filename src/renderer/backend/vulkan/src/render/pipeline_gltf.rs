@@ -1,5 +1,5 @@
 use crate::{
-    core::ImageView,
+    core::{ImageView, VulkanContext},
     render::{GraphicsPipeline, Renderer, UniformBufferObject},
     resource::{
         Buffer, DescriptorPool, DescriptorSetLayout, Dimension, PipelineLayout, Sampler, Shader,
@@ -18,10 +18,8 @@ pub struct PushConstantBlockMaterial {
 }
 
 pub struct VulkanGltfAsset {
-    pub gltf: gltf::Document,
     pub textures: Vec<VulkanTexture>,
-    pub meshes: Vec<Vec<Mesh>>,
-    pub descriptor_pool: DescriptorPool,
+    pub meshes: Vec<Mesh>,
 }
 
 pub struct VulkanTexture {
@@ -36,7 +34,6 @@ pub struct Mesh {
     pub primitives: Vec<Primitive>,
     pub uniform_buffers: Vec<Buffer>,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
-    pub node_index: usize,
 }
 
 pub struct Primitive {
@@ -270,9 +267,10 @@ impl GltfPipeline {
             assets: Vec::new(),
         };
 
-        for asset_name in asset_names.iter() {
-            gltf_pipeline.load_gltf_asset(&renderer, &asset_name);
-        }
+        // FIXME
+        // for asset_name in asset_names.iter() {
+        //     gltf_pipeline.asset(&renderer, &asset_name);
+        // }
 
         gltf_pipeline.create_gltf_render_passes(&mut renderer);
 
@@ -310,19 +308,20 @@ impl GltfPipeline {
         command_buffer_index: usize,
     ) {
         self.assets.iter().for_each(|asset| {
-            for (scene_index, scene) in asset.gltf.scenes().enumerate() {
-                let meshes = &asset.meshes[scene_index];
-                for node in scene.nodes() {
-                    self.draw_mesh(
-                        &renderer,
-                        &node,
-                        scene_index as u32,
-                        &meshes,
-                        command_buffer,
-                        command_buffer_index,
-                    );
-                }
-            }
+            // FIXME
+            // for (scene_index, scene) in asset.gltf.scenes().enumerate() {
+            //     let meshes = &asset.meshes[scene_index];
+            //     for node in scene.nodes() {
+            //         self.draw_mesh(
+            //             &renderer,
+            //             &node,
+            //             scene_index as u32,
+            //             &meshes,
+            //             command_buffer,
+            //             command_buffer_index,
+            //         );
+            //     }
+            // }
         });
     }
 
@@ -337,88 +336,89 @@ impl GltfPipeline {
     ) {
         let offsets = [0];
         if let Some(mesh) = node.mesh() {
-            let mesh_info = meshes
-                .iter()
-                .find(|mesh| mesh.node_index == node.index())
-                .expect("Could not find corresponding mesh!");
+            // FIXME
+            // let mesh_info = meshes
+            //     .iter()
+            //     .find(|mesh| mesh.node_index == node.index())
+            //     .expect("Could not find corresponding mesh!");
 
-            let vertex_buffers = [mesh_info.vertex_buffer.buffer()];
-            unsafe {
-                renderer
-                    .context
-                    .logical_device()
-                    .logical_device()
-                    .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
+            // let vertex_buffers = [mesh_info.vertex_buffer.buffer()];
+            // unsafe {
+            //     renderer
+            //         .context
+            //         .logical_device()
+            //         .logical_device()
+            //         .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
 
-                renderer
-                    .context
-                    .logical_device()
-                    .logical_device()
-                    .cmd_bind_index_buffer(
-                        command_buffer,
-                        mesh_info.index_buffer.buffer(),
-                        0,
-                        vk::IndexType::UINT32,
-                    );
+            //     renderer
+            //         .context
+            //         .logical_device()
+            //         .logical_device()
+            //         .cmd_bind_index_buffer(
+            //             command_buffer,
+            //             mesh_info.index_buffer.buffer(),
+            //             0,
+            //             vk::IndexType::UINT32,
+            //         );
 
-                let descriptor_set = mesh_info.descriptor_sets[command_buffer_index];
+            //     let descriptor_set = mesh_info.descriptor_sets[command_buffer_index];
 
-                renderer
-                    .context
-                    .logical_device()
-                    .logical_device()
-                    .cmd_bind_descriptor_sets(
-                        command_buffer,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        self.pipeline.layout(),
-                        0,
-                        &[descriptor_set],
-                        &[],
-                    );
-            }
+            //     renderer
+            //         .context
+            //         .logical_device()
+            //         .logical_device()
+            //         .cmd_bind_descriptor_sets(
+            //             command_buffer,
+            //             vk::PipelineBindPoint::GRAPHICS,
+            //             self.pipeline.layout(),
+            //             0,
+            //             &[descriptor_set],
+            //             &[],
+            //         );
+            // }
 
-            for (primitive, primitive_info) in mesh.primitives().zip(mesh_info.primitives.iter()) {
-                let mut material = PushConstantBlockMaterial {
-                    base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
-                    color_texture_set: -1,
-                };
+            // for (primitive, primitive_info) in mesh.primitives().zip(mesh_info.primitives.iter()) {
+            //     let mut material = PushConstantBlockMaterial {
+            //         base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
+            //         color_texture_set: -1,
+            //     };
 
-                let primitive_material = primitive.material();
-                let pbr = primitive_material.pbr_metallic_roughness();
+            //     let primitive_material = primitive.material();
+            //     let pbr = primitive_material.pbr_metallic_roughness();
 
-                if pbr.base_color_texture().is_some() {
-                    material.color_texture_set = 0;
-                } else {
-                    material.base_color_factor = glm::Vec4::from(pbr.base_color_factor());
-                }
+            //     if pbr.base_color_texture().is_some() {
+            //         material.color_texture_set = 0;
+            //     } else {
+            //         material.base_color_factor = glm::Vec4::from(pbr.base_color_factor());
+            //     }
 
-                unsafe {
-                    renderer
-                        .context
-                        .logical_device()
-                        .logical_device()
-                        .cmd_push_constants(
-                            command_buffer,
-                            self.pipeline.layout(),
-                            vk::ShaderStageFlags::FRAGMENT,
-                            0,
-                            Self::byte_slice_from(&material),
-                        );
+            //     unsafe {
+            //         renderer
+            //             .context
+            //             .logical_device()
+            //             .logical_device()
+            //             .cmd_push_constants(
+            //                 command_buffer,
+            //                 self.pipeline.layout(),
+            //                 vk::ShaderStageFlags::FRAGMENT,
+            //                 0,
+            //                 Self::byte_slice_from(&material),
+            //             );
 
-                    renderer
-                        .context
-                        .logical_device()
-                        .logical_device()
-                        .cmd_draw_indexed(
-                            command_buffer,
-                            primitive_info.number_of_indices,
-                            1,
-                            primitive_info.first_index,
-                            0,
-                            0,
-                        );
-                }
-            }
+            //         renderer
+            //             .context
+            //             .logical_device()
+            //             .logical_device()
+            //             .cmd_draw_indexed(
+            //                 command_buffer,
+            //                 primitive_info.number_of_indices,
+            //                 1,
+            //                 primitive_info.first_index,
+            //                 0,
+            //                 0,
+            //             );
+            //     }
+            // }
         }
 
         for child_node in node.children() {
@@ -525,19 +525,80 @@ impl GltfPipeline {
         }
     }
 
-    pub fn load_gltf_asset(&mut self, renderer: &Renderer, asset_name: &str) {
-        let (gltf, buffers, asset_textures) =
-            gltf::import(&asset_name).expect("Couldn't import file!");
+    // TODO: Move this to a seperate class or even the mod.rs file
+    unsafe fn byte_slice_from<T: Sized>(data: &T) -> &[u8] {
+        let data_ptr = (data as *const T) as *const u8;
+        slice::from_raw_parts(data_ptr, std::mem::size_of::<T>())
+    }
+}
 
-        let textures = self.load_textures(&renderer, &asset_textures);
+struct GltfAsset {
+    gltf: gltf::Document,
+    buffers: Vec<gltf::buffer::Data>,
+    textures: Vec<gltf::image::Data>,
+}
 
+impl GltfAsset {
+    fn new(asset_name: &str) -> Self {
+        let (gltf, buffers, textures) = gltf::import(&asset_name).expect("Couldn't import file!");
+        Self {
+            gltf,
+            buffers,
+            textures,
+        }
+    }
+}
+
+struct GltfAssetCache {
+    uniform_buffer_size: vk::DeviceSize,
+    number_of_swapchain_images: u32,
+    assets: Vec<VulkanGltfAsset>,
+    descriptor_pool: DescriptorPool,
+}
+
+impl GltfAssetCache {
+    pub fn new(renderer: &Renderer, asset_names: &[String]) -> Self {
+        let raw_assets = asset_names
+            .iter()
+            .map(|asset_name| GltfAsset::new(asset_name))
+            .collect::<Vec<_>>();
+
+        // TODO: Move this somewhere so it isn't coupled to the asset cache
         let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
-        let number_of_meshes = gltf.meshes().len() as u32;
-        let number_of_materials = gltf.materials().len() as u32;
         let number_of_swapchain_images = renderer.vulkan_swapchain.swapchain.images().len() as u32;
-        let number_of_samplers = number_of_materials * number_of_swapchain_images;
+        let descriptor_pool = Self::create_descriptor_pool(&renderer, &raw_assets);
 
-        // TODO: Move descriptor pool creation to method
+        let mut cache = Self {
+            assets: Vec::new(),
+            uniform_buffer_size,
+            number_of_swapchain_images,
+            descriptor_pool,
+        };
+
+        let mut assets = Vec::new();
+        for asset in raw_assets.iter() {
+            assets.push(VulkanGltfAsset::from_gltf(
+                &renderer,
+                &cache.descriptor_pool,
+                &asset,
+            ));
+        }
+        cache.assets = assets;
+        cache
+    }
+
+    fn create_descriptor_pool(renderer: &Renderer, raw_assets: &[GltfAsset]) -> DescriptorPool {
+        let mut number_of_meshes = 0;
+        let mut number_of_materials = 0;
+        let mut number_of_samplers = 0;
+        let number_of_swapchain_images = renderer.vulkan_swapchain.swapchain.images().len() as u32;
+
+        for asset in raw_assets.iter() {
+            number_of_meshes += asset.gltf.meshes().len() as u32;
+            number_of_materials += asset.gltf.materials().len() as u32;
+            number_of_samplers += number_of_materials * number_of_swapchain_images;
+        }
+
         let ubo_pool_size = vk::DescriptorPoolSize {
             ty: vk::DescriptorType::UNIFORM_BUFFER,
             descriptor_count: (4 + number_of_meshes) * number_of_swapchain_images,
@@ -555,167 +616,27 @@ impl GltfPipeline {
             .max_sets((2 + number_of_materials + number_of_meshes) * number_of_swapchain_images)
             .build();
 
-        let descriptor_pool = DescriptorPool::new(renderer.context.clone(), pool_info);
-
-        // TODO: Refactor this to something cleaner
-        let mut asset_meshes = Vec::new();
-        for scene in gltf.scenes() {
-            let mut meshes = Vec::new();
-            for node in scene.nodes() {
-                self.visit_node(
-                    &renderer,
-                    &node,
-                    &textures,
-                    uniform_buffer_size,
-                    number_of_swapchain_images,
-                    &descriptor_pool,
-                    &buffers,
-                    &mut meshes,
-                );
-            }
-            asset_meshes.push(meshes);
-        }
-
-        let loaded_asset = VulkanGltfAsset {
-            gltf,
-            textures,
-            meshes: asset_meshes,
-            descriptor_pool,
-        };
-
-        self.assets.push(loaded_asset);
+        DescriptorPool::new(renderer.context.clone(), pool_info)
     }
+}
 
-    pub fn visit_node(
-        &mut self,
+impl VulkanGltfAsset {
+    pub fn from_gltf(
         renderer: &Renderer,
-        node: &gltf::Node,
-        textures: &[VulkanTexture],
-        uniform_buffer_size: vk::DeviceSize,
-        number_of_swapchain_images: u32,
         descriptor_pool: &DescriptorPool,
-        buffers: &[gltf::buffer::Data],
-        mut meshes: &mut Vec<Mesh>,
-    ) {
-        if let Some(mesh) = node.mesh() {
-            let mut vertices = Vec::new();
-            let mut indices = Vec::new();
-
-            let uniform_buffers = (0..number_of_swapchain_images)
-                .map(|_| {
-                    Buffer::new(
-                        renderer.context.clone(),
-                        uniform_buffer_size,
-                        vk::BufferUsageFlags::UNIFORM_BUFFER,
-                        vk::MemoryPropertyFlags::HOST_VISIBLE
-                            | vk::MemoryPropertyFlags::HOST_COHERENT,
-                    )
-                })
-                .collect::<Vec<_>>();
-
-            let descriptor_sets = descriptor_pool.allocate_descriptor_sets(
-                self.pipeline.descriptor_set_layout(),
-                number_of_swapchain_images as _,
-            );
-
-            let mut all_mesh_primitives = Vec::new();
-            for primitive in mesh.primitives() {
-                for (descriptor_set, uniform_buffer) in
-                    descriptor_sets.iter().zip(uniform_buffers.iter())
-                {
-                    Self::update_primitive_descriptor_set(
-                        &renderer,
-                        *descriptor_set,
-                        uniform_buffer,
-                        primitive.material(),
-                        &textures,
-                    );
-                }
-
-                // Start reading primitive data
-                let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
-
-                let positions = reader
-                    .read_positions()
-                    .expect("Failed to read any vertex positions from the model. Vertex positions are required.")
-                    .map(glm::Vec3::from)
-                    .collect::<Vec<_>>();
-
-                let normals = reader
-                    .read_normals()
-                    .map_or(vec![glm::vec3(0.0, 0.0, 0.0); positions.len()], |normals| {
-                        normals.map(glm::Vec3::from).collect::<Vec<_>>()
-                    });
-
-                let convert_coords =
-                    |coords: gltf::mesh::util::ReadTexCoords<'_>| -> Vec<glm::Vec2> {
-                        coords.into_f32().map(glm::Vec2::from).collect::<Vec<_>>()
-                    };
-                let tex_coords_0 = reader
-                    .read_tex_coords(0)
-                    .map_or(vec![glm::vec2(0.0, 0.0); positions.len()], convert_coords);
-
-                // TODO: Add checks to see if normals and tex_coords are even available
-                for ((position, normal), tex_coord_0) in positions
-                    .iter()
-                    .zip(normals.iter())
-                    .zip(tex_coords_0.iter())
-                {
-                    vertices.extend_from_slice(position.as_slice());
-                    vertices.extend_from_slice(normal.as_slice());
-                    vertices.extend_from_slice(tex_coord_0.as_slice());
-                }
-
-                let first_index = indices.len() as u32;
-
-                let primitive_indices = reader
-                    .read_indices()
-                    .map(|read_indices| read_indices.into_u32().collect::<Vec<_>>())
-                    .expect("Failed to read indices!");
-                indices.extend_from_slice(&primitive_indices);
-
-                let number_of_indices = primitive_indices.len() as u32;
-
-                all_mesh_primitives.push(Primitive {
-                    first_index,
-                    number_of_indices,
-                });
-            }
-
-            let vertex_buffer = renderer.transient_command_pool.create_device_local_buffer(
-                renderer.graphics_queue,
-                vk::BufferUsageFlags::VERTEX_BUFFER,
-                &vertices,
-            );
-
-            let index_buffer = renderer.transient_command_pool.create_device_local_buffer(
-                renderer.graphics_queue,
-                vk::BufferUsageFlags::INDEX_BUFFER,
-                &indices,
-            );
-
-            meshes.push(Mesh {
-                primitives: all_mesh_primitives,
-                uniform_buffers,
-                descriptor_sets,
-                node_index: node.index(),
-                vertex_buffer,
-                index_buffer,
-            });
-        }
-
-        for child_node in node.children() {
-            self.visit_node(
-                &renderer,
-                &child_node,
-                &textures,
-                uniform_buffer_size,
-                number_of_swapchain_images,
-                &descriptor_pool,
-                &buffers,
-                &mut meshes,
-            );
-        }
+        asset: &GltfAsset,
+    ) -> Self {
+        let mut prepared_asset = Self {
+            textures: Vec::new(),
+            meshes: Vec::new(),
+        };
+        let textures = prepared_asset.load_textures(&renderer, &asset.textures);
+        let meshes = asset
+            .gltf
+            .meshes()
+            .map(|mesh| prepared_asset.prepare_mesh(&renderer, &mesh, &textures, &descriptor_pool))
+            .collect::<Vec<_>>();
+        VulkanGltfAsset { textures, meshes }
     }
 
     fn load_textures(
@@ -846,6 +767,141 @@ impl GltfPipeline {
         textures
     }
 
+    fn prepare_mesh(
+        &mut self,
+        renderer: &Renderer,
+        mesh: &gltf::Mesh,
+        textures: &[VulkanTexture],
+        descriptor_pool: &DescriptorPool,
+    ) -> Mesh {
+        let mut vertices: Vec<f32> = Vec::new();
+        let mut indices: Vec<u32> = Vec::new();
+
+        let uniform_buffers = (0..self.number_of_swapchain_images)
+            .map(|_| {
+                Buffer::new(
+                    renderer.context.clone(),
+                    self.uniform_buffer_size,
+                    vk::BufferUsageFlags::UNIFORM_BUFFER,
+                    vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let pipeline = &renderer
+            .pipeline_gltf
+            .as_ref()
+            .expect("Failed to get gltf pipeline!")
+            .pipeline;
+
+        let descriptor_sets = self.descriptor_pool.allocate_descriptor_sets(
+            pipeline.descriptor_set_layout(),
+            self.number_of_swapchain_images as _,
+        );
+
+        let mut all_mesh_primitives = Vec::new();
+        for primitive in mesh.primitives() {
+            self.prepare_primitive(
+                &renderer,
+                &uniform_buffers,
+                &descriptor_sets,
+                &primitive,
+                &textures,
+            );
+        }
+
+        let vertex_buffer = renderer.transient_command_pool.create_device_local_buffer(
+            renderer.graphics_queue,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            &vertices,
+        );
+
+        let index_buffer = renderer.transient_command_pool.create_device_local_buffer(
+            renderer.graphics_queue,
+            vk::BufferUsageFlags::INDEX_BUFFER,
+            &indices,
+        );
+
+        Mesh {
+            primitives: all_mesh_primitives,
+            uniform_buffers,
+            descriptor_sets,
+            vertex_buffer,
+            index_buffer,
+        }
+    }
+
+    fn prepare_primitive(
+        &mut self,
+        renderer: &Renderer,
+        descriptor_sets: &[vk::DescriptorSet],
+        uniform_buffers: &[Buffer],
+        primitive: &gltf::Primitive,
+        textures: &[VulkanTexture],
+        buffers: &[gltf::buffer::Data],
+    ) {
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+
+        for (descriptor_set, uniform_buffer) in descriptor_sets.iter().zip(uniform_buffers.iter()) {
+            Self::update_primitive_descriptor_set(
+                &renderer,
+                *descriptor_set,
+                uniform_buffer,
+                primitive.material(),
+                &textures,
+            );
+        }
+
+        // Start reading primitive data
+        let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
+
+        let positions = reader
+            .read_positions()
+            .expect("Failed to read any vertex positions from the model. Vertex positions are required.")
+            .map(glm::Vec3::from)
+            .collect::<Vec<_>>();
+
+        let normals = reader
+            .read_normals()
+            .map_or(vec![glm::vec3(0.0, 0.0, 0.0); positions.len()], |normals| {
+                normals.map(glm::Vec3::from).collect::<Vec<_>>()
+            });
+
+        let convert_coords = |coords: gltf::mesh::util::ReadTexCoords<'_>| -> Vec<glm::Vec2> {
+            coords.into_f32().map(glm::Vec2::from).collect::<Vec<_>>()
+        };
+        let tex_coords_0 = reader
+            .read_tex_coords(0)
+            .map_or(vec![glm::vec2(0.0, 0.0); positions.len()], convert_coords);
+
+        // TODO: Add checks to see if normals and tex_coords are even available
+        for ((position, normal), tex_coord_0) in positions
+            .iter()
+            .zip(normals.iter())
+            .zip(tex_coords_0.iter())
+        {
+            vertices.extend_from_slice(position.as_slice());
+            vertices.extend_from_slice(normal.as_slice());
+            vertices.extend_from_slice(tex_coord_0.as_slice());
+        }
+
+        let first_index = indices.len() as u32;
+
+        let primitive_indices = reader
+            .read_indices()
+            .map(|read_indices| read_indices.into_u32().collect::<Vec<_>>())
+            .expect("Failed to read indices!");
+        indices.extend_from_slice(&primitive_indices);
+
+        let number_of_indices = primitive_indices.len() as u32;
+
+        Primitive {
+            first_index,
+            number_of_indices,
+        }
+    }
+
     fn update_primitive_descriptor_set(
         renderer: &Renderer,
         descriptor_set: vk::DescriptorSet,
@@ -923,11 +979,5 @@ impl GltfPipeline {
             Format::R8G8B8 => vk::Format::R8G8B8_UNORM,
             Format::B8G8R8 => vk::Format::B8G8R8_UNORM,
         }
-    }
-
-    // TODO: Move this to a seperate class or even the mod.rs file
-    unsafe fn byte_slice_from<T: Sized>(data: &T) -> &[u8] {
-        let data_ptr = (data as *const T) as *const u8;
-        slice::from_raw_parts(data_ptr, std::mem::size_of::<T>())
     }
 }
