@@ -1,8 +1,8 @@
 use dragonglass_backend_vulkan::render::{
     component::{GltfAssetComponent, TransformComponent},
-    GltfPipeline,
-    renderer::{Renderer},
+    renderer::Renderer,
     system::render_system,
+    GltfPipeline,
 };
 use legion::prelude::*;
 use nalgebra_glm as glm;
@@ -65,7 +65,10 @@ impl App {
             .write_resource::<Renderer>()
             .with_query(<Read<GltfAssetComponent>>::query())
             .build(|_, mut world, mut renderer, query| {
-                let asset_names = query.iter(&mut world).map(|asset| asset.asset_name.to_string()).collect::<Vec<_>>();
+                let asset_names = query
+                    .iter(&mut world)
+                    .map(|asset| asset.asset_name.to_string())
+                    .collect::<Vec<_>>();
                 let pipeline_gltf = GltfPipeline::new(&mut renderer, &asset_names);
                 renderer.pipeline_gltf = Some(pipeline_gltf);
             });
@@ -110,8 +113,7 @@ impl App {
             vec![(
                 GltfAssetComponent {
                     //asset_name: "examples/assets/models/FlightHelmet/glTF/FlightHelmet.gltf"
-                    asset_name: "examples/assets/models/Buggy.glb"
-                        .to_string(),
+                    asset_name: "examples/assets/models/Buggy.glb".to_string(),
                 },
                 TransformComponent::default(),
             )],
