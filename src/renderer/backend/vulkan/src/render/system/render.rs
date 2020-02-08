@@ -1,5 +1,6 @@
 use crate::{
     render::{component::TransformComponent, system::UniformBufferObject, Renderer},
+    resource::calculate_global_transform,
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
 use ash::vk;
@@ -73,10 +74,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                             return;
                         }
                         let mesh_info = &vulkan_gltf_asset.meshes[&scene_index][&graph_index];
-                        let global_transform =
-                            crate::render::pipeline_gltf::calculate_global_transform(
-                                node_index, &graph,
-                            );
+                        let global_transform = calculate_global_transform(node_index, &graph);
 
                         let ubo = UniformBufferObject {
                             model: asset_transform * global_transform,
