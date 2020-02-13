@@ -48,16 +48,15 @@ pub struct VulkanTexture {
 }
 
 pub struct Mesh {
-    pub vertex_buffer: Buffer,
-    pub index_buffer: Buffer,
     pub primitives: Vec<Primitive>,
     pub uniform_buffers: Vec<Buffer>,
     pub descriptor_sets: Vec<vk::DescriptorSet>,
 }
 
 pub struct Primitive {
+    pub vertex_buffer: Buffer,
+    pub index_buffer: Buffer,
     pub number_of_indices: u32,
-    pub first_index: u32,
     pub material_index: Option<usize>,
 }
 
@@ -333,29 +332,6 @@ impl GltfPipeline {
                     let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
                     while let Some(node_index) = dfs.next(&graph) {
                         if let Some(mesh) = graph[node_index].mesh.as_ref() {
-                            let vertex_buffers = [mesh.vertex_buffer.buffer()];
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_bind_vertex_buffers(
-                                    command_buffer,
-                                    0,
-                                    &vertex_buffers,
-                                    &offsets,
-                                );
-
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_bind_index_buffer(
-                                    command_buffer,
-                                    mesh.index_buffer.buffer(),
-                                    0,
-                                    vk::IndexType::UINT32,
-                                );
-
                             let descriptor_set = mesh.descriptor_sets[command_buffer_index];
 
                             renderer
@@ -372,6 +348,29 @@ impl GltfPipeline {
                                 );
 
                             for primitive in mesh.primitives.iter() {
+                                let vertex_buffers = [primitive.vertex_buffer.buffer()];
+                                renderer
+                                    .context
+                                    .logical_device()
+                                    .logical_device()
+                                    .cmd_bind_vertex_buffers(
+                                        command_buffer,
+                                        0,
+                                        &vertex_buffers,
+                                        &offsets,
+                                    );
+
+                                renderer
+                                    .context
+                                    .logical_device()
+                                    .logical_device()
+                                    .cmd_bind_index_buffer(
+                                        command_buffer,
+                                        primitive.index_buffer.buffer(),
+                                        0,
+                                        vk::IndexType::UINT32,
+                                    );
+
                                 let mut material = PushConstantBlockMaterial {
                                     base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
                                     color_texture_set: -1,
@@ -415,7 +414,7 @@ impl GltfPipeline {
                                         command_buffer,
                                         primitive.number_of_indices,
                                         1,
-                                        primitive.first_index,
+                                        0,
                                         0,
                                         0,
                                     );
@@ -664,9 +663,6 @@ impl GltfPipeline {
         let number_of_swapchain_images = renderer.vulkan_swapchain.swapchain.images().len() as u32;
 
         if let Some(mesh) = node.mesh() {
-            let mut vertices = Vec::new();
-            let mut indices = Vec::new();
-
             let uniform_buffers = (0..number_of_swapchain_images)
                 .map(|_| {
                     Buffer::new(
@@ -695,6 +691,9 @@ impl GltfPipeline {
                         &textures,
                     );
                 }
+
+                let mut vertices = Vec::new();
+                let mut indices = Vec::new();
 
                 // Start reading primitive data
                 let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
@@ -730,8 +729,6 @@ impl GltfPipeline {
                     vertices.extend_from_slice(tex_coord_0.as_slice());
                 }
 
-                let first_index = indices.len() as u32;
-
                 let primitive_indices = reader
                     .read_indices()
                     .map(|read_indices| read_indices.into_u32().collect::<Vec<_>>())
@@ -740,31 +737,30 @@ impl GltfPipeline {
 
                 let number_of_indices = primitive_indices.len() as u32;
 
+                let vertex_buffer = renderer.transient_command_pool.create_device_local_buffer(
+                    renderer.graphics_queue,
+                    vk::BufferUsageFlags::VERTEX_BUFFER,
+                    &vertices,
+                );
+
+                let index_buffer = renderer.transient_command_pool.create_device_local_buffer(
+                    renderer.graphics_queue,
+                    vk::BufferUsageFlags::INDEX_BUFFER,
+                    &indices,
+                );
+
                 all_mesh_primitives.push(Primitive {
-                    first_index,
                     number_of_indices,
                     material_index: primitive.material().index(),
+                    vertex_buffer,
+                    index_buffer,
                 });
             }
-
-            let vertex_buffer = renderer.transient_command_pool.create_device_local_buffer(
-                renderer.graphics_queue,
-                vk::BufferUsageFlags::VERTEX_BUFFER,
-                &vertices,
-            );
-
-            let index_buffer = renderer.transient_command_pool.create_device_local_buffer(
-                renderer.graphics_queue,
-                vk::BufferUsageFlags::INDEX_BUFFER,
-                &indices,
-            );
 
             Some(Mesh {
                 primitives: all_mesh_primitives,
                 uniform_buffers,
                 descriptor_sets,
-                vertex_buffer,
-                index_buffer,
             })
         } else {
             None
