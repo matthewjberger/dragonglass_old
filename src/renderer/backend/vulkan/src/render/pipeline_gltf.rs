@@ -333,95 +333,92 @@ impl GltfPipeline {
                     let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
                     while let Some(node_index) = dfs.next(&graph) {
                         if let Some(mesh) = graph[node_index].mesh.as_ref() {
-                            for primitive_info in mesh.primitives.iter() {
-                                let vertex_buffers = [mesh.vertex_buffer.buffer()];
+                            let vertex_buffers = [mesh.vertex_buffer.buffer()];
+                            renderer
+                                .context
+                                .logical_device()
+                                .logical_device()
+                                .cmd_bind_vertex_buffers(
+                                    command_buffer,
+                                    0,
+                                    &vertex_buffers,
+                                    &offsets,
+                                );
 
-                                renderer
-                                    .context
-                                    .logical_device()
-                                    .logical_device()
-                                    .cmd_bind_vertex_buffers(
-                                        command_buffer,
-                                        0,
-                                        &vertex_buffers,
-                                        &offsets,
-                                    );
+                            renderer
+                                .context
+                                .logical_device()
+                                .logical_device()
+                                .cmd_bind_index_buffer(
+                                    command_buffer,
+                                    mesh.index_buffer.buffer(),
+                                    0,
+                                    vk::IndexType::UINT32,
+                                );
 
-                                renderer
-                                    .context
-                                    .logical_device()
-                                    .logical_device()
-                                    .cmd_bind_index_buffer(
-                                        command_buffer,
-                                        mesh.index_buffer.buffer(),
-                                        0,
-                                        vk::IndexType::UINT32,
-                                    );
+                            let descriptor_set = mesh.descriptor_sets[command_buffer_index];
 
-                                let descriptor_set = mesh.descriptor_sets[command_buffer_index];
+                            renderer
+                                .context
+                                .logical_device()
+                                .logical_device()
+                                .cmd_bind_descriptor_sets(
+                                    command_buffer,
+                                    vk::PipelineBindPoint::GRAPHICS,
+                                    self.pipeline.layout(),
+                                    0,
+                                    &[descriptor_set],
+                                    &[],
+                                );
 
-                                renderer
-                                    .context
-                                    .logical_device()
-                                    .logical_device()
-                                    .cmd_bind_descriptor_sets(
-                                        command_buffer,
-                                        vk::PipelineBindPoint::GRAPHICS,
-                                        self.pipeline.layout(),
-                                        0,
-                                        &[descriptor_set],
-                                        &[],
-                                    );
+                            for primitive in mesh.primitives.iter() {
+                                let mut material = PushConstantBlockMaterial {
+                                    base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
+                                    color_texture_set: -1,
+                                };
 
-                                for primitive in mesh.primitives.iter() {
-                                    let mut material = PushConstantBlockMaterial {
-                                        base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
-                                        color_texture_set: -1,
-                                    };
+                                if let Some(material_index) = primitive.material_index {
+                                    let primitive_material = asset
+                                        .gltf
+                                        .materials()
+                                        .nth(material_index)
+                                        .expect("Failed to retrieve material!");
+                                    let pbr = primitive_material.pbr_metallic_roughness();
 
-                                    if let Some(material_index) = primitive.material_index {
-                                        let primitive_material = asset
-                                            .gltf
-                                            .materials()
-                                            .nth(material_index)
-                                            .expect("Failed to retrieve material!");
-                                        let pbr = primitive_material.pbr_metallic_roughness();
-
-                                        if pbr.base_color_texture().is_some() {
-                                            material.color_texture_set = 0;
-                                        } else {
-                                            material.base_color_factor =
-                                                glm::Vec4::from(pbr.base_color_factor());
-                                        }
+                                    if pbr.base_color_texture().is_some() {
+                                        material.color_texture_set = 0;
                                     } else {
-                                        material.base_color_factor = glm::vec4(0.0, 0.0, 0.0, 1.0);
+                                        material.base_color_factor =
+                                            glm::Vec4::from(pbr.base_color_factor());
                                     }
-
-                                    renderer
-                                        .context
-                                        .logical_device()
-                                        .logical_device()
-                                        .cmd_push_constants(
-                                            command_buffer,
-                                            self.pipeline.layout(),
-                                            vk::ShaderStageFlags::FRAGMENT,
-                                            0,
-                                            Self::byte_slice_from(&material),
-                                        );
-
-                                    renderer
-                                        .context
-                                        .logical_device()
-                                        .logical_device()
-                                        .cmd_draw_indexed(
-                                            command_buffer,
-                                            primitive_info.number_of_indices,
-                                            1,
-                                            primitive_info.first_index,
-                                            0,
-                                            0,
-                                        );
+                                } else {
+                                    material.base_color_factor = glm::vec4(0.0, 0.0, 0.0, 1.0);
                                 }
+
+                                renderer
+                                    .context
+                                    .logical_device()
+                                    .logical_device()
+                                    .cmd_push_constants(
+                                        command_buffer,
+                                        self.pipeline.layout(),
+                                        vk::ShaderStageFlags::FRAGMENT,
+                                        0,
+                                        Self::byte_slice_from(&material),
+                                    );
+
+                                renderer
+                                    .context
+                                    .logical_device()
+                                    .logical_device()
+                                    .cmd_draw_indexed(
+                                        command_buffer,
+                                        primitive.number_of_indices,
+                                        1,
+                                        primitive.first_index,
+                                        0,
+                                        0,
+                                    );
                             }
                         }
                     }
