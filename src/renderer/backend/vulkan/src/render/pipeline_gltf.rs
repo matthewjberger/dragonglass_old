@@ -696,6 +696,11 @@ impl GltfPipeline {
                     );
                 }
 
+                // Position (3), Normal (3), TexCoords_0 (2)
+                let stride = 8 * std::mem::size_of::<f32>();
+                let vertex_list_size = vertices.len() * std::mem::size_of::<u32>();
+                let vertex_count = (vertex_list_size / stride) as u32;
+
                 // Start reading primitive data
                 let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
 
@@ -734,7 +739,12 @@ impl GltfPipeline {
 
                 let primitive_indices = reader
                     .read_indices()
-                    .map(|read_indices| read_indices.into_u32().collect::<Vec<_>>())
+                    .map(|read_indices| {
+                        read_indices
+                            .into_u32()
+                            .map(|x| x + vertex_count)
+                            .collect::<Vec<_>>()
+                    })
                     .expect("Failed to read indices!");
                 indices.extend_from_slice(&primitive_indices);
 
@@ -874,9 +884,8 @@ impl GltfPipeline {
                 .address_mode_u(vk::SamplerAddressMode::REPEAT)
                 .address_mode_v(vk::SamplerAddressMode::REPEAT)
                 .address_mode_w(vk::SamplerAddressMode::REPEAT)
-                // TODO: Request the anisotropy feature when getting the physical device
-                // .anisotropy_enable(true)
-                // .max_anisotropy(16.0)
+                .anisotropy_enable(true)
+                .max_anisotropy(16.0)
                 .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
                 .unnormalized_coordinates(false)
                 .compare_enable(false)

@@ -1,6 +1,7 @@
 use crate::core::{Instance, LogicalDevice, PhysicalDevice, Surface};
 use ash::{version::InstanceV1_0, vk};
 use snafu::{ResultExt, Snafu};
+use vk_mem::{Allocator, AllocatorCreateInfo};
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -25,6 +26,7 @@ pub enum Error {
 // The drop order should be:
 // logical device -> physical device -> surface -> instance
 pub struct VulkanContext {
+    allocator: vk_mem::Allocator,
     logical_device: LogicalDevice,
     physical_device: PhysicalDevice,
     surface: Surface,
@@ -40,7 +42,18 @@ impl VulkanContext {
             PhysicalDevice::new(&instance, &surface).expect("Failed to get physical device!");
         let logical_device =
             LogicalDevice::new(&instance, &physical_device).context(LogicalDeviceCreation)?;
+
+        let allocator_create_info = AllocatorCreateInfo {
+            device: (*logical_device.logical_device()).clone(),
+            instance: (*instance.instance()).clone(),
+            physical_device: physical_device.physical_device(),
+            ..Default::default()
+        };
+
+        let allocator = Allocator::new(&allocator_create_info).expect("Allocator creation failed");
+
         Ok(VulkanContext {
+            allocator,
             instance,
             physical_device,
             logical_device,
