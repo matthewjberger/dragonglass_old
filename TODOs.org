@@ -1,0 +1,19 @@
+* TODO Add unit and integration tests
+* TODO Setup CI with either trust or github actions
+* TODO Use the vulkan memory allocator
+* TODO Get names for all assets and create a single descriptor pool for all of them to allocate descriptor sets from
+* TODO Move render system ubo updates to the gltf pipeline
+* TODO Enable the robust buffer access feature only in debug mode
+* TODO Use slog instead of env_logger
+* TODO Multithread command buffer recording
+* TODO Add android support
+* TODO Add multi camera system
+** TODO Add fps camera with components for camera state and behavior for camera behaviors
+** TODO Add orbital camera
+* TODO Dynamically add entities to world, tagging entities that use the same model with the same model id
+* TODO Cache loaded gltf assets in a hashmap
+* TODO Modularize app.rs
+** Input, Renderer, Render preparation system, etc can all be moved out
+* TODO Use genmesh and a separate primitive graphics pipeline
+   
+
