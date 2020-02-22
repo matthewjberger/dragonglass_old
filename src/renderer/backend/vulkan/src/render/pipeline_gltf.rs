@@ -248,7 +248,7 @@ impl GltfPipeline {
             DescriptorSetLayout::new(renderer.context.clone(), layout_create_info);
         let descriptor_set_layouts = [descriptor_set_layout.layout()];
         let push_constant_range = vk::PushConstantRange::builder()
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS)
             .size(mem::size_of::<PushConstantBlockMaterial>() as u32)
             .build();
         let push_constant_ranges = [push_constant_range];
@@ -402,7 +402,7 @@ impl GltfPipeline {
                                     .cmd_push_constants(
                                         command_buffer,
                                         self.pipeline.layout(),
-                                        vk::ShaderStageFlags::FRAGMENT,
+                                        vk::ShaderStageFlags::ALL_GRAPHICS,
                                         0,
                                         Self::byte_slice_from(&material),
                                     );
