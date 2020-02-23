@@ -6,16 +6,21 @@ layout(location = 0) in vec3 vPosition;
 layout(location = 1) in vec3 vColor;
 layout(location = 2) in vec2 vCoords;
 
-layout(binding = 0) uniform UniformBufferObject {
+struct UBO {
   mat4 model;
   mat4 view;
   mat4 projection;
-} ubo;
+};
 
-layout(push_constant) uniform Material {
+layout(binding = 0) uniform UniformBufferObjects {
+  UBO data[100];
+} ubos;
+
+layout(push_constant) uniform Constants {
   vec4 baseColorFactor;
   int colorTextureSet;
-} material;
+  int uboIndex;
+} constants;
 
 layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec2 fragCoords;
@@ -25,7 +30,7 @@ void main() {
   fragColor = vColor;
   fragCoords = vCoords;
 
-  gl_Position = ubo.projection * ubo.view * ubo.model * vec4(vPosition, 1.0);
+  gl_Position = ubos.data[constants.uboIndex].projection * ubos.data[constants.uboIndex].view * ubos.data[constants.uboIndex].model * vec4(vPosition, 1.0);
 
   // Flip the y coordinate when displaying gltf models
   // because Vulkan's coordinate system origin is in the top left

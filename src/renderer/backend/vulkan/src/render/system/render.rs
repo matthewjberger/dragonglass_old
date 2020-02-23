@@ -1,7 +1,8 @@
 use crate::{
     render::{
-        component::TransformComponent, pipeline_gltf::calculate_global_transform,
-        system::UniformBufferObject, Renderer,
+        component::TransformComponent,
+        pipeline_gltf::{calculate_global_transform, UniformBufferObject},
+        Renderer,
     },
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
@@ -79,14 +80,17 @@ pub fn render_system() -> Box<dyn Runnable> {
                         let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
                         while let Some(node_index) = dfs.next(&graph) {
                             let global_transform = calculate_global_transform(node_index, graph);
-                            if let Some(mesh) = &graph[node_index].mesh {
+                            if let Some(mesh) = graph[node_index].mesh.as_ref() {
                                 let ubo = UniformBufferObject {
                                     model: asset_transform * global_transform,
                                     view,
                                     projection,
                                 };
                                 let ubos = [ubo];
-                                let buffer = &mesh.uniform_buffers[image_index as usize];
+                                let buffer = &vulkan_gltf_asset.uniform_buffer;
+                                let uniform_buffer_size =
+                                    std::mem::size_of::<UniformBufferObject>();
+                                //buffer.upload_to_buffer(&ubos, uniform_buffer_size * mesh.ubo_index);
                                 buffer.upload_to_buffer(&ubos, 0);
                             }
                         }

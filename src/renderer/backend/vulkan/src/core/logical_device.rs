@@ -29,7 +29,7 @@ impl LogicalDevice {
         let device_extensions = [Swapchain::name().as_ptr()];
         let queue_creation_info_list = Self::build_queue_creation_info_list(physical_device);
         let device_features = vk::PhysicalDeviceFeatures::builder()
-            .robust_buffer_access(true) // FIXME: Disable this in release builds
+            //.robust_buffer_access(true) // FIXME: Disable this in release builds
             .sampler_anisotropy(true)
             .build();
         let mut device_create_info_builder = vk::DeviceCreateInfo::builder()

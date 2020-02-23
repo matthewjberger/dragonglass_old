@@ -118,6 +118,6 @@ impl PhysicalDevice {
         queue_family_index_set.is_some()
             && swapchain_adequate
             && features.sampler_anisotropy == vk::TRUE
-            && features.robust_buffer_access == vk::TRUE
+        //FIXME: && features.robust_buffer_access == vk::TRUE
     }
 }

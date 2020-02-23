@@ -1,7 +1,6 @@
 pub use self::{
-    framebuffer::Framebuffer, pipeline::GraphicsPipeline, renderer::Renderer,
-    renderpass::RenderPass, system::UniformBufferObject,
-    pipeline_gltf::GltfPipeline
+    framebuffer::Framebuffer, pipeline::GraphicsPipeline, pipeline_gltf::GltfPipeline,
+    renderer::Renderer, renderpass::RenderPass,
 };
 
 pub mod component;

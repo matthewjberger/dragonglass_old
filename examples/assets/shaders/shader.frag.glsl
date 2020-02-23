@@ -5,11 +5,12 @@
 layout(location = 0) in vec3 fragColor;
 layout(location = 1) in vec2 fragCoords;
 
-layout(binding = 1) uniform sampler2D texSampler;
+layout(binding = 1) uniform sampler2D textures[100];
 
 layout(push_constant) uniform Material {
   vec4 baseColorFactor;
   int colorTextureSet;
+  int uboIndex;
 } material;
 
 layout(location = 0) out vec4 outColor;
@@ -17,7 +18,7 @@ layout(location = 0) out vec4 outColor;
 void main() {
   if (material.colorTextureSet > -1)
   {
-    outColor = texture(texSampler, fragCoords);
+    outColor = texture(textures[material.colorTextureSet], fragCoords);
   } else {
     outColor = material.baseColorFactor;
   }

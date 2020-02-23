@@ -92,7 +92,7 @@ impl App {
                 for mut transform in query.iter(&mut world) {
                     transform.rotate = glm::rotate(
                         &transform.rotate,
-                        0.1_f32.to_radians(),
+                        0.001_f32.to_radians(),
                         &glm::vec3(0.0, 1.0, 0.0),
                     );
                 }
