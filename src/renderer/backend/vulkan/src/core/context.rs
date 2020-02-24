@@ -26,7 +26,7 @@ pub enum Error {
 // The drop order should be:
 // logical device -> physical device -> surface -> instance
 pub struct VulkanContext {
-    allocator: vk_mem::Allocator,
+    _allocator: vk_mem::Allocator,
     logical_device: LogicalDevice,
     physical_device: PhysicalDevice,
     surface: Surface,
@@ -53,7 +53,7 @@ impl VulkanContext {
         let allocator = Allocator::new(&allocator_create_info).expect("Allocator creation failed");
 
         Ok(VulkanContext {
-            allocator,
+            _allocator: allocator,
             instance,
             physical_device,
             logical_device,

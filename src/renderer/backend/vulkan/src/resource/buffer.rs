@@ -105,7 +105,13 @@ impl Buffer {
         memory_type
     }
 
-    pub fn upload_to_buffer<T: Copy>(&self, data: &[T], offset: usize) {
+    pub fn upload_to_buffer<T: Copy>(
+        &self,
+        data: &[T],
+        offset: usize,
+        alignment: vk::DeviceSize,
+        persistent: bool,
+    ) {
         let data_pointer = self.map(
             offset as _,
             (data.len() * std::mem::size_of::<T>()) as vk::DeviceSize,
@@ -113,14 +119,31 @@ impl Buffer {
         );
         unsafe {
             // Upload aligned staging data to the mapped buffer
-            let mut align = ash::util::Align::new(
-                data_pointer,
-                std::mem::align_of::<T>() as _,
-                self.memory_requirements.size as _,
-            );
+            let mut align =
+                ash::util::Align::new(data_pointer, alignment, self.memory_requirements.size as _);
             align.copy_from_slice(data);
         }
-        self.unmap();
+
+        if !persistent {
+            self.unmap();
+        }
+    }
+
+    pub fn flush(&self, offset: u64, size: vk::DeviceSize) {
+        let memory_range = vk::MappedMemoryRange::builder()
+            .memory(self.memory)
+            .offset(offset)
+            .size(size)
+            .build();
+        let memory_ranges = [memory_range];
+
+        unsafe {
+            self.context
+                .logical_device()
+                .logical_device()
+                .flush_mapped_memory_ranges(&memory_ranges)
+                .expect("Failed to flush mapped memory ranges!");
+        }
     }
 
     fn map(

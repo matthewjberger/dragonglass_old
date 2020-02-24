@@ -84,7 +84,7 @@ impl CommandPool {
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         );
 
-        staging_buffer.upload_to_buffer(&vertices, 0);
+        staging_buffer.upload_to_buffer(&vertices, 0, std::mem::align_of::<T>() as _, false);
 
         let vertex_buffer = Buffer::new(
             self.context.clone(),
@@ -243,7 +243,11 @@ impl CommandPool {
         executor(command_buffer);
 
         // End command buffer recording
-        unsafe { logical_device.end_command_buffer(command_buffer).expect("Failed to end command buffer!") };
+        unsafe {
+            logical_device
+                .end_command_buffer(command_buffer)
+                .expect("Failed to end command buffer!")
+        };
 
         // Build the submission info
         let submit_info = vk::SubmitInfo::builder()
@@ -258,7 +262,9 @@ impl CommandPool {
                 .expect("Failed to submit command buffer to queue!");
 
             // Wait for the command buffer to be executed
-            logical_device.queue_wait_idle(queue).expect("Failed to wait for command buffer to be executed!");
+            logical_device
+                .queue_wait_idle(queue)
+                .expect("Failed to wait for command buffer to be executed!");
 
             // Free the command buffer
             logical_device.free_command_buffers(self.pool(), &command_buffers);

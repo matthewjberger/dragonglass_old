@@ -1,507 +1,17 @@
 use crate::{
-    core::ImageView,
-    render::{GraphicsPipeline, Renderer},
-    resource::{
-        Buffer, DescriptorPool, DescriptorSetLayout, Dimension, PipelineLayout, Sampler, Shader,
-        Texture, TextureDescription,
-    },
+    render::{gltf::VulkanGltfAsset, GraphicsPipeline, Renderer},
+    resource::{DescriptorSetLayout, PipelineLayout, Shader},
 };
 use ash::{version::DeviceV1_0, vk};
-use gltf::image::Format;
-use image::{ImageBuffer, Pixel, RgbImage};
 use nalgebra_glm as glm;
-use petgraph::{
-    graph::{Graph, NodeIndex},
-    prelude::*,
-    visit::Dfs,
-};
+use petgraph::{graph::NodeIndex, visit::Dfs};
 use std::{ffi::CString, mem, slice};
-
-#[derive(Debug, Clone, Copy)]
-pub struct UniformBufferObject {
-    pub model: glm::Mat4,
-    pub view: glm::Mat4,
-    pub projection: glm::Mat4,
-}
-
-pub type NodeGraph = Graph<Node, ()>;
-
-pub struct Node {
-    pub local_transform: glm::Mat4,
-    pub mesh: Option<Mesh>,
-    pub index: usize,
-}
-
-pub struct Scene {
-    pub node_graphs: Vec<NodeGraph>,
-}
-
 pub struct PushConstantBlockMaterial {
     base_color_factor: glm::Vec4,
     color_texture_set: i32,
-    ubo_index: i32,
 }
 
-pub struct VulkanGltfAsset {
-    pub gltf: gltf::Document,
-    pub textures: Vec<VulkanTexture>,
-    pub scenes: Vec<Scene>,
-    pub descriptor_pool: DescriptorPool,
-    pub uniform_buffer: Buffer,
-    pub descriptor_sets: Vec<vk::DescriptorSet>,
-}
-
-impl VulkanGltfAsset {
-    pub fn new(
-        renderer: &Renderer,
-        asset_name: &str,
-        descriptor_set_layout: vk::DescriptorSetLayout,
-    ) -> VulkanGltfAsset {
-        let (gltf, buffers, asset_textures) =
-            gltf::import(&asset_name).expect("Couldn't import file!");
-
-        let textures = Self::load_textures(&renderer, &asset_textures);
-
-        let number_of_swapchain_images = renderer.vulkan_swapchain.swapchain.images().len() as u32;
-        let number_of_meshes = gltf.meshes().len();
-        let number_of_materials = gltf.materials().len() as u32;
-        let number_of_samplers = number_of_materials * number_of_swapchain_images;
-
-        // TODO: Move descriptor pool creation to method
-        let ubo_pool_size = vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: 1,
-        };
-
-        let sampler_pool_size = vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            descriptor_count: number_of_samplers * number_of_swapchain_images,
-        };
-
-        let pool_sizes = [ubo_pool_size, sampler_pool_size];
-
-        let pool_info = vk::DescriptorPoolCreateInfo::builder()
-            .pool_sizes(&pool_sizes)
-            .max_sets(number_of_swapchain_images)
-            .build();
-
-        let descriptor_pool = DescriptorPool::new(renderer.context.clone(), pool_info);
-
-        let scenes = Self::prepare_scenes(&gltf, &buffers, &renderer);
-
-        let uniform_buffer = Buffer::new(
-            renderer.context.clone(),
-            (mem::size_of::<UniformBufferObject>() * number_of_meshes) as vk::DeviceSize,
-            vk::BufferUsageFlags::UNIFORM_BUFFER,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-        );
-
-        let descriptor_sets = descriptor_pool
-            .allocate_descriptor_sets(descriptor_set_layout, number_of_swapchain_images as _);
-
-        let mut asset = VulkanGltfAsset {
-            gltf,
-            textures,
-            scenes,
-            descriptor_pool,
-            uniform_buffer,
-            descriptor_sets,
-        };
-
-        asset.update_ubo_indices();
-        asset.update_descriptor_sets(&renderer, number_of_swapchain_images as _);
-        asset
-    }
-
-    fn update_ubo_indices(&mut self) {
-        let mut indices = Vec::new();
-        for (scene_index, scene) in self.scenes.iter().enumerate() {
-            for (graph_index, graph) in scene.node_graphs.iter().enumerate() {
-                let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
-                while let Some(node_index) = dfs.next(&graph) {
-                    if graph[node_index].mesh.is_some() {
-                        indices.push((scene_index, graph_index, node_index));
-                    }
-                }
-            }
-        }
-
-        for (ubo_index, (scene_index, graph_index, node_index)) in indices.into_iter().enumerate() {
-            self.scenes[scene_index].node_graphs[graph_index][node_index]
-                .mesh
-                .as_mut()
-                .unwrap()
-                .ubo_index = ubo_index;
-        }
-    }
-
-    fn update_descriptor_sets(&self, renderer: &Renderer, number_of_swapchain_images: usize) {
-        let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
-        let buffer_info = vk::DescriptorBufferInfo::builder()
-            .buffer(self.uniform_buffer.buffer())
-            .offset(0)
-            .range(uniform_buffer_size)
-            .build();
-        let buffer_infos = [buffer_info];
-
-        let image_infos = self
-            .textures
-            .iter()
-            .map(|texture| {
-                vk::DescriptorImageInfo::builder()
-                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                    .image_view(texture.view.view())
-                    .sampler(texture.sampler.sampler())
-                    .build()
-            })
-            .collect::<Vec<_>>();
-
-        for image_index in 0..number_of_swapchain_images {
-            let descriptor_set = self.descriptor_sets[image_index];
-            let ubo_descriptor_write = vk::WriteDescriptorSet::builder()
-                .dst_set(descriptor_set)
-                .dst_binding(0)
-                .dst_array_element(0)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(&buffer_infos)
-                .build();
-
-            let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
-                .dst_set(descriptor_set)
-                .dst_binding(1)
-                .dst_array_element(0)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .image_info(&image_infos)
-                .build();
-
-            let mut descriptor_writes = vec![ubo_descriptor_write];
-            if !image_infos.is_empty() {
-                descriptor_writes.push(sampler_descriptor_write);
-            }
-
-            unsafe {
-                renderer
-                    .context
-                    .logical_device()
-                    .logical_device()
-                    .update_descriptor_sets(&descriptor_writes, &[])
-            }
-        }
-    }
-
-    fn determine_transform(node: &gltf::Node) -> glm::Mat4 {
-        let transform: Vec<f32> = node
-            .transform()
-            .matrix()
-            .iter()
-            .flat_map(|array| array.iter())
-            .cloned()
-            .collect();
-        glm::make_mat4(&transform.as_slice())
-    }
-
-    fn prepare_scenes(
-        gltf: &gltf::Document,
-        buffers: &[gltf::buffer::Data],
-        renderer: &Renderer,
-    ) -> Vec<Scene> {
-        let mut scenes: Vec<Scene> = Vec::new();
-        for scene in gltf.scenes() {
-            let mut node_graphs: Vec<NodeGraph> = Vec::new();
-            for node in scene.nodes() {
-                let mut node_graph = NodeGraph::new();
-                Self::visit_children(
-                    &node,
-                    &buffers,
-                    &mut node_graph,
-                    NodeIndex::new(0_usize),
-                    &renderer,
-                );
-                node_graphs.push(node_graph);
-            }
-            scenes.push(Scene { node_graphs });
-        }
-        scenes
-    }
-
-    fn visit_children(
-        node: &gltf::Node,
-        buffers: &[gltf::buffer::Data],
-        node_graph: &mut NodeGraph,
-        parent_index: NodeIndex,
-        renderer: &Renderer,
-    ) {
-        let mesh = Self::load_mesh(node, buffers, renderer);
-        let node_info = Node {
-            local_transform: Self::determine_transform(node),
-            mesh,
-            index: node.index(),
-        };
-
-        let node_index = node_graph.add_node(node_info);
-        if parent_index != node_index {
-            node_graph.add_edge(parent_index, node_index, ());
-        }
-
-        for child in node.children() {
-            Self::visit_children(&child, buffers, node_graph, node_index, renderer);
-        }
-    }
-
-    fn load_mesh(
-        node: &gltf::Node,
-        buffers: &[gltf::buffer::Data],
-        renderer: &Renderer,
-    ) -> Option<Mesh> {
-        if let Some(mesh) = node.mesh() {
-            let mut vertices = Vec::new();
-            let mut indices = Vec::new();
-
-            let mut all_mesh_primitives = Vec::new();
-            for primitive in mesh.primitives() {
-                // Position (3), Normal (3), TexCoords_0 (2)
-                let stride = 8 * std::mem::size_of::<f32>();
-                let vertex_list_size = vertices.len() * std::mem::size_of::<u32>();
-                let vertex_count = (vertex_list_size / stride) as u32;
-
-                // Start reading primitive data
-                let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
-
-                let positions = reader
-                    .read_positions()
-                    .expect("Failed to read any vertex positions from the model. Vertex positions are required.")
-                    .map(glm::Vec3::from)
-                    .collect::<Vec<_>>();
-
-                let normals = reader
-                    .read_normals()
-                    .map_or(vec![glm::vec3(0.0, 0.0, 0.0); positions.len()], |normals| {
-                        normals.map(glm::Vec3::from).collect::<Vec<_>>()
-                    });
-
-                let convert_coords =
-                    |coords: gltf::mesh::util::ReadTexCoords<'_>| -> Vec<glm::Vec2> {
-                        coords.into_f32().map(glm::Vec2::from).collect::<Vec<_>>()
-                    };
-                let tex_coords_0 = reader
-                    .read_tex_coords(0)
-                    .map_or(vec![glm::vec2(0.0, 0.0); positions.len()], convert_coords);
-
-                // TODO: Add checks to see if normals and tex_coords are even available
-                for ((position, normal), tex_coord_0) in positions
-                    .iter()
-                    .zip(normals.iter())
-                    .zip(tex_coords_0.iter())
-                {
-                    vertices.extend_from_slice(position.as_slice());
-                    vertices.extend_from_slice(normal.as_slice());
-                    vertices.extend_from_slice(tex_coord_0.as_slice());
-                }
-
-                let first_index = indices.len() as u32;
-
-                let primitive_indices = reader
-                    .read_indices()
-                    .map(|read_indices| {
-                        read_indices
-                            .into_u32()
-                            .map(|x| x + vertex_count)
-                            .collect::<Vec<_>>()
-                    })
-                    .expect("Failed to read indices!");
-                indices.extend_from_slice(&primitive_indices);
-
-                let number_of_indices = primitive_indices.len() as u32;
-
-                all_mesh_primitives.push(Primitive {
-                    first_index,
-                    number_of_indices,
-                    material_index: primitive.material().index(),
-                });
-            }
-
-            let vertex_buffer = renderer.transient_command_pool.create_device_local_buffer(
-                renderer.graphics_queue,
-                vk::BufferUsageFlags::VERTEX_BUFFER,
-                &vertices,
-            );
-
-            let index_buffer = renderer.transient_command_pool.create_device_local_buffer(
-                renderer.graphics_queue,
-                vk::BufferUsageFlags::INDEX_BUFFER,
-                &indices,
-            );
-
-            Some(Mesh {
-                primitives: all_mesh_primitives,
-                vertex_buffer,
-                index_buffer,
-                ubo_index: 0,
-            })
-        } else {
-            None
-        }
-    }
-
-    fn load_textures(
-        renderer: &Renderer,
-        asset_textures: &[gltf::image::Data],
-    ) -> Vec<VulkanTexture> {
-        let mut textures = Vec::new();
-        for texture_properties in asset_textures.iter() {
-            let mut texture_format = Self::convert_to_vulkan_format(texture_properties.format);
-
-            let pixels: Vec<u8> = match texture_format {
-                vk::Format::R8G8B8_UNORM => {
-                    texture_format = vk::Format::R8G8B8A8_UNORM;
-
-                    let image_buffer: RgbImage = ImageBuffer::from_raw(
-                        texture_properties.width,
-                        texture_properties.height,
-                        texture_properties.pixels.to_vec(),
-                    )
-                    .expect("Failed to create an image buffer");
-
-                    image_buffer
-                        .pixels()
-                        .flat_map(|pixel| pixel.to_rgba().channels().to_vec())
-                        .collect::<Vec<_>>()
-                }
-                vk::Format::B8G8R8_UNORM => {
-                    texture_format = vk::Format::R8G8B8A8_UNORM;
-
-                    let image_buffer: RgbImage = ImageBuffer::from_raw(
-                        texture_properties.width,
-                        texture_properties.height,
-                        texture_properties.pixels.to_vec(),
-                    )
-                    .expect("Failed to create an image buffer");
-
-                    image_buffer
-                        .pixels()
-                        .flat_map(|pixel| pixel.to_rgba().channels().to_vec())
-                        .collect::<Vec<_>>()
-                }
-                _ => texture_properties.pixels.to_vec(),
-            };
-
-            let create_info_builder = vk::ImageCreateInfo::builder()
-                .image_type(vk::ImageType::TYPE_2D)
-                .extent(vk::Extent3D {
-                    width: texture_properties.width,
-                    height: texture_properties.height,
-                    depth: 1,
-                })
-                .mip_levels(1)
-                .array_layers(1)
-                .format(texture_format)
-                .tiling(vk::ImageTiling::OPTIMAL)
-                .initial_layout(vk::ImageLayout::UNDEFINED)
-                .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
-                .sharing_mode(vk::SharingMode::EXCLUSIVE)
-                .samples(vk::SampleCountFlags::TYPE_1)
-                .flags(vk::ImageCreateFlags::empty());
-
-            let description = TextureDescription {
-                format: texture_format,
-                dimensions: Dimension {
-                    width: texture_properties.width,
-                    height: texture_properties.height,
-                },
-                pixels,
-            };
-
-            let texture = Texture::from_data(
-                renderer.context.clone(),
-                &renderer.command_pool,
-                renderer.graphics_queue,
-                description,
-                create_info_builder.build(),
-            );
-
-            let create_info = vk::ImageViewCreateInfo::builder()
-                .image(texture.image())
-                .view_type(vk::ImageViewType::TYPE_2D)
-                .format(texture_format)
-                .components(vk::ComponentMapping {
-                    r: vk::ComponentSwizzle::IDENTITY,
-                    g: vk::ComponentSwizzle::IDENTITY,
-                    b: vk::ComponentSwizzle::IDENTITY,
-                    a: vk::ComponentSwizzle::IDENTITY,
-                })
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .build();
-            let view = ImageView::new(renderer.context.clone(), create_info);
-
-            let sampler_info = vk::SamplerCreateInfo::builder()
-                .mag_filter(vk::Filter::LINEAR)
-                .min_filter(vk::Filter::LINEAR)
-                .address_mode_u(vk::SamplerAddressMode::REPEAT)
-                .address_mode_v(vk::SamplerAddressMode::REPEAT)
-                .address_mode_w(vk::SamplerAddressMode::REPEAT)
-                .anisotropy_enable(true)
-                .max_anisotropy(16.0)
-                .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
-                .unnormalized_coordinates(false)
-                .compare_enable(false)
-                .compare_op(vk::CompareOp::ALWAYS)
-                .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
-                .mip_lod_bias(0.0)
-                .min_lod(0.0)
-                .max_lod(0.0)
-                .build();
-            let sampler = Sampler::new(renderer.context.clone(), sampler_info);
-
-            let vulkan_gltf_texture = VulkanTexture {
-                texture,
-                view,
-                sampler,
-            };
-
-            textures.push(vulkan_gltf_texture);
-        }
-        textures
-    }
-
-    pub fn convert_to_vulkan_format(format: Format) -> vk::Format {
-        match format {
-            Format::R8 => vk::Format::R8_UNORM,
-            Format::R8G8 => vk::Format::R8G8_UNORM,
-            Format::R8G8B8A8 => vk::Format::R8G8B8A8_UNORM,
-            Format::B8G8R8A8 => vk::Format::B8G8R8A8_UNORM,
-            // 24-bit formats will have an alpha channel added
-            // to make them 32-bit
-            Format::R8G8B8 => vk::Format::R8G8B8_UNORM,
-            Format::B8G8R8 => vk::Format::B8G8R8_UNORM,
-        }
-    }
-}
-
-pub struct VulkanTexture {
-    pub texture: Texture,
-    pub view: ImageView,
-    pub sampler: Sampler,
-}
-
-pub struct Mesh {
-    pub vertex_buffer: Buffer,
-    pub index_buffer: Buffer,
-    pub primitives: Vec<Primitive>,
-    pub ubo_index: usize,
-}
-
-pub struct Primitive {
-    pub number_of_indices: u32,
-    pub first_index: u32,
-    pub material_index: Option<usize>,
-}
-
+// TODO: Move this somewhere more generic
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum PipelineType {
     GltfAsset,
@@ -676,16 +186,22 @@ impl GltfPipeline {
         let ubo_binding = vk::DescriptorSetLayoutBinding::builder()
             .binding(0)
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(100)
+            .descriptor_count(1)
+            .stage_flags(vk::ShaderStageFlags::VERTEX)
+            .build();
+        let dynamic_ubo_binding = vk::DescriptorSetLayoutBinding::builder()
+            .binding(1)
+            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
+            .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::VERTEX)
             .build();
         let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
-            .binding(1)
+            .binding(2)
             .descriptor_count(100)
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .build();
-        let bindings = [ubo_binding, sampler_binding];
+        let bindings = [ubo_binding, dynamic_ubo_binding, sampler_binding];
 
         let layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
             .bindings(&bindings)
@@ -758,11 +274,14 @@ impl GltfPipeline {
             .for_each(|(index, buffer)| {
                 let command_buffer = buffer;
                 let framebuffer = renderer.vulkan_swapchain.framebuffers[index].framebuffer();
-                self.create_render_pass(&renderer, framebuffer, *command_buffer, |command_buffer|
-                    // TODO: Batch models by which shader should be used to render them
-                    unsafe {
+                self.create_render_pass(
+                    &renderer,
+                    framebuffer,
+                    *command_buffer,
+                    |command_buffer| unsafe {
                         self.draw_asset(renderer, command_buffer, index);
-                    });
+                    },
+                );
             });
     }
 
@@ -774,26 +293,25 @@ impl GltfPipeline {
     ) {
         let offsets = [0];
         self.assets.iter().for_each(|asset| {
-            let descriptor_set = asset.descriptor_sets[command_buffer_index];
-
-            renderer
-                .context
-                .logical_device()
-                .logical_device()
-                .cmd_bind_descriptor_sets(
-                    command_buffer,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    self.pipeline.layout(),
-                    0,
-                    &[descriptor_set],
-                    &[],
-                );
-
             for scene in asset.scenes.iter() {
                 for graph in scene.node_graphs.iter() {
                     let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
                     while let Some(node_index) = dfs.next(&graph) {
                         if let Some(mesh) = graph[node_index].mesh.as_ref() {
+                            let descriptor_set = asset.descriptor_sets[command_buffer_index];
+                            renderer
+                                .context
+                                .logical_device()
+                                .logical_device()
+                                .cmd_bind_descriptor_sets(
+                                    command_buffer,
+                                    vk::PipelineBindPoint::GRAPHICS,
+                                    self.pipeline.layout(),
+                                    0,
+                                    &[descriptor_set],
+                                    &[(mesh.ubo_index as u64 * asset.dynamic_alignment) as _],
+                                );
+
                             let vertex_buffers = [mesh.vertex_buffer.buffer()];
                             renderer
                                 .context
@@ -821,7 +339,6 @@ impl GltfPipeline {
                                 let mut material = PushConstantBlockMaterial {
                                     base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
                                     color_texture_set: -1,
-                                    ubo_index: mesh.ubo_index as i32,
                                 };
 
                                 if let Some(material_index) = primitive.material_index {
@@ -972,53 +489,4 @@ impl GltfPipeline {
                 .expect("Failed to end the command buffer for a render pass!");
         }
     }
-}
-
-pub fn path_between_nodes(
-    starting_node_index: NodeIndex,
-    node_index: NodeIndex,
-    graph: &NodeGraph,
-) -> Vec<NodeIndex> {
-    let mut indices = Vec::new();
-    let mut dfs = Dfs::new(&graph, starting_node_index);
-    while let Some(current_node_index) = dfs.next(&graph) {
-        let mut incoming_walker = graph
-            .neighbors_directed(current_node_index, Incoming)
-            .detach();
-        let mut outgoing_walker = graph
-            .neighbors_directed(current_node_index, Outgoing)
-            .detach();
-
-        if let Some(parent) = incoming_walker.next_node(&graph) {
-            while let Some(last_index) = indices.last() {
-                if *last_index == parent {
-                    break;
-                }
-                // Discard indices for transforms that are no longer needed
-                indices.pop();
-            }
-        }
-
-        indices.push(current_node_index);
-
-        if node_index == current_node_index {
-            break;
-        }
-
-        // If the node has no children, don't store the index
-        if outgoing_walker.next(&graph).is_none() {
-            indices.pop();
-        }
-    }
-    indices
-}
-
-pub fn calculate_global_transform(node_index: NodeIndex, graph: &NodeGraph) -> glm::Mat4 {
-    let indices = path_between_nodes(NodeIndex::new(0), node_index, graph);
-    indices
-        .iter()
-        .fold(glm::Mat4::identity(), |transform, index| {
-            // TODO: Add the animation transform
-            transform * graph[*index].local_transform //* graph[*index].animation_transform.matrix()
-        })
 }

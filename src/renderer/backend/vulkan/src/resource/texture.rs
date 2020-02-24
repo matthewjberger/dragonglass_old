@@ -128,7 +128,12 @@ impl Texture {
             vk::MemoryPropertyFlags::HOST_VISIBLE,
         );
 
-        buffer.upload_to_buffer(&description.pixels, 0);
+        buffer.upload_to_buffer(
+            &description.pixels,
+            0,
+            std::mem::align_of::<u8>() as _,
+            false,
+        );
 
         command_pool.transition_image_layout(
             graphics_queue,

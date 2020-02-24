@@ -5,12 +5,11 @@
 layout(location = 0) in vec3 fragColor;
 layout(location = 1) in vec2 fragCoords;
 
-layout(binding = 1) uniform sampler2D textures[100];
+layout(binding = 2) uniform sampler2D textures[100];
 
 layout(push_constant) uniform Material {
   vec4 baseColorFactor;
   int colorTextureSet;
-  int uboIndex;
 } material;
 
 layout(location = 0) out vec4 outColor;
