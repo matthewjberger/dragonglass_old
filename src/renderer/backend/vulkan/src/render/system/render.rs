@@ -75,15 +75,19 @@ pub fn render_system() -> Box<dyn Runnable> {
                 let vulkan_gltf_asset =
                     &renderer.pipeline_gltf.as_ref().unwrap().assets[asset_index];
 
-                // let ubo = UniformBufferObject { view, projection };
-                // let ubos = [ubo];
-                // let buffer = &vulkan_gltf_asset.uniform_buffer;
-                // buffer.upload_to_buffer(
-                //     &ubos,
-                //     0,
-                //     std::mem::align_of::<UniformBufferObject>() as _,
-                //     true,
-                // );
+                let ubo = UniformBufferObject { view, projection };
+                let ubos = [ubo];
+                let buffer = &vulkan_gltf_asset.uniform_buffer;
+                buffer.upload_to_buffer(
+                    &ubos,
+                    0,
+                    std::mem::align_of::<UniformBufferObject>() as _,
+                    true,
+                );
+
+                // FIXME: SIZE HERE
+                let full_dynamic_ubo_size =
+                    (400 as u64 * vulkan_gltf_asset.dynamic_alignment) as u64;
 
                 for scene in vulkan_gltf_asset.scenes.iter() {
                     for graph in scene.node_graphs.iter() {
@@ -91,25 +95,22 @@ pub fn render_system() -> Box<dyn Runnable> {
                         while let Some(node_index) = dfs.next(&graph) {
                             let global_transform = calculate_global_transform(node_index, graph);
                             if let Some(mesh) = graph[node_index].mesh.as_ref() {
-                                // let dynamic_ubo = DynamicUniformBufferObject {
-                                //     model: asset_transform * global_transform,
-                                // };
-                                // let ubos = [dynamic_ubo];
-                                // let buffer = &vulkan_gltf_asset.uniform_buffer;
-                                // let dynamic_uniform_buffer_size =
-                                //     std::mem::size_of::<DynamicUniformBufferObject>();
-                                // let offset = dynamic_uniform_buffer_size * mesh.ubo_index;
-                                // println!(
-                                //     "dynamic_alignment: {}",
-                                //     vulkan_gltf_asset.dynamic_alignment
-                                // );
-                                // buffer.upload_to_buffer(
-                                //     &ubos,
-                                //     offset,
-                                //     vulkan_gltf_asset.dynamic_alignment,
-                                //     true,
-                                // );
-                                // buffer.flush(offset as u64, dynamic_uniform_buffer_size as u64);
+                                let dynamic_ubo = DynamicUniformBufferObject {
+                                    model: asset_transform * global_transform,
+                                };
+                                let ubos = [dynamic_ubo];
+                                let buffer = &vulkan_gltf_asset.dynamic_uniform_buffer;
+                                let offset = (vulkan_gltf_asset.dynamic_alignment
+                                    * mesh.ubo_index as u64)
+                                    as usize;
+
+                                buffer.upload_to_buffer(
+                                    &ubos,
+                                    offset,
+                                    vulkan_gltf_asset.dynamic_alignment,
+                                    true,
+                                );
+                                buffer.flush(0, full_dynamic_ubo_size);
                             }
                         }
                     }

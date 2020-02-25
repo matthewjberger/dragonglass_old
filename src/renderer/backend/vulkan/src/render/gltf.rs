@@ -90,7 +90,7 @@ impl VulkanGltfAsset {
         let minimum_ubo_alignment = physical_device_properties
             .limits
             .min_uniform_buffer_offset_alignment;
-        let mut dynamic_alignment = std::mem::size_of::<UniformBufferObject>() as u64;
+        let mut dynamic_alignment = std::mem::size_of::<DynamicUniformBufferObject>() as u64;
         if minimum_ubo_alignment > 0 {
             dynamic_alignment =
                 (dynamic_alignment + minimum_ubo_alignment - 1) & !(minimum_ubo_alignment - 1);
@@ -105,7 +105,8 @@ impl VulkanGltfAsset {
 
         let dynamic_uniform_buffer = Buffer::new(
             renderer.context.clone(),
-            (gltf.meshes().len() as u64 * dynamic_alignment) as vk::DeviceSize,
+            // FIXME: SIZE HERE
+            (400 * dynamic_alignment) as vk::DeviceSize,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
             vk::MemoryPropertyFlags::HOST_VISIBLE,
         );
@@ -174,6 +175,18 @@ impl VulkanGltfAsset {
             }
         }
 
+        // FIXME: This shows the mesh count issue
+        println!("indices: {}", indices.len());
+        println!("number_of_meshes: {}", self.gltf.meshes().len());
+        println!(
+            "node_meshes: {}",
+            self.gltf
+                .nodes()
+                .map(|node| node.mesh().is_some())
+                .collect::<Vec<_>>()
+                .len()
+        );
+
         for (ubo_index, (scene_index, graph_index, node_index)) in indices.into_iter().enumerate() {
             self.scenes[scene_index].node_graphs[graph_index][node_index]
                 .mesh
@@ -191,6 +204,16 @@ impl VulkanGltfAsset {
             .range(uniform_buffer_size)
             .build();
         let buffer_infos = [buffer_info];
+
+        let dynamic_uniform_buffer_size =
+        // FIXME: SIZE HERE
+            (400 * self.dynamic_alignment) as vk::DeviceSize;
+        let dynamic_buffer_info = vk::DescriptorBufferInfo::builder()
+            .buffer(self.dynamic_uniform_buffer.buffer())
+            .offset(0)
+            .range(dynamic_uniform_buffer_size)
+            .build();
+        let dynamic_buffer_infos = [dynamic_buffer_info];
 
         let image_infos = self
             .textures
@@ -219,7 +242,7 @@ impl VulkanGltfAsset {
                 .dst_binding(1)
                 .dst_array_element(0)
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
-                .buffer_info(&buffer_infos)
+                .buffer_info(&dynamic_buffer_infos)
                 .build();
 
             let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
@@ -230,7 +253,7 @@ impl VulkanGltfAsset {
                 .image_info(&image_infos)
                 .build();
 
-            let mut descriptor_writes = vec![dynamic_ubo_descriptor_write, ubo_descriptor_write];
+            let mut descriptor_writes = vec![ubo_descriptor_write, dynamic_ubo_descriptor_write];
             if !image_infos.is_empty() {
                 descriptor_writes.push(sampler_descriptor_write);
             }
