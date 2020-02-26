@@ -98,7 +98,7 @@ impl VulkanGltfAsset {
 
         let uniform_buffer = Buffer::new(
             renderer.context.clone(),
-            1,
+            mem::size_of::<UniformBufferObject>() as _,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
         );
@@ -182,9 +182,8 @@ impl VulkanGltfAsset {
             "node_meshes: {}",
             self.gltf
                 .nodes()
-                .map(|node| node.mesh().is_some())
-                .collect::<Vec<_>>()
-                .len()
+                .filter(|node| node.mesh().is_some())
+                .count()
         );
 
         for (ubo_index, (scene_index, graph_index, node_index)) in indices.into_iter().enumerate() {

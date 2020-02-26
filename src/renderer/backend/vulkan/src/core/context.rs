@@ -26,7 +26,7 @@ pub enum Error {
 // The drop order should be:
 // logical device -> physical device -> surface -> instance
 pub struct VulkanContext {
-    _allocator: vk_mem::Allocator,
+    allocator: vk_mem::Allocator,
     logical_device: LogicalDevice,
     physical_device: PhysicalDevice,
     surface: Surface,
@@ -53,7 +53,7 @@ impl VulkanContext {
         let allocator = Allocator::new(&allocator_create_info).expect("Allocator creation failed");
 
         Ok(VulkanContext {
-            _allocator: allocator,
+            allocator,
             instance,
             physical_device,
             logical_device,
@@ -89,6 +89,10 @@ impl VulkanContext {
                 linear_tiling_feature_support || optimal_tiling_feature_support
             })
             .expect("Failed to find a supported depth format")
+    }
+
+    pub fn allocator(&self) -> &vk_mem::Allocator {
+        &self.allocator
     }
 
     pub fn instance(&self) -> &ash::Instance {

@@ -1,20 +1,58 @@
 * DragonGlass Todo Items
-** TODO Add unit and integration tests
-** TODO Setup CI with either trust or github actions
-** TODO Use the vulkan memory allocator
-** TODO Get names for all assets and create a single descriptor pool for all of them to allocate descriptor sets from
-** TODO Move render system ubo updates to the gltf pipeline
-** TODO Enable the robust buffer access feature only in debug mode
-** TODO Use slog instead of env_logger
-** TODO Multithread command buffer recording
-** TODO Add android support
-** TODO Add multi camera system
-*** TODO Add fps camera with components for camera state and behavior for camera behaviors
-*** TODO Add orbital camera
-** TODO Dynamically add entities to world, tagging entities that use the same model with the same model id
-** TODO Cache loaded gltf assets in a hashmap
-** TODO Modularize app.rs
-*** Input, Renderer, Render preparation system, etc can all be moved out
-** TODO Use genmesh and a separate primitive graphics pipeline
-   
+** New Features 
+*** Rendering
+**** TODO Add PBR shaders
+**** TODO Add HDR
+**** TODO Add Bloom
+*** GLTF
+**** TODO Add animations
+***** TODO Add morph target support
+***** TODO Add support for all the interpolation modes
+**** TODO Add skinning and rigging
+**** TODO Add imgui
+**** TODO Add support for using gltf as a single asset or a library of assets
+**** Nodes
+***** TODO If the determinant of node transform is a negative value, the mesh winding order should be reversed.
+      This supports negative scales for mirroring geometry.
+      Non-invertible transformations (e.g., scaling one axis to zero) could lead to lighting and/or visibility artifacts.
+**** Primitives
+***** TODO If _positions_ aren't specified, skip rendering the primitive
+***** TODO If _indices_ aren't specified, render without using indexed drawing
+***** TODO If _normals_ aren't specified, calculate flat normals
+***** TODO If _tangents_ aren't specified, calculate tangents using default MikkTSpace algorithms
+      https://github.com/gltf-rs/mikktspace
+***** TODO If _normals_ and _tangents_ are specified, compute the bitangent
+      ~bitangent = cross(normal, tangent.xyz) * tangent.w~
 
+** Dev Ops
+*** TODO Add unit and integration tests
+**** TODO Use MockAll
+*** TODO Setup CI with either trust or github actions
+*** TODO Use slog instead of env_logger
+** Short-Term Improvements
+*** TODO Add deltatime as an ecs resource
+*** TODO Allow swapchain recreation
+*** TODO Enable the robust buffer access feature only in debug mode
+*** TODO Use VMA for buffer and image creation
+*** TODO Multithread command buffer recording
+*** TODO Create an asset cache
+*** TODO Add android support
+*** TODO Add multi camera system
+**** TODO Add fps camera with components for camera state and behavior for camera behaviors
+**** TODO Add orbital camera
+*** TODO Get names for all assets and create a single descriptor pool for all of them to allocate descriptor sets from
+** Long-Term Improvements
+*** TODO Dynamically add entities to world from a file, tagging entities that use the same model with the same model id
+*** TODO Use genmesh and a separate primitive graphics pipeline
+*** TODO Add imgui
+** Refactoring
+*** TODO Move VulkanSwapchain to separate file and rename it
+    [[file:./src/renderer/backend/vulkan/src/render/renderer.rs::pub struct VulkanSwapchain {]]
+*** TODO Move render system ubo updates to the gltf pipeline
+*** TODO Move create_descriptor_pool out of asset class and update descriptor sets outside of constructor
+*** TODO Move dynamic ubo to the pipeline level and use it for all loaded gltf assets
+*** TODO Create render pass wrapper
+**** TODO Separate out gltf render pass creation code to gltf specific sectio
+*** TODO Group simple Vulkan object wrappers
+*** TODO Modularize app.rs
+**** Input, Renderer, Render preparation system, etc can all be moved out
