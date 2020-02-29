@@ -60,6 +60,7 @@ pub struct VulkanGltfAsset {
     pub dynamic_uniform_buffer: Buffer,
     pub descriptor_set: vk::DescriptorSet,
     pub dynamic_alignment: u64,
+    number_of_meshes: usize,
 }
 
 impl VulkanGltfAsset {
@@ -99,16 +100,14 @@ impl VulkanGltfAsset {
             renderer.context.clone(),
             mem::size_of::<UniformBufferObject>() as _,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
-            //vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
             vk_mem::MemoryUsage::CpuToGpu,
         );
 
+        let number_of_meshes = gltf.nodes().filter(|node| node.mesh().is_some()).count();
         let dynamic_uniform_buffer = Buffer::new_mapped_basic(
             renderer.context.clone(),
-            // FIXME: SIZE HERE
-            (400 * dynamic_alignment) as vk::DeviceSize,
+            (number_of_meshes as u64 * dynamic_alignment) as vk::DeviceSize,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
-            //vk::MemoryPropertyFlags::HOST_VISIBLE,
             vk_mem::MemoryUsage::GpuOnly,
         );
 
@@ -124,11 +123,16 @@ impl VulkanGltfAsset {
             dynamic_uniform_buffer,
             descriptor_set,
             dynamic_alignment,
+            number_of_meshes,
         };
 
         asset.update_ubo_indices();
         asset.update_descriptor_set(renderer.context.clone());
         asset
+    }
+
+    pub fn number_of_meshes(&self) -> usize {
+        self.number_of_meshes
     }
 
     pub fn descriptor_set_layout(context: Arc<VulkanContext>) -> DescriptorSetLayout {
@@ -194,8 +198,7 @@ impl VulkanGltfAsset {
         let buffer_infos = [buffer_info];
 
         let dynamic_uniform_buffer_size =
-        // FIXME: SIZE HERE
-            (400 * self.dynamic_alignment) as vk::DeviceSize;
+            (self.number_of_meshes as u64 * self.dynamic_alignment) as vk::DeviceSize;
         let dynamic_buffer_info = vk::DescriptorBufferInfo::builder()
             .buffer(self.dynamic_uniform_buffer.buffer())
             .offset(0)
@@ -281,17 +284,6 @@ impl VulkanGltfAsset {
                 }
             }
         }
-
-        // FIXME: This shows the mesh count issue
-        println!("indices: {}", indices.len());
-        println!("number_of_meshes: {}", self.gltf.meshes().len());
-        println!(
-            "node_meshes: {}",
-            self.gltf
-                .nodes()
-                .filter(|node| node.mesh().is_some())
-                .count()
-        );
 
         for (ubo_index, (scene_index, graph_index, node_index)) in indices.into_iter().enumerate() {
             self.scenes[scene_index].node_graphs[graph_index][node_index]

@@ -80,9 +80,9 @@ pub fn render_system() -> Box<dyn Runnable> {
                 let buffer = &vulkan_gltf_asset.uniform_buffer;
                 buffer.upload_to_buffer(&ubos, 0, std::mem::align_of::<UniformBufferObject>() as _);
 
-                // FIXME: SIZE HERE
-                let full_dynamic_ubo_size =
-                    (400 as u64 * vulkan_gltf_asset.dynamic_alignment) as u64;
+                let full_dynamic_ubo_size = (vulkan_gltf_asset.number_of_meshes() as u64
+                    * vulkan_gltf_asset.dynamic_alignment)
+                    as u64;
 
                 for scene in vulkan_gltf_asset.scenes.iter() {
                     for graph in scene.node_graphs.iter() {
