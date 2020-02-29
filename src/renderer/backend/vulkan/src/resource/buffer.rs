@@ -54,7 +54,7 @@ impl Buffer {
         let data_pointer = self.map_memory().expect("Failed to map memory!");
         unsafe {
             let mut align = ash::util::Align::new(
-                data_pointer.offset(offset as _) as _,
+                data_pointer.add(offset) as _,
                 alignment,
                 self.allocation_info.get_size() as _,
             );

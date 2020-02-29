@@ -1,6 +1,6 @@
 use crate::{
     render::{gltf::VulkanGltfAsset, GraphicsPipeline, Renderer},
-    resource::{DescriptorSetLayout, PipelineLayout, Shader},
+    resource::{PipelineLayout, Shader},
 };
 use ash::{version::DeviceV1_0, vk};
 use nalgebra_glm as glm;
@@ -182,32 +182,8 @@ impl GltfPipeline {
             .blend_constants([0.0, 0.0, 0.0, 0.0])
             .build();
 
-        // Build the pipeline layout info
-        let ubo_binding = vk::DescriptorSetLayoutBinding::builder()
-            .binding(0)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::VERTEX)
-            .build();
-        let dynamic_ubo_binding = vk::DescriptorSetLayoutBinding::builder()
-            .binding(1)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
-            .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::VERTEX)
-            .build();
-        let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
-            .binding(2)
-            .descriptor_count(100)
-            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-            .build();
-        let bindings = [ubo_binding, dynamic_ubo_binding, sampler_binding];
-
-        let layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
-            .bindings(&bindings)
-            .build();
         let descriptor_set_layout =
-            DescriptorSetLayout::new(renderer.context.clone(), layout_create_info);
+            VulkanGltfAsset::descriptor_set_layout(renderer.context.clone());
         let descriptor_set_layouts = [descriptor_set_layout.layout()];
         let push_constant_range = vk::PushConstantRange::builder()
             .stage_flags(vk::ShaderStageFlags::ALL_GRAPHICS)
@@ -279,18 +255,13 @@ impl GltfPipeline {
                     framebuffer,
                     *command_buffer,
                     |command_buffer| unsafe {
-                        self.draw_asset(renderer, command_buffer, index);
+                        self.draw_asset(renderer, command_buffer);
                     },
                 );
             });
     }
 
-    unsafe fn draw_asset(
-        &self,
-        renderer: &Renderer,
-        command_buffer: vk::CommandBuffer,
-        command_buffer_index: usize,
-    ) {
+    unsafe fn draw_asset(&self, renderer: &Renderer, command_buffer: vk::CommandBuffer) {
         let offsets = [0];
         self.assets.iter().for_each(|asset| {
             for scene in asset.scenes.iter() {
@@ -298,7 +269,6 @@ impl GltfPipeline {
                     let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
                     while let Some(node_index) = dfs.next(&graph) {
                         if let Some(mesh) = graph[node_index].mesh.as_ref() {
-                            let descriptor_set = asset.descriptor_sets[command_buffer_index];
                             renderer
                                 .context
                                 .logical_device()
@@ -308,7 +278,7 @@ impl GltfPipeline {
                                     vk::PipelineBindPoint::GRAPHICS,
                                     self.pipeline.layout(),
                                     0,
-                                    &[descriptor_set],
+                                    &[asset.descriptor_set],
                                     &[(mesh.ubo_index as u64 * asset.dynamic_alignment) as _],
                                 );
 
