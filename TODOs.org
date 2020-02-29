@@ -1,6 +1,8 @@
 * DragonGlass Todo Items
 ** New Features 
 *** Rendering
+**** TODO Add mipmap generation
+**** TODO Add multisampling
 **** TODO Add PBR shaders
 **** TODO Add HDR
 **** TODO Add Bloom
@@ -57,6 +59,8 @@
 *** TODO Modularize app.rs
 **** Input, Renderer, Render preparation system, etc can all be moved out
 ** Urgent
+*** Refactor GltfPipeline to be made up of smaller methods to create the pipeline
+*** Load gltf assets at the start of pipeline creation, and convert them to VulkanGltfAssets after descriptor pool is created from total number of materials
 *** Replace magic number descriptor count of 100 for texture samplers with a constant or a calculated value
     [[file:./src/renderer/backend/vulkan/src/render/gltf.rs::.descriptor_count(100)]]
 *** Write a default texture to the remaining descriptors after all materials are written
