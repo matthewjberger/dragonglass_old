@@ -3,6 +3,7 @@ use crate::{
     resource::{Buffer, CommandPool},
 };
 use ash::{version::DeviceV1_0, vk};
+use image::DynamicImage;
 use std::{mem, sync::Arc};
 
 // TODO: Add snafu errors
@@ -20,6 +21,25 @@ pub struct TextureDescription {
     pub format: vk::Format,
     pub dimensions: Dimension,
     pub pixels: Vec<u8>,
+}
+
+#[allow(dead_code)]
+impl TextureDescription {
+    fn from_file(path: &str, format: vk::Format) -> Self {
+        let image = image::open(path).expect("Failed to open image path!");
+        Self::from_image(&image, format)
+    }
+
+    fn from_image(image: &DynamicImage, format: vk::Format) -> Self {
+        let image = image.to_rgba();
+        let width = image.width();
+        let height = image.height();
+        TextureDescription {
+            format,
+            dimensions: Dimension { width, height },
+            pixels: image.into_raw(),
+        }
+    }
 }
 
 // The order of the struct fields matters here
@@ -76,53 +96,15 @@ impl Texture {
         }
     }
 
-    // TODO: Refactor this to use less parameters
-    #[allow(dead_code)]
-    pub fn from_file(
-        context: Arc<VulkanContext>,
-        command_pool: &CommandPool,
-        graphics_queue: vk::Queue,
-        path: &str,
-        format: vk::Format,
-        create_info_builder: vk::ImageCreateInfoBuilder,
-    ) -> Self {
-        let image = image::open(path).expect("Failed to open image path!");
-        let image = image.to_rgba();
-        let width = image.width();
-        let height = image.height();
-        let description = TextureDescription {
-            format,
-            dimensions: Dimension { width, height },
-            pixels: image.into_raw(),
-        };
-        Self::from_data(
-            context,
-            command_pool,
-            graphics_queue,
-            description,
-            create_info_builder
-                .extent(vk::Extent3D {
-                    width,
-                    height,
-                    depth: 1,
-                })
-                .build(),
-        )
-    }
-
-    // TODO: Refactor this to use less parameters
-    pub fn from_data(
-        context: Arc<VulkanContext>,
+    pub fn upload_data(
+        &self,
         command_pool: &CommandPool,
         graphics_queue: vk::Queue,
         description: TextureDescription,
-        create_info: vk::ImageCreateInfo,
-    ) -> Self {
+    ) {
         let image_size = (description.pixels.len() * mem::size_of::<u8>()) as vk::DeviceSize;
-        let texture = Self::new(context.clone(), create_info);
-
         let buffer = Buffer::new(
-            context,
+            self.context.clone(),
             image_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk::MemoryPropertyFlags::HOST_VISIBLE,
@@ -137,7 +119,7 @@ impl Texture {
 
         command_pool.transition_image_layout(
             graphics_queue,
-            texture.image(),
+            self.image(),
             description.format,
             vk::ImageLayout::UNDEFINED,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -146,20 +128,18 @@ impl Texture {
         command_pool.copy_buffer_to_image(
             graphics_queue,
             buffer.buffer(),
-            texture.image(),
+            self.image(),
             description.dimensions.width,
             description.dimensions.height,
         );
 
         command_pool.transition_image_layout(
             graphics_queue,
-            texture.image(),
+            self.image(),
             description.format,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         );
-
-        texture
     }
 
     pub fn image(&self) -> vk::Image {
