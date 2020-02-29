@@ -112,7 +112,7 @@ impl App {
             (),
             vec![(
                 GltfAssetComponent {
-                    asset_name: "examples/assets/models/Buggy.glb".to_string(),
+                    asset_name: "examples/assets/models/nanosuit.glb".to_string(),
                 },
                 TransformComponent::default(),
             )],
