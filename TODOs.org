@@ -26,6 +26,9 @@
 ***** TODO If _normals_ and _tangents_ are specified, compute the bitangent
       ~bitangent = cross(normal, tangent.xyz) * tangent.w~
 
+*** Hardware
+**** Add Android support
+**** Add VR support with OpenVR and/or OpenXR
 ** Dev Ops
 *** TODO Add unit and integration tests
 **** TODO Use MockAll
