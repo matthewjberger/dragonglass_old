@@ -78,12 +78,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                 let ubo = UniformBufferObject { view, projection };
                 let ubos = [ubo];
                 let buffer = &vulkan_gltf_asset.uniform_buffer;
-                buffer.upload_to_buffer(
-                    &ubos,
-                    0,
-                    std::mem::align_of::<UniformBufferObject>() as _,
-                    true,
-                );
+                buffer.upload_to_buffer(&ubos, 0, std::mem::align_of::<UniformBufferObject>() as _);
 
                 // FIXME: SIZE HERE
                 let full_dynamic_ubo_size =
@@ -108,9 +103,10 @@ pub fn render_system() -> Box<dyn Runnable> {
                                     &ubos,
                                     offset,
                                     vulkan_gltf_asset.dynamic_alignment,
-                                    true,
                                 );
-                                buffer.flush(0, full_dynamic_ubo_size);
+                                buffer
+                                    .flush(0, full_dynamic_ubo_size as _)
+                                    .expect("Failed to flush buffer!");
                             }
                         }
                     }

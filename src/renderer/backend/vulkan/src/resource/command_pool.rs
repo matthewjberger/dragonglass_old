@@ -77,20 +77,22 @@ impl CommandPool {
     ) -> Buffer {
         let buffer_size = (vertices.len() * std::mem::size_of::<T>()) as ash::vk::DeviceSize;
 
-        let staging_buffer = Buffer::new(
+        let staging_buffer = Buffer::new_mapped_basic(
             self.context.clone(),
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            //vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            vk_mem::MemoryUsage::CpuToGpu,
         );
 
-        staging_buffer.upload_to_buffer(&vertices, 0, std::mem::align_of::<T>() as _, false);
+        staging_buffer.upload_to_buffer(&vertices, 0, std::mem::align_of::<T>() as _);
 
-        let vertex_buffer = Buffer::new(
+        let vertex_buffer = Buffer::new_mapped_basic(
             self.context.clone(),
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_DST | usage_flags,
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            //vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            vk_mem::MemoryUsage::GpuOnly,
         );
 
         self.copy_buffer_to_buffer(

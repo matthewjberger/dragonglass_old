@@ -51,7 +51,7 @@ impl GltfTextureBundle {
             _ => texture_properties.pixels.to_vec(),
         };
 
-        let create_info = vk::ImageCreateInfo::builder()
+        let image_create_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(vk::Extent3D {
                 width: texture_properties.width,
@@ -78,7 +78,15 @@ impl GltfTextureBundle {
             pixels,
         };
 
-        let texture = Texture::new(renderer.context.clone(), create_info);
+        let allocation_create_info = vk_mem::AllocationCreateInfo {
+            usage: vk_mem::MemoryUsage::GpuOnly,
+            ..Default::default()
+        };
+        let texture = Texture::new(
+            renderer.context.clone(),
+            &allocation_create_info,
+            &image_create_info,
+        );
         texture.upload_data(&renderer.command_pool, renderer.graphics_queue, description);
 
         let create_info = vk::ImageViewCreateInfo::builder()

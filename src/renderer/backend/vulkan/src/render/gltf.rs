@@ -96,19 +96,21 @@ impl VulkanGltfAsset {
                 (dynamic_alignment + minimum_ubo_alignment - 1) & !(minimum_ubo_alignment - 1);
         }
 
-        let uniform_buffer = Buffer::new(
+        let uniform_buffer = Buffer::new_mapped_basic(
             renderer.context.clone(),
             mem::size_of::<UniformBufferObject>() as _,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
-            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            //vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
+            vk_mem::MemoryUsage::CpuToGpu,
         );
 
-        let dynamic_uniform_buffer = Buffer::new(
+        let dynamic_uniform_buffer = Buffer::new_mapped_basic(
             renderer.context.clone(),
             // FIXME: SIZE HERE
             (400 * dynamic_alignment) as vk::DeviceSize,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
-            vk::MemoryPropertyFlags::HOST_VISIBLE,
+            //vk::MemoryPropertyFlags::HOST_VISIBLE,
+            vk_mem::MemoryUsage::GpuOnly,
         );
 
         let number_of_swapchain_images = renderer.vulkan_swapchain.swapchain.images().len();
@@ -136,15 +138,14 @@ impl VulkanGltfAsset {
         let number_of_materials = gltf.materials().len() as u32;
         let number_of_samplers = number_of_materials * number_of_swapchain_images;
 
-        // TODO: Move descriptor pool creation to method
         let ubo_pool_size = vk::DescriptorPoolSize {
             ty: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: 1,
+            descriptor_count: number_of_swapchain_images,
         };
 
         let dynamic_ubo_pool_size = vk::DescriptorPoolSize {
             ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-            descriptor_count: 1,
+            descriptor_count: number_of_swapchain_images,
         };
 
         let sampler_pool_size = vk::DescriptorPoolSize {

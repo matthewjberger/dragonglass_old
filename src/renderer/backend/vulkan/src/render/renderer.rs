@@ -115,7 +115,7 @@ impl VulkanSwapchain {
         let swapchain = Swapchain::new(context.clone(), dimensions);
         let render_pass = RenderPass::new(context.clone(), swapchain.properties(), depth_format);
 
-        let create_info = vk::ImageCreateInfo::builder()
+        let image_create_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(vk::Extent3D {
                 width: swapchain.properties().extent.width,
@@ -132,7 +132,16 @@ impl VulkanSwapchain {
             .samples(vk::SampleCountFlags::TYPE_1)
             .flags(vk::ImageCreateFlags::empty())
             .build();
-        let depth_texture = Texture::new(context.clone(), create_info);
+
+        let image_allocation_create_info = vk_mem::AllocationCreateInfo {
+            usage: vk_mem::MemoryUsage::GpuOnly,
+            ..Default::default()
+        };
+        let depth_texture = Texture::new(
+            context.clone(),
+            &image_allocation_create_info,
+            &image_create_info,
+        );
 
         command_pool.transition_image_layout(
             graphics_queue,

@@ -2,9 +2,9 @@ use crate::{
     core::VulkanContext,
     resource::{Buffer, CommandPool},
 };
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use image::DynamicImage;
-use std::{mem, sync::Arc};
+use std::sync::Arc;
 
 // TODO: Add snafu errors
 
@@ -46,52 +46,26 @@ impl TextureDescription {
 // because it determines drop order
 pub struct Texture {
     image: vk::Image,
-    memory: vk::DeviceMemory,
+    allocation: vk_mem::Allocation,
+    allocation_info: vk_mem::AllocationInfo,
     context: Arc<VulkanContext>,
 }
 
 impl Texture {
-    pub fn new(context: Arc<VulkanContext>, create_info: vk::ImageCreateInfo) -> Self {
-        let image = unsafe {
-            context
-                .logical_device()
-                .logical_device()
-                .create_image(&create_info, None)
-                .expect("Failed to create image!")
-        };
+    pub fn new(
+        context: Arc<VulkanContext>,
+        allocation_create_info: &vk_mem::AllocationCreateInfo,
+        image_create_info: &vk::ImageCreateInfo,
+    ) -> Self {
+        let (image, allocation, allocation_info) = context
+            .allocator()
+            .create_image(&image_create_info, &allocation_create_info)
+            .expect("Failed to create image!");
 
-        let memory_requirements = unsafe {
-            context
-                .logical_device()
-                .logical_device()
-                .get_image_memory_requirements(image)
-        };
-
-        let memory_type_index = Buffer::determine_memory_type_index(
-            memory_requirements,
-            context.physical_device_memory_properties(),
-            vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        );
-
-        let allocation_info = vk::MemoryAllocateInfo::builder()
-            .allocation_size(memory_requirements.size)
-            .memory_type_index(memory_type_index)
-            .build();
-
-        let memory = unsafe {
-            let logical_device = context.logical_device().logical_device();
-            let memory_handle = logical_device
-                .allocate_memory(&allocation_info, None)
-                .expect("Failed to allocate memory!");
-            logical_device
-                .bind_image_memory(image, memory_handle, 0)
-                .expect("Failed to bind image");
-            memory_handle
-        };
-
-        Texture {
+        Self {
             image,
-            memory,
+            allocation,
+            allocation_info,
             context,
         }
     }
@@ -102,20 +76,14 @@ impl Texture {
         graphics_queue: vk::Queue,
         description: TextureDescription,
     ) {
-        let image_size = (description.pixels.len() * mem::size_of::<u8>()) as vk::DeviceSize;
-        let buffer = Buffer::new(
+        let buffer = Buffer::new_mapped_basic(
             self.context.clone(),
-            image_size,
+            self.allocation_info.get_size() as _,
             vk::BufferUsageFlags::TRANSFER_SRC,
-            vk::MemoryPropertyFlags::HOST_VISIBLE,
+            //vk::MemoryPropertyFlags::HOST_VISIBLE,
+            vk_mem::MemoryUsage::CpuToGpu,
         );
-
-        buffer.upload_to_buffer(
-            &description.pixels,
-            0,
-            std::mem::align_of::<u8>() as _,
-            false,
-        );
+        buffer.upload_to_buffer(&description.pixels, 0, std::mem::align_of::<u8>() as _);
 
         command_pool.transition_image_layout(
             graphics_queue,
@@ -145,19 +113,21 @@ impl Texture {
     pub fn image(&self) -> vk::Image {
         self.image
     }
+
+    pub fn allocation(&self) -> &vk_mem::Allocation {
+        &self.allocation
+    }
+
+    pub fn allocation_info(&self) -> &vk_mem::AllocationInfo {
+        &self.allocation_info
+    }
 }
 
 impl Drop for Texture {
     fn drop(&mut self) {
-        unsafe {
-            self.context
-                .logical_device()
-                .logical_device()
-                .destroy_image(self.image, None);
-            self.context
-                .logical_device()
-                .logical_device()
-                .free_memory(self.memory, None);
-        }
+        self.context
+            .allocator()
+            .destroy_image(self.image, &self.allocation)
+            .expect("Failed to destroy image!");
     }
 }

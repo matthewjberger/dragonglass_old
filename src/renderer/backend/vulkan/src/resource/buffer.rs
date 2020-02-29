@@ -1,195 +1,99 @@
 use crate::core::VulkanContext;
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use std::sync::Arc;
 
 // TODO: Add snafu errors
 
 pub struct Buffer {
     buffer: vk::Buffer,
-    memory: vk::DeviceMemory,
-    memory_requirements: vk::MemoryRequirements,
+    allocation: vk_mem::Allocation,
+    allocation_info: vk_mem::AllocationInfo,
     context: Arc<VulkanContext>,
 }
 
 impl Buffer {
-    // TODO: Refactor this to use less parameters and be shorter
     pub fn new(
         context: Arc<VulkanContext>,
-        size: ash::vk::DeviceSize,
-        usage: vk::BufferUsageFlags,
-        required_properties: vk::MemoryPropertyFlags,
+        allocation_create_info: &vk_mem::AllocationCreateInfo,
+        buffer_create_info: &vk::BufferCreateInfo,
     ) -> Self {
-        // Build the staging buffer creation info
-        let buffer_info = vk::BufferCreateInfo::builder()
-            .size(size)
-            .usage(usage)
-            .sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .build();
+        let (buffer, allocation, allocation_info) = context
+            .allocator()
+            .create_buffer(&buffer_create_info, &allocation_create_info)
+            .expect("Failed to create buffer!");
 
-        // Create the staging buffer
-        let buffer = unsafe {
-            context
-                .logical_device()
-                .logical_device()
-                .create_buffer(&buffer_info, None)
-                .expect("Failed to create buffer!")
-        };
-
-        // Get the buffer's memory requirements
-        let memory_requirements = unsafe {
-            context
-                .logical_device()
-                .logical_device()
-                .get_buffer_memory_requirements(buffer)
-        };
-
-        let memory_type = Self::determine_memory_type_index(
-            memory_requirements,
-            context.physical_device_memory_properties(),
-            required_properties,
-        );
-
-        // Create the staging buffer allocation info
-        let buffer_allocation_info = vk::MemoryAllocateInfo::builder()
-            .allocation_size(memory_requirements.size)
-            .memory_type_index(memory_type)
-            .build();
-
-        // Allocate memory for the buffer
-        let memory = unsafe {
-            context
-                .logical_device()
-                .logical_device()
-                .allocate_memory(&buffer_allocation_info, None)
-                .expect("Failed to allocate memory!")
-        };
-
-        unsafe {
-            // Bind the buffer memory for mapping
-            context
-                .logical_device()
-                .logical_device()
-                .bind_buffer_memory(buffer, memory, 0)
-                .expect("Failed to bind buffer memory!");
-        }
-
-        Buffer {
+        Self {
             buffer,
-            memory,
-            memory_requirements,
+            allocation,
+            allocation_info,
             context,
         }
     }
 
-    pub fn determine_memory_type_index(
-        buffer_memory_requirements: vk::MemoryRequirements,
-        physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
-        required_properties: vk::MemoryPropertyFlags,
-    ) -> u32 {
-        // Determine the buffer's memory type
-        let mut memory_type = 0;
-        let mut found_memory_type = false;
-        for index in 0..physical_device_memory_properties.memory_type_count {
-            if buffer_memory_requirements.memory_type_bits & (1 << index) != 0
-                && physical_device_memory_properties.memory_types[index as usize]
-                    .property_flags
-                    .contains(required_properties)
-            {
-                memory_type = index;
-                found_memory_type = true;
-            }
-        }
-        if !found_memory_type {
-            panic!("Failed to find suitable memory type.")
-        }
-        memory_type
+    pub fn new_mapped_basic(
+        context: Arc<VulkanContext>,
+        size: vk::DeviceSize,
+        buffer_usage: vk::BufferUsageFlags,
+        memory_usage: vk_mem::MemoryUsage,
+    ) -> Self {
+        let allocation_create_info = vk_mem::AllocationCreateInfo {
+            usage: memory_usage,
+            ..Default::default()
+        };
+
+        let buffer_create_info = vk::BufferCreateInfo::builder()
+            .size(size)
+            .usage(buffer_usage)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .build();
+
+        Buffer::new(context, &allocation_create_info, &buffer_create_info)
     }
 
-    pub fn upload_to_buffer<T: Copy>(
-        &self,
-        data: &[T],
-        offset: usize,
-        alignment: vk::DeviceSize,
-        persistent: bool,
-    ) {
-        let data_pointer = self.map(
-            offset as _,
-            (data.len() * std::mem::size_of::<T>()) as vk::DeviceSize,
-            vk::MemoryMapFlags::empty(),
-        );
+    pub fn upload_to_buffer<T: Copy>(&self, data: &[T], offset: usize, alignment: vk::DeviceSize) {
+        let data_pointer = self.map_memory().expect("Failed to map memory!");
         unsafe {
-            // Upload aligned staging data to the mapped buffer
-            let mut align =
-                ash::util::Align::new(data_pointer, alignment, self.memory_requirements.size as _);
+            let mut align = ash::util::Align::new(
+                data_pointer.offset(offset as _) as _,
+                alignment,
+                self.allocation_info.get_size() as _,
+            );
             align.copy_from_slice(data);
         }
-
-        if !persistent {
-            self.unmap();
-        }
     }
 
-    pub fn flush(&self, offset: u64, size: vk::DeviceSize) {
-        let memory_range = vk::MappedMemoryRange::builder()
-            .memory(self.memory)
-            .offset(offset)
-            .size(size)
-            .build();
-        let memory_ranges = [memory_range];
-
-        unsafe {
-            self.context
-                .logical_device()
-                .logical_device()
-                .flush_mapped_memory_ranges(&memory_ranges)
-                .expect("Failed to flush mapped memory ranges!");
-        }
+    pub fn map_memory(&self) -> vk_mem::error::Result<*mut u8> {
+        self.context.allocator().map_memory(&self.allocation)
     }
 
-    fn map(
-        &self,
-        offset: vk::DeviceSize,
-        size: vk::DeviceSize,
-        flags: vk::MemoryMapFlags,
-    ) -> *mut std::ffi::c_void {
-        unsafe {
-            self.context
-                .logical_device()
-                .logical_device()
-                .map_memory(self.memory, offset, size, flags)
-                .expect("Failed to map memory!")
-        }
+    pub fn unmap_memory(&self) -> vk_mem::error::Result<()> {
+        self.context.allocator().unmap_memory(&self.allocation)
     }
 
-    fn unmap(&self) {
-        unsafe {
-            self.context
-                .logical_device()
-                .logical_device()
-                .unmap_memory(self.memory());
-        }
+    pub fn flush(&self, offset: usize, size: usize) -> vk_mem::error::Result<()> {
+        self.context
+            .allocator()
+            .flush_allocation(&self.allocation, offset, size)
     }
 
     pub fn buffer(&self) -> vk::Buffer {
         self.buffer
     }
 
-    pub fn memory(&self) -> vk::DeviceMemory {
-        self.memory
+    pub fn allocation(&self) -> &vk_mem::Allocation {
+        &self.allocation
+    }
+
+    pub fn allocation_info(&self) -> &vk_mem::AllocationInfo {
+        &self.allocation_info
     }
 }
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        unsafe {
-            self.context
-                .logical_device()
-                .logical_device()
-                .destroy_buffer(self.buffer, None);
-            self.context
-                .logical_device()
-                .logical_device()
-                .free_memory(self.memory, None);
-        }
+        self.context
+            .allocator()
+            .destroy_buffer(self.buffer, &self.allocation)
+            .expect("Failed to destroy buffer!");
     }
 }
