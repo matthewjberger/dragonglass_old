@@ -1,6 +1,6 @@
 pub use self::{
     framebuffer::Framebuffer, pipeline::GraphicsPipeline, pipeline_gltf::GltfPipeline,
-    renderer::Renderer, renderpass::RenderPass,
+    renderer::Renderer, renderpass::RenderPass, vulkan_swapchain::VulkanSwapchain,
 };
 
 pub mod component;
@@ -12,3 +12,4 @@ pub mod renderer;
 pub mod renderpass;
 pub mod system;
 pub mod texture_bundle;
+pub mod vulkan_swapchain;
