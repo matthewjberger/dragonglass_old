@@ -1,5 +1,5 @@
 use crate::{
-    core::{ImageView, Swapchain, VulkanContext},
+    core::{ImageView, Swapchain, SwapchainProperties, VulkanContext},
     render::{pipeline_gltf::GltfPipeline, Framebuffer, RenderPass},
     resource::{CommandPool, Texture},
     sync::SynchronizationSet,
@@ -113,13 +113,116 @@ impl VulkanSwapchain {
         );
 
         let swapchain = Swapchain::new(context.clone(), dimensions);
-        let render_pass = RenderPass::new(context.clone(), swapchain.properties(), depth_format);
+        let render_pass =
+            Self::create_render_pass(context.clone(), &swapchain.properties(), depth_format);
 
+        let swapchain_extent = swapchain.properties().extent;
+        let depth_texture =
+            Self::create_depth_texture(context.clone(), &swapchain_extent, depth_format);
+
+        command_pool.transition_image_layout(
+            graphics_queue,
+            depth_texture.image(),
+            depth_format,
+            vk::ImageLayout::UNDEFINED,
+            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        );
+
+        let depth_texture_view =
+            Self::create_depth_texture_view(context.clone(), &depth_texture, depth_format);
+
+        let framebuffers = Self::create_framebuffers(
+            context.clone(),
+            &swapchain,
+            &depth_texture_view,
+            &render_pass,
+        );
+
+        VulkanSwapchain {
+            swapchain,
+            render_pass,
+            depth_texture,
+            depth_texture_view,
+            framebuffers,
+        }
+    }
+
+    pub fn create_render_pass(
+        context: Arc<VulkanContext>,
+        swapchain_properties: &SwapchainProperties,
+        depth_format: vk::Format,
+    ) -> RenderPass {
+        let color_attachment_description = vk::AttachmentDescription::builder()
+            .format(swapchain_properties.format.format)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+            .build();
+
+        let depth_attachment_description = vk::AttachmentDescription::builder()
+            .format(depth_format)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+            .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+            .build();
+
+        let attachment_descriptions = [color_attachment_description, depth_attachment_description];
+
+        let color_attachment_reference = vk::AttachmentReference::builder()
+            .attachment(0)
+            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .build();
+        let color_attachment_references = [color_attachment_reference];
+
+        let depth_attachment_reference = vk::AttachmentReference::builder()
+            .attachment(1)
+            .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+            .build();
+
+        let subpass_description = vk::SubpassDescription::builder()
+            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+            .color_attachments(&color_attachment_references)
+            .depth_stencil_attachment(&depth_attachment_reference)
+            .build();
+        let subpass_descriptions = [subpass_description];
+
+        let subpass_dependency = vk::SubpassDependency::builder()
+            .src_subpass(vk::SUBPASS_EXTERNAL)
+            .dst_subpass(0)
+            .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .src_access_mask(vk::AccessFlags::empty())
+            .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .dst_access_mask(
+                vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            )
+            .build();
+        let subpass_dependencies = [subpass_dependency];
+
+        let create_info = vk::RenderPassCreateInfo::builder()
+            .attachments(&attachment_descriptions)
+            .subpasses(&subpass_descriptions)
+            .dependencies(&subpass_dependencies)
+            .build();
+
+        RenderPass::new(context, &create_info)
+    }
+
+    fn create_depth_texture(
+        context: Arc<VulkanContext>,
+        swapchain_extent: &vk::Extent2D,
+        depth_format: vk::Format,
+    ) -> Texture {
         let image_create_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(vk::Extent3D {
-                width: swapchain.properties().extent.width,
-                height: swapchain.properties().extent.height,
+                width: swapchain_extent.width,
+                height: swapchain_extent.height,
                 depth: 1,
             })
             .mip_levels(1)
@@ -137,20 +240,14 @@ impl VulkanSwapchain {
             usage: vk_mem::MemoryUsage::GpuOnly,
             ..Default::default()
         };
-        let depth_texture = Texture::new(
-            context.clone(),
-            &image_allocation_create_info,
-            &image_create_info,
-        );
+        Texture::new(context, &image_allocation_create_info, &image_create_info)
+    }
 
-        command_pool.transition_image_layout(
-            graphics_queue,
-            depth_texture.image(),
-            depth_format,
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        );
-
+    fn create_depth_texture_view(
+        context: Arc<VulkanContext>,
+        depth_texture: &Texture,
+        depth_format: vk::Format,
+    ) -> ImageView {
         let create_info = vk::ImageViewCreateInfo::builder()
             .image(depth_texture.image())
             .view_type(vk::ImageViewType::TYPE_2D)
@@ -169,10 +266,16 @@ impl VulkanSwapchain {
                 layer_count: 1,
             })
             .build();
-        let depth_texture_view = ImageView::new(context.clone(), create_info);
+        ImageView::new(context.clone(), create_info)
+    }
 
-        // Create one framebuffer for each image in the swapchain
-        let framebuffers = swapchain
+    fn create_framebuffers(
+        context: Arc<VulkanContext>,
+        swapchain: &Swapchain,
+        depth_texture_view: &ImageView,
+        render_pass: &RenderPass,
+    ) -> Vec<Framebuffer> {
+        swapchain
             .image_views()
             .iter()
             .map(|view| [view.view(), depth_texture_view.view()])
@@ -186,14 +289,6 @@ impl VulkanSwapchain {
                     .build();
                 Framebuffer::new(context.clone(), create_info)
             })
-            .collect::<Vec<_>>();
-
-        VulkanSwapchain {
-            swapchain,
-            render_pass,
-            depth_texture,
-            depth_texture_view,
-            framebuffers,
-        }
+            .collect::<Vec<_>>()
     }
 }
