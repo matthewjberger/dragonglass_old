@@ -176,7 +176,7 @@ impl VulkanSwapchain {
                 layer_count: 1,
             })
             .build();
-        ImageView::new(context.clone(), create_info)
+        ImageView::new(context, create_info)
     }
 
     fn create_framebuffers(
