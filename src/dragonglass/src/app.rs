@@ -1,26 +1,14 @@
 use dragonglass_backend_vulkan::render::{renderer::Renderer, system::render_system, GltfPipeline};
-use dragonglass_core::components::*;
+use dragonglass_core::{
+    components::{AssetComponent, TransformComponent},
+    input::Input,
+};
 use legion::prelude::*;
 use nalgebra_glm as glm;
-use std::collections::HashMap;
-use winit::{
-    dpi::LogicalSize, ElementState, Event, EventsLoop, VirtualKeyCode, Window, WindowEvent,
-};
+use winit::{dpi::LogicalSize, Event, EventsLoop, VirtualKeyCode, Window, WindowEvent};
 
 #[derive(Default)]
 struct ExitRequested(bool);
-
-type KeyMap = HashMap<VirtualKeyCode, ElementState>;
-
-#[derive(Default)]
-struct Input {
-    keystates: KeyMap,
-}
-
-// Create a system that does something if a certain key is pressed
-fn is_key_pressed(keystates: &KeyMap, keycode: VirtualKeyCode) -> bool {
-    keystates.contains_key(&keycode) && keystates[&keycode] == ElementState::Pressed
-}
 
 pub struct App {
     event_loop: EventsLoop,
@@ -77,7 +65,7 @@ impl App {
             .write_resource::<Input>()
             .with_query(<Read<TransformComponent>>::query())
             .build(|_, _, input, _| {
-                if is_key_pressed(&input.keystates, VirtualKeyCode::Space) {
+                if input.is_key_pressed(VirtualKeyCode::Space) {
                     // TODO: Do something with the spacebar
                 }
             });

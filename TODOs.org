@@ -68,3 +68,4 @@
     [[file:./src/renderer/backend/vulkan/src/render/gltf.rs::.descriptor_count(100)]]
 *** Write a default texture to the remaining descriptors after all materials are written
     [[file:~/code/dragonglass/src/renderer/backend/vulkan/src/render/gltf.rs::// FIXME: Write a default texture]]
+*** Upgrade winit version
