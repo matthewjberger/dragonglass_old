@@ -1,12 +1,12 @@
 use crate::{
     render::{
-        component::TransformComponent,
         gltf::{calculate_global_transform, DynamicUniformBufferObject, UniformBufferObject},
         Renderer,
     },
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
 use ash::vk;
+use dragonglass_core::components::TransformComponent;
 use legion::prelude::*;
 use nalgebra_glm as glm;
 use petgraph::{graph::NodeIndex, visit::Dfs};

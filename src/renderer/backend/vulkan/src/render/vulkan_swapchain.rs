@@ -32,7 +32,7 @@ impl VulkanSwapchain {
 
         let swapchain_extent = swapchain.properties().extent;
         let depth_texture =
-            Self::create_depth_texture(context.clone(), &swapchain_extent, depth_format);
+            Self::create_depth_texture(context.clone(), swapchain_extent, depth_format);
 
         command_pool.transition_image_layout(
             graphics_queue,
@@ -45,12 +45,8 @@ impl VulkanSwapchain {
         let depth_texture_view =
             Self::create_depth_texture_view(context.clone(), &depth_texture, depth_format);
 
-        let framebuffers = Self::create_framebuffers(
-            context.clone(),
-            &swapchain,
-            &depth_texture_view,
-            &render_pass,
-        );
+        let framebuffers =
+            Self::create_framebuffers(context, &swapchain, &depth_texture_view, &render_pass);
 
         VulkanSwapchain {
             swapchain,
@@ -129,7 +125,7 @@ impl VulkanSwapchain {
 
     fn create_depth_texture(
         context: Arc<VulkanContext>,
-        swapchain_extent: &vk::Extent2D,
+        swapchain_extent: vk::Extent2D,
         depth_format: vk::Format,
     ) -> Texture {
         let image_create_info = vk::ImageCreateInfo::builder()

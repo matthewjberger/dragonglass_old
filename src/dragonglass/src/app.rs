@@ -1,9 +1,5 @@
-use dragonglass_backend_vulkan::render::{
-    component::{GltfAssetComponent, TransformComponent},
-    renderer::Renderer,
-    system::render_system,
-    GltfPipeline,
-};
+use dragonglass_backend_vulkan::render::{renderer::Renderer, system::render_system, GltfPipeline};
+use dragonglass_core::components::*;
 use legion::prelude::*;
 use nalgebra_glm as glm;
 use std::collections::HashMap;
@@ -63,7 +59,7 @@ impl App {
         // Register the render preparation system and its components
         let prepare_renderer_system = SystemBuilder::new("prepare_renderer")
             .write_resource::<Renderer>()
-            .with_query(<Read<GltfAssetComponent>>::query())
+            .with_query(<Read<AssetComponent>>::query())
             .build(|_, mut world, mut renderer, query| {
                 let asset_names = query
                     .iter(&mut world)
@@ -111,7 +107,7 @@ impl App {
         world.insert(
             (),
             vec![(
-                GltfAssetComponent {
+                AssetComponent {
                     asset_name: "examples/assets/models/Sponza/Sponza.gltf".to_string(),
                 },
                 TransformComponent::default(),

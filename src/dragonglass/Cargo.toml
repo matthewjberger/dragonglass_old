@@ -11,6 +11,7 @@ env_logger = "0.7.1"
 log = "0.4.8"
 snafu = "0.6.0"
 legion = "0.2.1"
+dragonglass-core = { path = "../core", version = "0.1.0" }
 
 # This needs to be behind a feature flag
 dragonglass-backend-vulkan = { path = "../renderer/backend/vulkan", version = "0.1.0" }

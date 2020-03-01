@@ -3,5 +3,6 @@
 members = [
     "src/dragonglass",
     "src/renderer/backend/vulkan",
+    "src/core",
     "examples",
 ]

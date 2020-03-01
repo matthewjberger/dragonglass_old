@@ -3,7 +3,6 @@ pub use self::{
     renderer::Renderer, renderpass::RenderPass, vulkan_swapchain::VulkanSwapchain,
 };
 
-pub mod component;
 pub mod framebuffer;
 pub mod gltf;
 pub mod pipeline;

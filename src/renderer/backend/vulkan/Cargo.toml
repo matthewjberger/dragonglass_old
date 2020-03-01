@@ -17,6 +17,7 @@ petgraph = "0.5.0"
 legion = "0.2.1"
 gltf = "0.14.0"
 vk-mem = "0.2.0"
+dragonglass-core = { path = "../../../core", version = "0.1.0" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3.8", features = ["windef", "libloaderapi"] }

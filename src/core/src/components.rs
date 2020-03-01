@@ -1,8 +1,7 @@
 use nalgebra_glm as glm;
 
-// TODO: Rename MeshComponent to something more generic. (RenderComponent?)
 #[derive(Debug)]
-pub struct GltfAssetComponent {
+pub struct AssetComponent {
     pub asset_name: String, // TODO: Make this a tag rather than a full path
 }
 

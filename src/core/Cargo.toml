@@ -1,0 +1,8 @@
+[package]
+name = "dragonglass-core"
+version = "0.1.0"
+authors = ["Matthew J. Berger <matthewberger@nevada.unr.edu>"]
+edition = "2018"
+
+[dependencies]
+nalgebra-glm = "0.5.0"
