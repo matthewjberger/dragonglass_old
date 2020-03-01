@@ -81,8 +81,7 @@ impl CommandPool {
             self.context.clone(),
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_SRC,
-            //vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::HOST_COHERENT,
-            vk_mem::MemoryUsage::CpuToGpu,
+            vk_mem::MemoryUsage::CpuOnly,
         );
 
         staging_buffer.upload_to_buffer(&vertices, 0, std::mem::align_of::<T>() as _);
@@ -91,7 +90,6 @@ impl CommandPool {
             self.context.clone(),
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_DST | usage_flags,
-            //vk::MemoryPropertyFlags::DEVICE_LOCAL,
             vk_mem::MemoryUsage::GpuOnly,
         );
 

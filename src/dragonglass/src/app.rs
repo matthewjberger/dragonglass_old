@@ -33,6 +33,10 @@ impl App {
             .grab_cursor(true)
             .expect("Failed to set cursor grabbing on window!");
 
+        let monitor_id = window.get_current_monitor();
+        window.set_fullscreen(Some(monitor_id));
+        window.hide_cursor(true);
+
         App {
             event_loop,
             window,
@@ -79,7 +83,11 @@ impl App {
             .add_thread_local(render_system())
             .build();
 
-        world.insert((), vec![(Camera::default(),)]);
+        let camera = Camera {
+            speed: 2.0,
+            ..Default::default()
+        };
+        world.insert((), vec![(camera,)]);
         world.insert(
             (),
             vec![(
@@ -97,16 +105,8 @@ impl App {
                 break;
             }
 
-            let window_size = self
-                .window
-                .get_inner_size()
-                .expect("Failed to get window inner size!");
-            self.window
-                .set_cursor_position(LogicalPosition::new(
-                    window_size.width / 2.0,
-                    window_size.height / 2.0,
-                ))
-                .expect("Failed to set cursor position!");
+            self.center_cursor();
+
             schedule.execute(&mut world);
         }
 
@@ -115,6 +115,19 @@ impl App {
             .get::<Renderer>()
             .expect("Failed to get renderer resource!");
         renderer.wait_idle();
+    }
+
+    fn center_cursor(&mut self) {
+        let window_size = self
+            .window
+            .get_inner_size()
+            .expect("Failed to get window inner size!");
+        self.window
+            .set_cursor_position(LogicalPosition::new(
+                window_size.width / 2.0,
+                window_size.height / 2.0,
+            ))
+            .expect("Failed to set cursor position!");
     }
 
     fn process_events(&mut self, world: &mut World) {

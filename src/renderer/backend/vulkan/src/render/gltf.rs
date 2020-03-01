@@ -100,7 +100,7 @@ impl VulkanGltfAsset {
             renderer.context.clone(),
             mem::size_of::<UniformBufferObject>() as _,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
-            vk_mem::MemoryUsage::CpuToGpu,
+            vk_mem::MemoryUsage::CpuOnly,
         );
 
         let number_of_meshes = gltf.nodes().filter(|node| node.mesh().is_some()).count();
@@ -108,7 +108,7 @@ impl VulkanGltfAsset {
             renderer.context.clone(),
             (number_of_meshes as u64 * dynamic_alignment) as vk::DeviceSize,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
-            vk_mem::MemoryUsage::GpuOnly,
+            vk_mem::MemoryUsage::CpuToGpu,
         );
 
         let descriptor_pool = Self::create_descriptor_pool(renderer.context.clone());

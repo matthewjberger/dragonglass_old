@@ -14,14 +14,14 @@ pub enum CameraDirection {
 
 pub struct Camera {
     pub position: glm::Vec3,
-    right: glm::Vec3,
+    pub right: glm::Vec3,
     pub front: glm::Vec3,
-    up: glm::Vec3,
-    world_up: glm::Vec3,
+    pub up: glm::Vec3,
+    pub world_up: glm::Vec3,
     pub speed: f32,
     pub sensitivity: f32,
-    yaw_degrees: f32,
-    pitch_degrees: f32,
+    pub yaw_degrees: f32,
+    pub pitch_degrees: f32,
 }
 
 impl Default for Camera {
