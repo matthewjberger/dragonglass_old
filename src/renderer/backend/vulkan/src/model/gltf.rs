@@ -40,8 +40,6 @@ pub struct Scene {
 }
 
 pub struct Mesh {
-    pub vertex_buffer: Buffer,
-    pub index_buffer: Buffer,
     pub primitives: Vec<Primitive>,
     pub ubo_index: usize,
 }
@@ -61,6 +59,8 @@ pub struct VulkanGltfAsset {
     pub dynamic_uniform_buffer: Buffer,
     pub descriptor_set: vk::DescriptorSet,
     pub dynamic_alignment: u64,
+    pub vertex_buffer: Buffer,
+    pub index_buffer: Buffer,
     number_of_meshes: usize,
 }
 
@@ -78,7 +78,7 @@ impl VulkanGltfAsset {
             .map(|properties| GltfTextureBundle::new(&renderer, properties))
             .collect::<Vec<_>>();
 
-        let scenes = Self::prepare_scenes(&gltf, &buffers, &renderer);
+        let (scenes, vertices, indices) = Self::prepare_scenes(&gltf, &buffers, &renderer);
 
         // TODO: Move this logic to the VulkanContext
         let physical_device_properties = unsafe {
@@ -115,6 +115,18 @@ impl VulkanGltfAsset {
         let descriptor_pool = Self::create_descriptor_pool(renderer.context.clone());
         let descriptor_set = descriptor_pool.allocate_descriptor_sets(descriptor_set_layout, 1)[0];
 
+        let vertex_buffer = renderer.transient_command_pool.create_device_local_buffer(
+            renderer.graphics_queue,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            &vertices,
+        );
+
+        let index_buffer = renderer.transient_command_pool.create_device_local_buffer(
+            renderer.graphics_queue,
+            vk::BufferUsageFlags::INDEX_BUFFER,
+            &indices,
+        );
+
         let mut asset = VulkanGltfAsset {
             gltf,
             textures,
@@ -125,6 +137,8 @@ impl VulkanGltfAsset {
             descriptor_set,
             dynamic_alignment,
             number_of_meshes,
+            vertex_buffer,
+            index_buffer,
         };
 
         asset.update_ubo_indices();
@@ -310,7 +324,9 @@ impl VulkanGltfAsset {
         gltf: &gltf::Document,
         buffers: &[gltf::buffer::Data],
         renderer: &Renderer,
-    ) -> Vec<Scene> {
+    ) -> (Vec<Scene>, Vec<f32>, Vec<u32>) {
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
         let mut scenes: Vec<Scene> = Vec::new();
         for scene in gltf.scenes() {
             let mut node_graphs: Vec<NodeGraph> = Vec::new();
@@ -322,12 +338,14 @@ impl VulkanGltfAsset {
                     &mut node_graph,
                     NodeIndex::new(0_usize),
                     &renderer,
+                    &mut vertices,
+                    &mut indices,
                 );
                 node_graphs.push(node_graph);
             }
             scenes.push(Scene { node_graphs });
         }
-        scenes
+        (scenes, vertices, indices)
     }
 
     fn visit_children(
@@ -336,8 +354,10 @@ impl VulkanGltfAsset {
         node_graph: &mut NodeGraph,
         parent_index: NodeIndex,
         renderer: &Renderer,
+        vertices: &mut Vec<f32>,
+        indices: &mut Vec<u32>,
     ) {
-        let mesh = Self::load_mesh(node, buffers, renderer);
+        let mesh = Self::load_mesh(node, buffers, vertices, indices);
         let node_info = Node {
             local_transform: Self::determine_transform(node),
             mesh,
@@ -350,19 +370,19 @@ impl VulkanGltfAsset {
         }
 
         for child in node.children() {
-            Self::visit_children(&child, buffers, node_graph, node_index, renderer);
+            Self::visit_children(
+                &child, buffers, node_graph, node_index, renderer, vertices, indices,
+            );
         }
     }
 
     fn load_mesh(
         node: &gltf::Node,
         buffers: &[gltf::buffer::Data],
-        renderer: &Renderer,
+        vertices: &mut Vec<f32>,
+        indices: &mut Vec<u32>,
     ) -> Option<Mesh> {
         if let Some(mesh) = node.mesh() {
-            let mut vertices = Vec::new();
-            let mut indices = Vec::new();
-
             let mut all_mesh_primitives = Vec::new();
             for primitive in mesh.primitives() {
                 // Position (3), Normal (3), TexCoords_0 (2)
@@ -426,22 +446,8 @@ impl VulkanGltfAsset {
                 });
             }
 
-            let vertex_buffer = renderer.transient_command_pool.create_device_local_buffer(
-                renderer.graphics_queue,
-                vk::BufferUsageFlags::VERTEX_BUFFER,
-                &vertices,
-            );
-
-            let index_buffer = renderer.transient_command_pool.create_device_local_buffer(
-                renderer.graphics_queue,
-                vk::BufferUsageFlags::INDEX_BUFFER,
-                &indices,
-            );
-
             Some(Mesh {
                 primitives: all_mesh_primitives,
-                vertex_buffer,
-                index_buffer,
                 ubo_index: 0,
             })
         } else {

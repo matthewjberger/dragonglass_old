@@ -274,6 +274,24 @@ impl GltfPipeline {
     unsafe fn draw_asset(&self, renderer: &Renderer, command_buffer: vk::CommandBuffer) {
         let offsets = [0];
         self.assets.iter().for_each(|asset| {
+            let vertex_buffers = [asset.vertex_buffer.buffer()];
+            renderer
+                .context
+                .logical_device()
+                .logical_device()
+                .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
+
+            renderer
+                .context
+                .logical_device()
+                .logical_device()
+                .cmd_bind_index_buffer(
+                    command_buffer,
+                    asset.index_buffer.buffer(),
+                    0,
+                    vk::IndexType::UINT32,
+                );
+
             for scene in asset.scenes.iter() {
                 for graph in scene.node_graphs.iter() {
                     let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
@@ -290,29 +308,6 @@ impl GltfPipeline {
                                     0,
                                     &[asset.descriptor_set],
                                     &[(mesh.ubo_index as u64 * asset.dynamic_alignment) as _],
-                                );
-
-                            let vertex_buffers = [mesh.vertex_buffer.buffer()];
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_bind_vertex_buffers(
-                                    command_buffer,
-                                    0,
-                                    &vertex_buffers,
-                                    &offsets,
-                                );
-
-                            renderer
-                                .context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_bind_index_buffer(
-                                    command_buffer,
-                                    mesh.index_buffer.buffer(),
-                                    0,
-                                    vk::IndexType::UINT32,
                                 );
 
                             for primitive in mesh.primitives.iter() {
