@@ -1,18 +1,16 @@
 use nalgebra_glm as glm;
 
 #[derive(Debug)]
-pub struct AssetComponent {
-    pub asset_name: String, // TODO: Make this a tag rather than a full path
-}
+pub struct AssetName(pub String); // TODO: Make this a key instead of a full path
 
 #[derive(Debug)]
-pub struct TransformComponent {
+pub struct Transform {
     pub translate: glm::Mat4,
     pub rotate: glm::Mat4,
     pub scale: glm::Mat4,
 }
 
-impl Default for TransformComponent {
+impl Default for Transform {
     fn default() -> Self {
         Self {
             translate: glm::Mat4::identity(),

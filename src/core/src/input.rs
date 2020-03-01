@@ -1,3 +1,4 @@
+use nalgebra_glm as glm;
 use std::collections::HashMap;
 use winit::{ElementState, VirtualKeyCode};
 
@@ -6,6 +7,25 @@ pub type KeyMap = HashMap<VirtualKeyCode, ElementState>;
 #[derive(Default)]
 pub struct Input {
     pub keystates: KeyMap,
+    pub mouse: Mouse,
+}
+
+pub struct Mouse {
+    pub is_left_clicked: bool,
+    pub is_right_clicked: bool,
+    pub position: glm::Vec2,
+    pub offset_from_center: glm::Vec2,
+}
+
+impl Default for Mouse {
+    fn default() -> Self {
+        Self {
+            is_left_clicked: false,
+            is_right_clicked: false,
+            position: glm::vec2(0.0, 0.0),
+            offset_from_center: glm::vec2(0.0, 0.0),
+        }
+    }
 }
 
 impl Input {

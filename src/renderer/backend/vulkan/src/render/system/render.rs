@@ -6,7 +6,7 @@ use crate::{
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
 use ash::vk;
-use dragonglass_core::components::TransformComponent;
+use dragonglass_core::{camera::CameraViewMatrix, components::Transform};
 use legion::prelude::*;
 use nalgebra_glm as glm;
 use petgraph::{graph::NodeIndex, visit::Dfs};
@@ -14,8 +14,9 @@ use petgraph::{graph::NodeIndex, visit::Dfs};
 pub fn render_system() -> Box<dyn Runnable> {
     SystemBuilder::new("render")
         .write_resource::<Renderer>()
-        .with_query(<Read<TransformComponent>>::query())
-        .build_thread_local(move |_, mut world, renderer, query| {
+        .read_resource::<CameraViewMatrix>()
+        .with_query(<Read<Transform>>::query())
+        .build_thread_local(move |_, mut world, (renderer, camera_view_matrix), query| {
             let context = renderer.context.clone();
 
             let current_frame_synchronization = renderer
@@ -59,13 +60,6 @@ pub fn render_system() -> Box<dyn Runnable> {
                 1000_f32,
             );
 
-            let camera_position = glm::vec3(1.0, 0.4, 1.0);
-            let view = glm::look_at(
-                &camera_position,
-                &glm::vec3(0.0, 0.0, 0.0),
-                &glm::vec3(0.0, 1.0, 0.0),
-            );
-
             for transform in query.iter(&mut world) {
                 // TODO: Keep track of the global transform using the gltf document
                 // and render meshes at the correct transform
@@ -75,7 +69,10 @@ pub fn render_system() -> Box<dyn Runnable> {
                 let vulkan_gltf_asset =
                     &renderer.pipeline_gltf.as_ref().unwrap().assets[asset_index];
 
-                let ubo = UniformBufferObject { view, projection };
+                let ubo = UniformBufferObject {
+                    view: camera_view_matrix.0,
+                    projection,
+                };
                 let ubos = [ubo];
                 let buffer = &vulkan_gltf_asset.uniform_buffer;
                 buffer.upload_to_buffer(&ubos, 0, std::mem::align_of::<UniformBufferObject>() as _);

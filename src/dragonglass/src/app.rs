@@ -1,11 +1,15 @@
 use dragonglass_backend_vulkan::render::{renderer::Renderer, system::render_system, GltfPipeline};
 use dragonglass_core::{
-    components::{AssetComponent, TransformComponent},
+    camera::{fps_camera_key_system, fps_camera_mouse_system, Camera, CameraViewMatrix},
+    components::{AssetName, Transform},
     input::Input,
 };
 use legion::prelude::*;
 use nalgebra_glm as glm;
-use winit::{dpi::LogicalSize, Event, EventsLoop, VirtualKeyCode, Window, WindowEvent};
+use winit::{
+    dpi::{LogicalPosition, LogicalSize},
+    ElementState, Event, EventsLoop, MouseButton, VirtualKeyCode, Window, WindowEvent,
+};
 
 #[derive(Default)]
 struct ExitRequested(bool);
@@ -25,6 +29,9 @@ impl App {
             .with_dimensions((width, height).into())
             .build(&event_loop)
             .expect("Failed to create window.");
+        window
+            .grab_cursor(true)
+            .expect("Failed to set cursor grabbing on window!");
 
         App {
             event_loop,
@@ -44,14 +51,18 @@ impl App {
         let input = Input::default();
         world.resources.insert(input);
 
+        world
+            .resources
+            .insert(CameraViewMatrix(glm::Mat4::identity()));
+
         // Register the render preparation system and its components
         let prepare_renderer_system = SystemBuilder::new("prepare_renderer")
             .write_resource::<Renderer>()
-            .with_query(<Read<AssetComponent>>::query())
+            .with_query(<Read<AssetName>>::query())
             .build(|_, mut world, mut renderer, query| {
                 let asset_names = query
                     .iter(&mut world)
-                    .map(|asset| asset.asset_name.to_string())
+                    .map(|asset_name| asset_name.0.to_string())
                     .collect::<Vec<_>>();
                 let pipeline_gltf = GltfPipeline::new(&mut renderer, &asset_names);
                 renderer.pipeline_gltf = Some(pipeline_gltf);
@@ -60,45 +71,20 @@ impl App {
             .add_system(prepare_renderer_system)
             .build();
 
-        // Setup game loop systems
-        let event_system = SystemBuilder::new("event")
-            .write_resource::<Input>()
-            .with_query(<Read<TransformComponent>>::query())
-            .build(|_, _, input, _| {
-                if input.is_key_pressed(VirtualKeyCode::Space) {
-                    // TODO: Do something with the spacebar
-                }
-            });
-
-        let transformation_system = SystemBuilder::new("transformation")
-            .with_query(<Write<TransformComponent>>::query())
-            .build(|_, mut world, _, query| {
-                for mut transform in query.iter(&mut world) {
-                    transform.rotate = glm::rotate(
-                        &transform.rotate,
-                        0.01_f32.to_radians(),
-                        &glm::vec3(0.0, 1.0, 0.0),
-                    );
-                }
-            });
-
         let mut schedule = Schedule::builder()
-            .add_system(event_system)
+            .add_system(fps_camera_mouse_system())
+            .add_system(fps_camera_key_system())
             .flush()
-            .add_system(transformation_system)
             // More game simulation systems can go here
-            .flush()
             .add_thread_local(render_system())
             .build();
 
-        // Add renderable entities
+        world.insert((), vec![(Camera::default(),)]);
         world.insert(
             (),
             vec![(
-                AssetComponent {
-                    asset_name: "examples/assets/models/Sponza/Sponza.gltf".to_string(),
-                },
-                TransformComponent::default(),
+                AssetName("examples/assets/models/Sponza/Sponza.gltf".to_string()),
+                Transform::default(),
             )],
         );
 
@@ -111,6 +97,16 @@ impl App {
                 break;
             }
 
+            let window_size = self
+                .window
+                .get_inner_size()
+                .expect("Failed to get window inner size!");
+            self.window
+                .set_cursor_position(LogicalPosition::new(
+                    window_size.width / 2.0,
+                    window_size.height / 2.0,
+                ))
+                .expect("Failed to set cursor position!");
             schedule.execute(&mut world);
         }
 
@@ -127,41 +123,53 @@ impl App {
             .get_mut::<Input>()
             .expect("Failed to get input resource!");
         let mut should_exit = false;
+        let window_size = self
+            .window
+            .get_inner_size()
+            .expect("Failed to get window inner size!");
+
         self.event_loop.poll_events(|event| match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                should_exit = true;
-            }
-            Event::WindowEvent {
-                event:
-                    WindowEvent::KeyboardInput {
-                        input:
-                            winit::KeyboardInput {
-                                virtual_keycode: Some(keycode),
-                                state,
-                                ..
-                            },
-                        ..
-                    },
-                ..
-            } => {
-                if keycode == VirtualKeyCode::Escape {
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::CloseRequested => {
                     should_exit = true;
                 }
-                *input.keystates.entry(keycode).or_insert(state) = state;
-            }
-            Event::WindowEvent {
-                event:
-                    WindowEvent::Resized(LogicalSize {
-                        width: _width,
-                        height: _height,
-                    }),
-                ..
-            } => {
-                // TODO: Handle resizing
-            }
+                WindowEvent::KeyboardInput {
+                    input:
+                        winit::KeyboardInput {
+                            virtual_keycode: Some(keycode),
+                            state,
+                            ..
+                        },
+                    ..
+                } => {
+                    if keycode == VirtualKeyCode::Escape {
+                        should_exit = true;
+                    }
+                    *input.keystates.entry(keycode).or_insert(state) = state;
+                }
+                WindowEvent::Resized(LogicalSize {
+                    width: _width,
+                    height: _height,
+                }) => {
+                    // TODO: Handle resizing
+                }
+                WindowEvent::MouseInput { button, state, .. } => {
+                    let clicked = state == ElementState::Pressed;
+                    match button {
+                        MouseButton::Left => input.mouse.is_left_clicked = clicked,
+                        MouseButton::Right => input.mouse.is_right_clicked = clicked,
+                        _ => {}
+                    }
+                }
+                WindowEvent::CursorMoved { position, .. } => {
+                    input.mouse.position = glm::vec2(position.x as _, position.y as _);
+                    input.mouse.offset_from_center = glm::vec2(
+                        ((window_size.width / 2.0) - position.x) as _,
+                        ((window_size.height / 2.0) - position.y) as _,
+                    );
+                }
+                _ => {}
+            },
             _ => {}
         });
         self.should_exit = should_exit;

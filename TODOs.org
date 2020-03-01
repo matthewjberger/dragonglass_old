@@ -47,6 +47,7 @@
 **** TODO Add orbital camera
 *** TODO Get names for all assets and create a single descriptor pool for all of them to allocate descriptor sets from
 ** Long-Term Improvements
+*** TODO Add game state machine. Each state will have it's own ECS world
 *** TODO Dynamically add entities to world from a file, tagging entities that use the same model with the same model id
 *** TODO Use genmesh and a separate primitive graphics pipeline
 *** TODO Add imgui
