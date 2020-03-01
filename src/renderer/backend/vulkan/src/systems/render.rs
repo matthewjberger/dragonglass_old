@@ -1,13 +1,31 @@
 use crate::{
     model::gltf::{calculate_global_transform, DynamicUniformBufferObject, UniformBufferObject},
+    pipelines::GltfPipeline,
     render::Renderer,
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
 use ash::vk;
-use dragonglass_core::{camera::CameraViewMatrix, components::Transform};
+use dragonglass_core::{
+    camera::CameraViewMatrix,
+    components::{AssetName, Transform},
+};
 use legion::prelude::*;
 use nalgebra_glm as glm;
 use petgraph::{graph::NodeIndex, visit::Dfs};
+
+pub fn prepare_renderer_system() -> Box<dyn Schedulable> {
+    SystemBuilder::new("prepare_renderer")
+        .write_resource::<Renderer>()
+        .with_query(<Read<AssetName>>::query())
+        .build(|_, mut world, mut renderer, query| {
+            let asset_names = query
+                .iter(&mut world)
+                .map(|asset_name| asset_name.0.to_string())
+                .collect::<Vec<_>>();
+            let pipeline_gltf = GltfPipeline::new(&mut renderer, &asset_names);
+            renderer.pipeline_gltf = Some(pipeline_gltf);
+        })
+}
 
 pub fn render_system() -> Box<dyn Runnable> {
     SystemBuilder::new("render")

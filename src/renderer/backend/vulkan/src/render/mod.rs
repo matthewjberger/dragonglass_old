@@ -7,5 +7,4 @@ pub mod framebuffer;
 pub mod pipeline;
 pub mod renderer;
 pub mod renderpass;
-pub mod system;
 pub mod vulkan_swapchain;

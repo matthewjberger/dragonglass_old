@@ -1,6 +1,6 @@
 use dragonglass_backend_vulkan::{
-    pipelines::GltfPipeline,
-    render::{renderer::Renderer, system::render_system},
+    render::Renderer,
+    systems::render::{prepare_renderer_system, render_system},
 };
 use dragonglass_core::{
     camera::{fps_camera_key_system, fps_camera_mouse_system, Camera, CameraViewMatrix},
@@ -84,19 +84,8 @@ impl App {
             .insert(CameraViewMatrix(glm::Mat4::identity()));
 
         // Register the render preparation system and its components
-        let prepare_renderer_system = SystemBuilder::new("prepare_renderer")
-            .write_resource::<Renderer>()
-            .with_query(<Read<AssetName>>::query())
-            .build(|_, mut world, mut renderer, query| {
-                let asset_names = query
-                    .iter(&mut world)
-                    .map(|asset_name| asset_name.0.to_string())
-                    .collect::<Vec<_>>();
-                let pipeline_gltf = GltfPipeline::new(&mut renderer, &asset_names);
-                renderer.pipeline_gltf = Some(pipeline_gltf);
-            });
         let mut prepare_schedule = Schedule::builder()
-            .add_system(prepare_renderer_system)
+            .add_system(prepare_renderer_system())
             .build();
 
         let mut schedule = Schedule::builder()
