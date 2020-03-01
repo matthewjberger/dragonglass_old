@@ -1,7 +1,5 @@
 use crate::{
-    core::VulkanContext,
-    render::{pipeline_gltf::GltfPipeline, VulkanSwapchain},
-    resource::CommandPool,
+    core::VulkanContext, pipelines::GltfPipeline, render::VulkanSwapchain, resource::CommandPool,
     sync::SynchronizationSet,
 };
 use ash::{version::DeviceV1_0, vk};

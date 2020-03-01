@@ -1,6 +1,7 @@
 use crate::{
     core::VulkanContext,
-    render::{gltf::VulkanGltfAsset, GraphicsPipeline, Renderer},
+    pipelines::gltf::asset::VulkanGltfAsset,
+    render::{GraphicsPipeline, Renderer},
     resource::{DescriptorSetLayout, PipelineLayout, Shader},
 };
 use ash::{version::DeviceV1_0, vk};
@@ -10,12 +11,6 @@ use std::{ffi::CString, mem, slice, sync::Arc};
 pub struct PushConstantBlockMaterial {
     base_color_factor: glm::Vec4,
     color_texture_set: i32,
-}
-
-// TODO: Move this somewhere more generic
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub enum PipelineType {
-    GltfAsset,
 }
 
 pub struct GltfPipeline {

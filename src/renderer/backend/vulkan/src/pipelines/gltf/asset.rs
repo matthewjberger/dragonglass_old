@@ -1,6 +1,7 @@
 use crate::{
     core::VulkanContext,
-    render::{texture_bundle::GltfTextureBundle, Renderer},
+    pipelines::gltf::texture::GltfTextureBundle,
+    render::Renderer,
     resource::{Buffer, DescriptorPool, DescriptorSetLayout},
 };
 use ash::{

@@ -1,4 +1,7 @@
-use dragonglass_backend_vulkan::render::{renderer::Renderer, system::render_system, GltfPipeline};
+use dragonglass_backend_vulkan::{
+    pipelines::GltfPipeline,
+    render::{renderer::Renderer, system::render_system},
+};
 use dragonglass_core::{
     camera::{fps_camera_key_system, fps_camera_mouse_system, Camera, CameraViewMatrix},
     components::{AssetName, Transform},
@@ -29,13 +32,6 @@ impl App {
             .with_dimensions((width, height).into())
             .build(&event_loop)
             .expect("Failed to create window.");
-        window
-            .grab_cursor(true)
-            .expect("Failed to set cursor grabbing on window!");
-
-        let monitor_id = window.get_current_monitor();
-        window.set_fullscreen(Some(monitor_id));
-        window.hide_cursor(true);
 
         App {
             event_loop,
@@ -44,8 +40,36 @@ impl App {
         }
     }
 
+    fn stow_cursor(&self) {
+        self.window
+            .grab_cursor(true)
+            .expect("Failed to set cursor grabbing on window!");
+        self.window.hide_cursor(true);
+    }
+
+    #[allow(dead_code)]
+    fn set_fullscreen(&self) {
+        let monitor_id = self.window.get_current_monitor();
+        self.window.set_fullscreen(Some(monitor_id));
+    }
+
+    fn center_cursor(&mut self) {
+        let window_size = self
+            .window
+            .get_inner_size()
+            .expect("Failed to get window inner size!");
+        self.window
+            .set_cursor_position(LogicalPosition::new(
+                window_size.width / 2.0,
+                window_size.height / 2.0,
+            ))
+            .expect("Failed to set cursor position!");
+    }
+
     pub fn run(&mut self) {
         log::debug!("Running application.");
+
+        self.stow_cursor();
 
         let mut world = World::new();
 
@@ -84,7 +108,7 @@ impl App {
             .build();
 
         let camera = Camera {
-            speed: 2.0,
+            speed: 5.0,
             ..Default::default()
         };
         world.insert((), vec![(camera,)]);
@@ -115,19 +139,6 @@ impl App {
             .get::<Renderer>()
             .expect("Failed to get renderer resource!");
         renderer.wait_idle();
-    }
-
-    fn center_cursor(&mut self) {
-        let window_size = self
-            .window
-            .get_inner_size()
-            .expect("Failed to get window inner size!");
-        self.window
-            .set_cursor_position(LogicalPosition::new(
-                window_size.width / 2.0,
-                window_size.height / 2.0,
-            ))
-            .expect("Failed to set cursor position!");
     }
 
     fn process_events(&mut self, world: &mut World) {

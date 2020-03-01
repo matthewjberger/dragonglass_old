@@ -1,8 +1,8 @@
 use crate::{
-    render::{
-        gltf::{calculate_global_transform, DynamicUniformBufferObject, UniformBufferObject},
-        Renderer,
+    pipelines::gltf::asset::{
+        calculate_global_transform, DynamicUniformBufferObject, UniformBufferObject,
     },
+    render::Renderer,
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
 use ash::vk;
