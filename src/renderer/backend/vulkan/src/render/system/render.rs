@@ -1,7 +1,5 @@
 use crate::{
-    pipelines::gltf::asset::{
-        calculate_global_transform, DynamicUniformBufferObject, UniformBufferObject,
-    },
+    model::gltf::{calculate_global_transform, DynamicUniformBufferObject, UniformBufferObject},
     render::Renderer,
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };

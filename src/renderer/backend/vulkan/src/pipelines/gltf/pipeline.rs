@@ -1,6 +1,6 @@
 use crate::{
     core::VulkanContext,
-    pipelines::gltf::asset::VulkanGltfAsset,
+    model::gltf::VulkanGltfAsset,
     render::{GraphicsPipeline, Renderer},
     resource::{DescriptorSetLayout, PipelineLayout, Shader},
 };
