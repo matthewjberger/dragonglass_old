@@ -127,7 +127,7 @@ impl App {
             .resources
             .get::<Renderer>()
             .expect("Failed to get renderer resource!");
-        renderer.wait_idle();
+        renderer.context.logical_device().wait_idle();
     }
 
     fn process_events(&mut self, world: &mut World) {

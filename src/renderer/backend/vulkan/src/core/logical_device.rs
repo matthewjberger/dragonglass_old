@@ -98,6 +98,14 @@ impl LogicalDevice {
                 .expect("Failed to reset fences!");
         }
     }
+
+    pub fn wait_idle(&self) {
+        unsafe {
+            self.logical_device
+                .device_wait_idle()
+                .expect("Failed to wait for the logical device to be idle!")
+        };
+    }
 }
 
 impl Drop for LogicalDevice {

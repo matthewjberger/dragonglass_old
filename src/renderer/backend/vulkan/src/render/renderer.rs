@@ -76,16 +76,7 @@ impl Renderer {
     #[allow(dead_code)]
     pub fn recreate_swapchain(&mut self, _: Option<[u32; 2]>) {
         log::debug!("Recreating swapchain");
+        self.context.logical_device().wait_idle();
         // TODO: Implement swapchain recreation
-    }
-
-    pub fn wait_idle(&self) {
-        unsafe {
-            self.context
-                .logical_device()
-                .logical_device()
-                .device_wait_idle()
-                .expect("Failed to wait for the logical device to be idle!")
-        };
     }
 }
