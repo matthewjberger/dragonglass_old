@@ -4,10 +4,7 @@ use crate::{
     render::Renderer,
     resource::{Buffer, DescriptorPool, DescriptorSetLayout},
 };
-use ash::{
-    version::{DeviceV1_0, InstanceV1_0},
-    vk,
-};
+use ash::{version::DeviceV1_0, vk};
 use nalgebra_glm as glm;
 use std::{mem, sync::Arc};
 
@@ -45,22 +42,7 @@ impl PbrAsset {
             vk_mem::MemoryUsage::CpuOnly,
         );
 
-        // TODO: Move this logic to the VulkanContext
-        let physical_device_properties = unsafe {
-            renderer
-                .context
-                .instance()
-                .get_physical_device_properties(renderer.context.physical_device())
-        };
-
-        let minimum_ubo_alignment = physical_device_properties
-            .limits
-            .min_uniform_buffer_offset_alignment;
-        let mut dynamic_alignment = std::mem::size_of::<DynamicUniformBufferObject>() as u64;
-        if minimum_ubo_alignment > 0 {
-            dynamic_alignment =
-                (dynamic_alignment + minimum_ubo_alignment - 1) & !(minimum_ubo_alignment - 1);
-        }
+        let dynamic_alignment = Self::calculate_dynamic_alignment(renderer.context.clone());
 
         let dynamic_uniform_buffer = Buffer::new_mapped_basic(
             renderer.context.clone(),
@@ -79,6 +61,19 @@ impl PbrAsset {
         };
         pbr_asset.update_descriptor_set(renderer.context.clone());
         pbr_asset
+    }
+
+    fn calculate_dynamic_alignment(context: Arc<VulkanContext>) -> u64 {
+        let minimum_ubo_alignment = context
+            .physical_device_properties()
+            .limits
+            .min_uniform_buffer_offset_alignment;
+        let dynamic_alignment = std::mem::size_of::<DynamicUniformBufferObject>() as u64;
+        if minimum_ubo_alignment > 0 {
+            (dynamic_alignment + minimum_ubo_alignment - 1) & !(minimum_ubo_alignment - 1)
+        } else {
+            dynamic_alignment
+        }
     }
 
     pub fn descriptor_set_layout(context: Arc<VulkanContext>) -> DescriptorSetLayout {

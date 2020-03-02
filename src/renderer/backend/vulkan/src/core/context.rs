@@ -91,6 +91,13 @@ impl VulkanContext {
             .expect("Failed to find a supported depth format")
     }
 
+    pub fn physical_device_properties(&self) -> vk::PhysicalDeviceProperties {
+        unsafe {
+            self.instance()
+                .get_physical_device_properties(self.physical_device())
+        }
+    }
+
     pub fn allocator(&self) -> &vk_mem::Allocator {
         &self.allocator
     }
