@@ -1,5 +1,8 @@
 use crate::{
-    model::gltf::{calculate_global_transform, DynamicUniformBufferObject, UniformBufferObject},
+    model::{
+        gltf::GltfAsset,
+        pbr_asset::{DynamicUniformBufferObject, UniformBufferObject},
+    },
     pipelines::GltfPipeline,
     render::Renderer,
     sync::{SynchronizationSet, SynchronizationSetConstants},
@@ -82,41 +85,35 @@ pub fn render_system() -> Box<dyn Runnable> {
                 // TODO: Go through all assets
                 let asset_transform = transform.translate * transform.rotate * transform.scale;
                 let asset_index = 0;
-                let vulkan_gltf_asset =
-                    &renderer.pipeline_gltf.as_ref().unwrap().assets[asset_index];
+                let pbr_asset = &renderer.pipeline_gltf.as_ref().unwrap().assets[asset_index];
 
                 let ubo = UniformBufferObject {
                     view: camera_view_matrix.0,
                     projection,
                 };
                 let ubos = [ubo];
-                let buffer = &vulkan_gltf_asset.uniform_buffer;
+                let buffer = &pbr_asset.uniform_buffer;
                 buffer.upload_to_buffer(&ubos, 0, std::mem::align_of::<UniformBufferObject>() as _);
 
-                let full_dynamic_ubo_size = (vulkan_gltf_asset.number_of_meshes() as u64
-                    * vulkan_gltf_asset.dynamic_alignment)
-                    as u64;
+                let full_dynamic_ubo_size =
+                    (pbr_asset.asset.number_of_meshes as u64 * pbr_asset.dynamic_alignment) as u64;
 
-                for scene in vulkan_gltf_asset.scenes.iter() {
+                for scene in pbr_asset.asset.scenes.iter() {
                     for graph in scene.node_graphs.iter() {
                         let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
                         while let Some(node_index) = dfs.next(&graph) {
-                            let global_transform = calculate_global_transform(node_index, graph);
+                            let global_transform =
+                                GltfAsset::calculate_global_transform(node_index, graph);
                             if let Some(mesh) = graph[node_index].mesh.as_ref() {
                                 let dynamic_ubo = DynamicUniformBufferObject {
                                     model: asset_transform * global_transform,
                                 };
                                 let ubos = [dynamic_ubo];
-                                let buffer = &vulkan_gltf_asset.dynamic_uniform_buffer;
-                                let offset = (vulkan_gltf_asset.dynamic_alignment
-                                    * mesh.ubo_index as u64)
-                                    as usize;
+                                let buffer = &pbr_asset.dynamic_uniform_buffer;
+                                let offset =
+                                    (pbr_asset.dynamic_alignment * mesh.mesh_id as u64) as usize;
 
-                                buffer.upload_to_buffer(
-                                    &ubos,
-                                    offset,
-                                    vulkan_gltf_asset.dynamic_alignment,
-                                );
+                                buffer.upload_to_buffer(&ubos, offset, pbr_asset.dynamic_alignment);
                                 buffer
                                     .flush(0, full_dynamic_ubo_size as _)
                                     .expect("Failed to flush buffer!");

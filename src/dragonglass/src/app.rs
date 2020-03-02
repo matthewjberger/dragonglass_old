@@ -140,50 +140,47 @@ impl App {
             .window
             .get_inner_size()
             .expect("Failed to get window inner size!");
-
-        self.event_loop.poll_events(|event| match event {
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::CloseRequested => {
-                    should_exit = true;
-                }
-                WindowEvent::KeyboardInput {
-                    input:
-                        winit::KeyboardInput {
-                            virtual_keycode: Some(keycode),
-                            state,
-                            ..
-                        },
-                    ..
-                } => {
-                    if keycode == VirtualKeyCode::Escape {
-                        should_exit = true;
+        self.event_loop.poll_events(|event| {
+            if let Event::WindowEvent { event, .. } = event {
+                match event {
+                    WindowEvent::KeyboardInput {
+                        input:
+                            winit::KeyboardInput {
+                                virtual_keycode: Some(keycode),
+                                state,
+                                ..
+                            },
+                        ..
+                    } => {
+                        if keycode == VirtualKeyCode::Escape {
+                            should_exit = true;
+                        }
+                        *input.keystates.entry(keycode).or_insert(state) = state;
                     }
-                    *input.keystates.entry(keycode).or_insert(state) = state;
-                }
-                WindowEvent::Resized(LogicalSize {
-                    width: _width,
-                    height: _height,
-                }) => {
-                    // TODO: Handle resizing
-                }
-                WindowEvent::MouseInput { button, state, .. } => {
-                    let clicked = state == ElementState::Pressed;
-                    match button {
-                        MouseButton::Left => input.mouse.is_left_clicked = clicked,
-                        MouseButton::Right => input.mouse.is_right_clicked = clicked,
-                        _ => {}
+                    WindowEvent::Resized(LogicalSize {
+                        width: _width,
+                        height: _height,
+                    }) => {
+                        // TODO: Handle resizing
                     }
+                    WindowEvent::MouseInput { button, state, .. } => {
+                        let clicked = state == ElementState::Pressed;
+                        match button {
+                            MouseButton::Left => input.mouse.is_left_clicked = clicked,
+                            MouseButton::Right => input.mouse.is_right_clicked = clicked,
+                            _ => {}
+                        }
+                    }
+                    WindowEvent::CursorMoved { position, .. } => {
+                        input.mouse.position = glm::vec2(position.x as _, position.y as _);
+                        input.mouse.offset_from_center = glm::vec2(
+                            ((window_size.width / 2.0) - position.x) as _,
+                            ((window_size.height / 2.0) - position.y) as _,
+                        );
+                    }
+                    _ => {}
                 }
-                WindowEvent::CursorMoved { position, .. } => {
-                    input.mouse.position = glm::vec2(position.x as _, position.y as _);
-                    input.mouse.offset_from_center = glm::vec2(
-                        ((window_size.width / 2.0) - position.x) as _,
-                        ((window_size.height / 2.0) - position.y) as _,
-                    );
-                }
-                _ => {}
-            },
-            _ => {}
+            }
         });
         self.should_exit = should_exit;
     }
