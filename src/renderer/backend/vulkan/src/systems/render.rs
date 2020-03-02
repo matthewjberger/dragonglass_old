@@ -44,7 +44,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                 .wait_for_fence(&current_frame_synchronization);
 
             // Acquire the next image from the swapchain
-            let image_index_result = renderer.vulkan_swapchain.swapchain.acquire_next_image(
+            let image_index_result = renderer.swapchain().swapchain.acquire_next_image(
                 current_frame_synchronization.image_available(),
                 vk::Fence::null(),
             );
@@ -66,11 +66,7 @@ pub fn render_system() -> Box<dyn Runnable> {
             // Update UBOS
 
             let projection = glm::perspective_zo(
-                renderer
-                    .vulkan_swapchain
-                    .swapchain
-                    .properties()
-                    .aspect_ratio(),
+                renderer.swapchain().swapchain.properties().aspect_ratio(),
                 90_f32.to_radians(),
                 0.1_f32,
                 1000_f32,
@@ -135,7 +131,7 @@ pub fn render_system() -> Box<dyn Runnable> {
             );
 
             let swapchain_presentation_result =
-                renderer.vulkan_swapchain.swapchain.present_rendered_image(
+                renderer.swapchain().swapchain.present_rendered_image(
                     &current_frame_synchronization,
                     &image_indices,
                     renderer.present_queue,

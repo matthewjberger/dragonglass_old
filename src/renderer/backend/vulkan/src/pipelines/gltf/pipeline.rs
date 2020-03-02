@@ -106,7 +106,7 @@ impl GltfPipeline {
             .viewport_state(&viewport_create_info)
             .dynamic_state(&dynamic_state_create_info)
             .layout(pipeline_layout.layout())
-            .render_pass(renderer.vulkan_swapchain.render_pass.render_pass())
+            .render_pass(renderer.swapchain().render_pass.render_pass())
             .subpass(0)
             .build();
 
@@ -228,7 +228,7 @@ impl GltfPipeline {
 
     pub fn create_gltf_render_passes(&self, renderer: &mut Renderer) {
         // Allocate one command buffer per swapchain image
-        let number_of_framebuffers = renderer.vulkan_swapchain.framebuffers.len();
+        let number_of_framebuffers = renderer.swapchain().framebuffers.len();
         renderer
             .command_pool
             .allocate_command_buffers(number_of_framebuffers as _);
@@ -241,7 +241,7 @@ impl GltfPipeline {
             .enumerate()
             .for_each(|(index, buffer)| {
                 let command_buffer = buffer;
-                let framebuffer = renderer.vulkan_swapchain.framebuffers[index].framebuffer();
+                let framebuffer = renderer.swapchain().framebuffers[index].framebuffer();
                 self.create_render_pass(
                     &renderer,
                     framebuffer,
@@ -349,7 +349,7 @@ impl GltfPipeline {
         });
     }
 
-    // TODO: Move this to a seperate class or even the mod.rs file
+    // TODO: Move this to a separate class or even the mod.rs file
     unsafe fn byte_slice_from<T: Sized>(data: &T) -> &[u8] {
         let data_ptr = (data as *const T) as *const u8;
         slice::from_raw_parts(data_ptr, std::mem::size_of::<T>())
@@ -395,11 +395,11 @@ impl GltfPipeline {
         ];
 
         let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
-            .render_pass(renderer.vulkan_swapchain.render_pass.render_pass())
+            .render_pass(renderer.swapchain().render_pass.render_pass())
             .framebuffer(framebuffer)
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
-                extent: renderer.vulkan_swapchain.swapchain.properties().extent,
+                extent: renderer.swapchain().swapchain.properties().extent,
             })
             .clear_values(&clear_values)
             .build();
@@ -449,7 +449,7 @@ impl GltfPipeline {
     }
 
     fn update_viewport(command_buffer: vk::CommandBuffer, renderer: &Renderer) {
-        let extent = renderer.vulkan_swapchain.swapchain.properties().extent;
+        let extent = renderer.swapchain().swapchain.properties().extent;
 
         let viewport = vk::Viewport {
             x: 0.0,

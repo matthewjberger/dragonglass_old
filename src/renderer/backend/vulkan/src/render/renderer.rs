@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 pub struct Renderer {
     pub context: Arc<VulkanContext>,
-    pub vulkan_swapchain: VulkanSwapchain,
+    pub vulkan_swapchain: Option<VulkanSwapchain>,
     pub graphics_queue: vk::Queue,
     pub pipeline_gltf: Option<GltfPipeline>,
     pub present_queue: vk::Queue,
@@ -57,8 +57,12 @@ impl Renderer {
             .expect("Failed to get the window's inner size!");
         let dimensions = [logical_size.width as u32, logical_size.height as u32];
 
-        let vulkan_swapchain =
-            VulkanSwapchain::new(context.clone(), dimensions, graphics_queue, &command_pool);
+        let vulkan_swapchain = Some(VulkanSwapchain::new(
+            context.clone(),
+            dimensions,
+            graphics_queue,
+            &command_pool,
+        ));
 
         Renderer {
             context,
@@ -74,9 +78,22 @@ impl Renderer {
     }
 
     #[allow(dead_code)]
-    pub fn recreate_swapchain(&mut self, _: Option<[u32; 2]>) {
+    pub fn recreate_swapchain(&mut self, dimensions: [u32; 2]) {
         log::debug!("Recreating swapchain");
         self.context.logical_device().wait_idle();
-        // TODO: Implement swapchain recreation
+        self.vulkan_swapchain = None;
+        self.vulkan_swapchain = Some(VulkanSwapchain::new(
+            self.context.clone(),
+            dimensions,
+            self.graphics_queue,
+            &self.command_pool,
+        ));
+    }
+
+    pub fn swapchain(&self) -> &VulkanSwapchain {
+        &self
+            .vulkan_swapchain
+            .as_ref()
+            .expect("Failed to retrieve swapchain")
     }
 }
