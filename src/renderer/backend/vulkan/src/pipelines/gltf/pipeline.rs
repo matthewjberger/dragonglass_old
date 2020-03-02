@@ -36,14 +36,6 @@ impl GltfPipeline {
             .primitive_restart_enable(false)
             .build();
 
-        let extent = renderer.vulkan_swapchain.swapchain.properties().extent;
-        let viewports = Self::create_viewports(extent.width as _, extent.height as _);
-        let scissors = Self::create_scissors(extent);
-        let viewport_create_info = vk::PipelineViewportStateCreateInfo::builder()
-            .viewports(&viewports)
-            .scissors(&scissors)
-            .build();
-
         // Build the rasterizer info
         let rasterizer_create_info = vk::PipelineRasterizationStateCreateInfo::builder()
             .depth_clamp_enable(false)
@@ -92,17 +84,27 @@ impl GltfPipeline {
         let pipeline_layout =
             Self::create_pipeline_layout(renderer.context.clone(), &descriptor_set_layout);
 
+        let mut viewport_create_info = vk::PipelineViewportStateCreateInfo::default();
+        viewport_create_info.viewport_count = 1;
+        viewport_create_info.scissor_count = 1;
+
+        let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
+        let dynamic_state_create_info = vk::PipelineDynamicStateCreateInfo::builder()
+            .flags(vk::PipelineDynamicStateCreateFlags::empty())
+            .dynamic_states(&dynamic_states)
+            .build();
+
         // Create the pipeline info
         let pipeline_create_info = vk::GraphicsPipelineCreateInfo::builder()
             .stages(&shader_state_info)
             .vertex_input_state(&vertex_input_create_info)
             .input_assembly_state(&input_assembly_create_info)
-            .viewport_state(&viewport_create_info)
             .rasterization_state(&rasterizer_create_info)
             .multisample_state(&multisampling_create_info)
             .depth_stencil_state(&depth_stencil_info)
             .color_blend_state(&color_blending_info)
-            //.dynamic_state // no dynamic states
+            .viewport_state(&viewport_create_info)
+            .dynamic_state(&dynamic_state_create_info)
             .layout(pipeline_layout.layout())
             .render_pass(renderer.vulkan_swapchain.render_pass.render_pass())
             .subpass(0)
@@ -188,26 +190,6 @@ impl GltfPipeline {
             normal_description,
             tex_coord_description,
         ]
-    }
-
-    pub fn create_viewports(width: f32, height: f32) -> [vk::Viewport; 1] {
-        let viewport = vk::Viewport {
-            x: 0.0,
-            y: 0.0,
-            width,
-            height,
-            min_depth: 0.0,
-            max_depth: 1.0,
-        };
-        [viewport]
-    }
-
-    pub fn create_scissors(extent: vk::Extent2D) -> [vk::Rect2D; 1] {
-        let scissor = vk::Rect2D {
-            offset: vk::Offset2D { x: 0, y: 0 },
-            extent,
-        };
-        [scissor]
     }
 
     pub fn create_color_blend_attachments() -> [vk::PipelineColorBlendAttachmentState; 1] {
@@ -433,7 +415,6 @@ impl GltfPipeline {
                     vk::SubpassContents::INLINE,
                 );
 
-            // Bind pipeline
             renderer
                 .context
                 .logical_device()
@@ -444,6 +425,8 @@ impl GltfPipeline {
                     self.pipeline.pipeline(),
                 );
         }
+
+        Self::update_viewport(command_buffer, &renderer);
 
         render_action(command_buffer);
 
@@ -462,6 +445,40 @@ impl GltfPipeline {
                 .logical_device()
                 .end_command_buffer(command_buffer)
                 .expect("Failed to end the command buffer for a render pass!");
+        }
+    }
+
+    fn update_viewport(command_buffer: vk::CommandBuffer, renderer: &Renderer) {
+        let extent = renderer.vulkan_swapchain.swapchain.properties().extent;
+
+        let viewport = vk::Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: extent.width as _,
+            height: extent.height as _,
+            min_depth: 0.0,
+            max_depth: 1.0,
+        };
+        let viewports = [viewport];
+
+        let scissor = vk::Rect2D {
+            offset: vk::Offset2D { x: 0, y: 0 },
+            extent,
+        };
+        let scissors = [scissor];
+
+        unsafe {
+            renderer
+                .context
+                .logical_device()
+                .logical_device()
+                .cmd_set_viewport(command_buffer, 0, &viewports);
+
+            renderer
+                .context
+                .logical_device()
+                .logical_device()
+                .cmd_set_scissor(command_buffer, 0, &scissors);
         }
     }
 }

@@ -6,6 +6,9 @@
 **** TODO Add PBR shaders
 **** TODO Add HDR
 **** TODO Add Bloom
+**** TODO Add gamma correction
+*** Vulkan
+**** TODO Add pipeline caching
 *** GLTF
 **** TODO Add animations
 ***** TODO Add morph target support
