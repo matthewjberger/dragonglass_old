@@ -115,9 +115,8 @@ impl App {
 
         prepare_schedule.execute(&mut world);
 
+        let mut last_frame = Instant::now();
         loop {
-            let start_of_frame = Instant::now();
-
             self.process_events(&mut world);
 
             if self.should_exit {
@@ -128,14 +127,14 @@ impl App {
 
             schedule.execute(&mut world);
 
-            let delta_time = (start_of_frame.elapsed().as_millis() as f64) / 1000_f64;
-
-            let mut delta_time_resource = world
+            let delta_time =
+                (Instant::now().duration_since(last_frame).as_millis() as f64) / 1000_f64;
+            last_frame = Instant::now();
+            world
                 .resources
                 .get_mut::<DeltaTime>()
-                .expect("Failed to get delta time resource!");
-
-            delta_time_resource.0 = delta_time;
+                .expect("Failed to get delta time resource!")
+                .0 = delta_time;
         }
 
         let renderer = world

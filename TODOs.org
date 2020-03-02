@@ -15,6 +15,7 @@
 ***** TODO Add support for all the interpolation modes
 **** TODO Add skinning and rigging
 **** TODO Add imgui
+**** TODO Add Text rendering pipeline, using rusttype to load fonts
 **** TODO Add support for using gltf as a single asset or a library of assets
 **** Nodes
 ***** TODO If the determinant of node transform is a negative value, the mesh winding order should be reversed.
