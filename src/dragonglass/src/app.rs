@@ -6,9 +6,11 @@ use dragonglass_core::{
     camera::{fps_camera_key_system, fps_camera_mouse_system, Camera, CameraViewMatrix},
     components::{AssetName, Transform},
     input::Input,
+    DeltaTime,
 };
 use legion::prelude::*;
 use nalgebra_glm as glm;
+use std::time::Instant;
 use winit::{
     dpi::{LogicalPosition, LogicalSize},
     ElementState, Event, EventsLoop, MouseButton, VirtualKeyCode, Window, WindowEvent,
@@ -83,6 +85,8 @@ impl App {
             .resources
             .insert(CameraViewMatrix(glm::Mat4::identity()));
 
+        world.resources.insert(DeltaTime(0 as _));
+
         // Register the render preparation system and its components
         let mut prepare_schedule = Schedule::builder()
             .add_system(prepare_renderer_system())
@@ -112,6 +116,8 @@ impl App {
         prepare_schedule.execute(&mut world);
 
         loop {
+            let start_of_frame = Instant::now();
+
             self.process_events(&mut world);
 
             if self.should_exit {
@@ -121,6 +127,16 @@ impl App {
             self.center_cursor();
 
             schedule.execute(&mut world);
+
+            let delta_time = (start_of_frame.elapsed().as_millis() as f64) / 1000_f64;
+
+            let mut delta_time_resource = world
+                .resources
+                .get_mut::<DeltaTime>()
+                .expect("Failed to get delta time resource!");
+
+            delta_time_resource.0 = delta_time;
+            println!("dt: {}", delta_time);
         }
 
         let renderer = world

@@ -1,4 +1,4 @@
-use crate::input::Input;
+use crate::{input::Input, DeltaTime};
 use legion::prelude::*;
 use nalgebra_glm as glm;
 use winit::VirtualKeyCode;
@@ -43,10 +43,11 @@ impl Default for Camera {
 pub fn fps_camera_key_system() -> Box<dyn Schedulable> {
     SystemBuilder::new("fps_camera_key")
         .read_resource::<Input>()
+        .read_resource::<DeltaTime>()
         .with_query(<Write<Camera>>::query())
-        .build(move |_, mut world, input, query| {
+        .build(move |_, mut world, (input, delta_time), query| {
             for mut camera in query.iter(&mut world) {
-                let velocity = camera.speed * 0.001; // TODO: Multiply by delta_time;
+                let velocity = camera.speed * delta_time.0 as f32;
 
                 let x_delta = camera.right * velocity;
                 let y_delta = camera.front * velocity;
