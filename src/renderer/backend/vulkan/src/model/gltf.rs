@@ -1,4 +1,4 @@
-use crate::{pipelines::gltf::texture::GltfTextureBundle, render::Renderer, resource::Buffer};
+use crate::{model::gltf_texture::GltfTextureBundle, render::Renderer, resource::Buffer};
 use ash::vk;
 use nalgebra_glm as glm;
 use petgraph::{

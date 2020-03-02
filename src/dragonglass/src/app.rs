@@ -136,7 +136,6 @@ impl App {
                 .expect("Failed to get delta time resource!");
 
             delta_time_resource.0 = delta_time;
-            println!("dt: {}", delta_time);
         }
 
         let renderer = world

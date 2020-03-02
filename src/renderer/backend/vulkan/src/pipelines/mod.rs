@@ -1,6 +1,6 @@
-pub use self::gltf::pipeline::GltfPipeline;
+pub use self::gltf_pipeline::GltfPipeline;
 
-pub mod gltf;
+pub mod gltf_pipeline;
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum PipelineType {
