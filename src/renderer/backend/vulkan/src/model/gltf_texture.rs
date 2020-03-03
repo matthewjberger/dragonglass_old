@@ -15,41 +15,8 @@ pub struct GltfTextureBundle {
 
 impl GltfTextureBundle {
     pub fn new(renderer: &Renderer, texture_properties: &gltf::image::Data) -> Self {
-        let mut texture_format = convert_to_vulkan_format(texture_properties.format);
-
-        let pixels: Vec<u8> = match texture_format {
-            vk::Format::R8G8B8_UNORM => {
-                texture_format = vk::Format::R8G8B8A8_UNORM;
-
-                let image_buffer: RgbImage = ImageBuffer::from_raw(
-                    texture_properties.width,
-                    texture_properties.height,
-                    texture_properties.pixels.to_vec(),
-                )
-                .expect("Failed to create an image buffer");
-
-                image_buffer
-                    .pixels()
-                    .flat_map(|pixel| pixel.to_rgba().channels().to_vec())
-                    .collect::<Vec<_>>()
-            }
-            vk::Format::B8G8R8_UNORM => {
-                texture_format = vk::Format::R8G8B8A8_UNORM;
-
-                let image_buffer: RgbImage = ImageBuffer::from_raw(
-                    texture_properties.width,
-                    texture_properties.height,
-                    texture_properties.pixels.to_vec(),
-                )
-                .expect("Failed to create an image buffer");
-
-                image_buffer
-                    .pixels()
-                    .flat_map(|pixel| pixel.to_rgba().channels().to_vec())
-                    .collect::<Vec<_>>()
-            }
-            _ => texture_properties.pixels.to_vec(),
-        };
+        let texture_format = convert_to_vulkan_format(texture_properties.format);
+        let (pixels, texture_format) = Self::convert_pixels(&texture_properties, texture_format);
 
         let image_create_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
@@ -134,6 +101,40 @@ impl GltfTextureBundle {
             sampler,
         }
     }
+
+    pub fn convert_pixels(
+        texture_properties: &gltf::image::Data,
+        mut texture_format: vk::Format,
+    ) -> (Vec<u8>, vk::Format) {
+        // 24-bit formats are unsupported, so they
+        // need to have an alpha channel added to make them 32-bit
+        let pixels: Vec<u8> = match texture_format {
+            vk::Format::R8G8B8_UNORM => {
+                texture_format = vk::Format::R8G8B8A8_UNORM;
+                Self::attach_alpha_channel(&texture_properties)
+            }
+            vk::Format::B8G8R8_UNORM => {
+                texture_format = vk::Format::B8G8R8A8_UNORM;
+                Self::attach_alpha_channel(&texture_properties)
+            }
+            _ => texture_properties.pixels.to_vec(),
+        };
+        (pixels, texture_format)
+    }
+
+    pub fn attach_alpha_channel(texture_properties: &gltf::image::Data) -> Vec<u8> {
+        let image_buffer: RgbImage = ImageBuffer::from_raw(
+            texture_properties.width,
+            texture_properties.height,
+            texture_properties.pixels.to_vec(),
+        )
+        .expect("Failed to create an image buffer");
+
+        image_buffer
+            .pixels()
+            .flat_map(|pixel| pixel.to_rgba().channels().to_vec())
+            .collect::<Vec<_>>()
+    }
 }
 
 pub fn convert_to_vulkan_format(format: Format) -> vk::Format {
@@ -142,8 +143,6 @@ pub fn convert_to_vulkan_format(format: Format) -> vk::Format {
         Format::R8G8 => vk::Format::R8G8_UNORM,
         Format::R8G8B8A8 => vk::Format::R8G8B8A8_UNORM,
         Format::B8G8R8A8 => vk::Format::B8G8R8A8_UNORM,
-        // 24-bit formats will have an alpha channel added
-        // to make them 32-bit
         Format::R8G8B8 => vk::Format::R8G8B8_UNORM,
         Format::B8G8R8 => vk::Format::B8G8R8_UNORM,
     }
