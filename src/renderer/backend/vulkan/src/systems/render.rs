@@ -3,7 +3,6 @@ use crate::{
         gltf::GltfAsset,
         pbr_asset::{DynamicUniformBufferObject, UniformBufferObject},
     },
-    pipelines::GltfPipeline,
     render::Renderer,
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
@@ -20,13 +19,14 @@ pub fn prepare_renderer_system() -> Box<dyn Schedulable> {
     SystemBuilder::new("prepare_renderer")
         .write_resource::<Renderer>()
         .with_query(<Read<AssetName>>::query())
-        .build(|_, mut world, mut renderer, query| {
+        .build(|_, mut world, renderer, query| {
             let asset_names = query
                 .iter(&mut world)
                 .map(|asset_name| asset_name.0.to_string())
                 .collect::<Vec<_>>();
-            let pipeline_gltf = GltfPipeline::new(&mut renderer, &asset_names);
-            renderer.pipeline_gltf = Some(pipeline_gltf);
+            renderer.load_assets(&asset_names);
+            renderer.allocate_command_buffers();
+            renderer.record_command_buffers();
         })
 }
 
@@ -85,21 +85,19 @@ pub fn render_system() -> Box<dyn Runnable> {
                 // TODO: Go through all assets
                 let asset_transform = transform.translate * transform.rotate * transform.scale;
                 let asset_index = 0;
-                let asset = &renderer.pipeline_gltf.as_ref().unwrap().assets[asset_index];
-                let pbr_asset = &renderer.pipeline_gltf.as_ref().unwrap().pbr_asset;
+                let asset = &renderer.assets[asset_index];
+                let pbr_asset = &renderer.pbr_asset.as_ref().unwrap();
 
                 let ubo = UniformBufferObject {
                     view: camera_view_matrix.0,
                     projection,
                 };
                 let ubos = [ubo];
-                let buffer = &renderer
-                    .pipeline_gltf
-                    .as_ref()
-                    .unwrap()
-                    .pbr_asset
-                    .uniform_buffer;
-                buffer.upload_to_buffer(&ubos, 0, std::mem::align_of::<UniformBufferObject>() as _);
+                pbr_asset.uniform_buffer.upload_to_buffer(
+                    &ubos,
+                    0,
+                    std::mem::align_of::<UniformBufferObject>() as _,
+                );
 
                 let full_dynamic_ubo_size =
                     (asset.number_of_meshes as u64 * pbr_asset.dynamic_alignment) as u64;
