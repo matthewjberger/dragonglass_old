@@ -1,6 +1,6 @@
 use crate::{
     core::VulkanContext,
-    model::gltf::GltfAsset,
+    model::{gltf::GltfAsset, gltf_texture::GltfTextureBundle},
     render::Renderer,
     resource::{Buffer, DescriptorPool, DescriptorSetLayout},
 };
@@ -25,11 +25,10 @@ pub struct PbrAsset {
     pub dynamic_uniform_buffer: Buffer,
     pub dynamic_alignment: u64,
     pub descriptor_set: vk::DescriptorSet,
-    pub asset: GltfAsset,
 }
 
 impl PbrAsset {
-    pub fn from_gltf(renderer: &Renderer, asset: GltfAsset) -> Self {
+    pub fn from_gltf(renderer: &Renderer, assets: &[GltfAsset]) -> Self {
         let descriptor_set_layout = Self::descriptor_set_layout(renderer.context.clone());
         let descriptor_pool = Self::create_descriptor_pool(renderer.context.clone());
         let descriptor_set =
@@ -44,9 +43,13 @@ impl PbrAsset {
 
         let dynamic_alignment = Self::calculate_dynamic_alignment(renderer.context.clone());
 
+        let number_of_meshes = assets.iter().fold(0, |total_meshes, asset| {
+            total_meshes + asset.number_of_meshes
+        });
+
         let dynamic_uniform_buffer = Buffer::new_mapped_basic(
             renderer.context.clone(),
-            (asset.number_of_meshes as u64 * dynamic_alignment) as vk::DeviceSize,
+            (number_of_meshes as u64 * dynamic_alignment) as vk::DeviceSize,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
             vk_mem::MemoryUsage::CpuToGpu,
         );
@@ -57,9 +60,14 @@ impl PbrAsset {
             dynamic_uniform_buffer,
             descriptor_set,
             dynamic_alignment,
-            asset,
         };
-        pbr_asset.update_descriptor_set(renderer.context.clone());
+
+        let textures = assets
+            .iter()
+            .flat_map(|asset| &asset.textures)
+            .collect::<Vec<_>>();
+
+        pbr_asset.update_descriptor_set(renderer.context.clone(), number_of_meshes, &textures);
         pbr_asset
     }
 
@@ -129,7 +137,12 @@ impl PbrAsset {
         DescriptorPool::new(context, pool_info)
     }
 
-    fn update_descriptor_set(&self, context: Arc<VulkanContext>) {
+    fn update_descriptor_set(
+        &self,
+        context: Arc<VulkanContext>,
+        number_of_meshes: usize,
+        textures: &[&GltfTextureBundle],
+    ) {
         let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
         let buffer_info = vk::DescriptorBufferInfo::builder()
             .buffer(self.uniform_buffer.buffer())
@@ -139,7 +152,7 @@ impl PbrAsset {
         let buffer_infos = [buffer_info];
 
         let dynamic_uniform_buffer_size =
-            (self.asset.number_of_meshes as u64 * self.dynamic_alignment) as vk::DeviceSize;
+            (number_of_meshes as u64 * self.dynamic_alignment) as vk::DeviceSize;
         let dynamic_buffer_info = vk::DescriptorBufferInfo::builder()
             .buffer(self.dynamic_uniform_buffer.buffer())
             .offset(0)
@@ -147,9 +160,7 @@ impl PbrAsset {
             .build();
         let dynamic_buffer_infos = [dynamic_buffer_info];
 
-        let image_infos = self
-            .asset
-            .textures
+        let image_infos = textures
             .iter()
             .map(|texture| {
                 vk::DescriptorImageInfo::builder()

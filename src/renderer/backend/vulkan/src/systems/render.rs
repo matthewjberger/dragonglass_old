@@ -85,20 +85,26 @@ pub fn render_system() -> Box<dyn Runnable> {
                 // TODO: Go through all assets
                 let asset_transform = transform.translate * transform.rotate * transform.scale;
                 let asset_index = 0;
-                let pbr_asset = &renderer.pipeline_gltf.as_ref().unwrap().assets[asset_index];
+                let asset = &renderer.pipeline_gltf.as_ref().unwrap().assets[asset_index];
+                let pbr_asset = &renderer.pipeline_gltf.as_ref().unwrap().pbr_asset;
 
                 let ubo = UniformBufferObject {
                     view: camera_view_matrix.0,
                     projection,
                 };
                 let ubos = [ubo];
-                let buffer = &pbr_asset.uniform_buffer;
+                let buffer = &renderer
+                    .pipeline_gltf
+                    .as_ref()
+                    .unwrap()
+                    .pbr_asset
+                    .uniform_buffer;
                 buffer.upload_to_buffer(&ubos, 0, std::mem::align_of::<UniformBufferObject>() as _);
 
                 let full_dynamic_ubo_size =
-                    (pbr_asset.asset.number_of_meshes as u64 * pbr_asset.dynamic_alignment) as u64;
+                    (asset.number_of_meshes as u64 * pbr_asset.dynamic_alignment) as u64;
 
-                for scene in pbr_asset.asset.scenes.iter() {
+                for scene in asset.scenes.iter() {
                     for graph in scene.node_graphs.iter() {
                         let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
                         while let Some(node_index) = dfs.next(&graph) {

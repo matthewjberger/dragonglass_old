@@ -15,7 +15,8 @@ pub struct PushConstantBlockMaterial {
 
 pub struct GltfPipeline {
     pub pipeline: GraphicsPipeline,
-    pub assets: Vec<PbrAsset>,
+    pub assets: Vec<GltfAsset>,
+    pub pbr_asset: PbrAsset,
 }
 
 impl GltfPipeline {
@@ -118,11 +119,15 @@ impl GltfPipeline {
 
         let mut assets = Vec::new();
         for asset_name in asset_names.iter() {
-            let gltf_asset = GltfAsset::new(&renderer, asset_name);
-            assets.push(PbrAsset::from_gltf(&renderer, gltf_asset));
+            assets.push(GltfAsset::new(&renderer, asset_name));
         }
+        let pbr_asset = PbrAsset::from_gltf(&renderer, &assets);
 
-        let gltf_pipeline = Self { pipeline, assets };
+        let gltf_pipeline = Self {
+            pipeline,
+            assets,
+            pbr_asset,
+        };
         gltf_pipeline.create_gltf_render_passes(&mut renderer);
         gltf_pipeline
     }
@@ -251,8 +256,8 @@ impl GltfPipeline {
 
     unsafe fn draw_asset(&self, renderer: &Renderer, command_buffer: vk::CommandBuffer) {
         let offsets = [0];
-        self.assets.iter().for_each(|pbr_asset| {
-            let vertex_buffers = [pbr_asset.asset.vertex_buffer.buffer()];
+        self.assets.iter().for_each(|asset| {
+            let vertex_buffers = [asset.vertex_buffer.buffer()];
             renderer
                 .context
                 .logical_device()
@@ -265,12 +270,12 @@ impl GltfPipeline {
                 .logical_device()
                 .cmd_bind_index_buffer(
                     command_buffer,
-                    pbr_asset.asset.index_buffer.buffer(),
+                    asset.index_buffer.buffer(),
                     0,
                     vk::IndexType::UINT32,
                 );
 
-            for scene in pbr_asset.asset.scenes.iter() {
+            for scene in asset.scenes.iter() {
                 for graph in scene.node_graphs.iter() {
                     let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
                     while let Some(node_index) = dfs.next(&graph) {
@@ -284,8 +289,9 @@ impl GltfPipeline {
                                     vk::PipelineBindPoint::GRAPHICS,
                                     self.pipeline.layout(),
                                     0,
-                                    &[pbr_asset.descriptor_set],
-                                    &[(mesh.mesh_id as u64 * pbr_asset.dynamic_alignment) as _],
+                                    &[self.pbr_asset.descriptor_set],
+                                    &[(mesh.mesh_id as u64 * self.pbr_asset.dynamic_alignment)
+                                        as _],
                                 );
 
                             for primitive in mesh.primitives.iter() {
@@ -295,8 +301,7 @@ impl GltfPipeline {
                                 };
 
                                 if let Some(material_index) = primitive.material_index {
-                                    let primitive_material = pbr_asset
-                                        .asset
+                                    let primitive_material = asset
                                         .gltf
                                         .materials()
                                         .nth(material_index)
