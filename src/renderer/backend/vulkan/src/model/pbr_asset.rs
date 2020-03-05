@@ -1,6 +1,6 @@
 use crate::{
     core::VulkanContext,
-    model::{gltf::GltfAsset, gltf_texture::GltfTextureBundle},
+    model::gltf_texture::GltfTextureBundle,
     render::Renderer,
     resource::{Buffer, DescriptorPool, DescriptorSetLayout},
 };
@@ -28,7 +28,11 @@ pub struct PbrAsset {
 }
 
 impl PbrAsset {
-    pub fn from_gltf(renderer: &Renderer, assets: &[GltfAsset]) -> Self {
+    pub fn new(
+        renderer: &Renderer,
+        number_of_meshes: usize,
+        textures: &[&GltfTextureBundle],
+    ) -> Self {
         let descriptor_set_layout = Self::descriptor_set_layout(renderer.context.clone());
         let descriptor_pool = Self::create_descriptor_pool(renderer.context.clone());
         let descriptor_set =
@@ -42,10 +46,6 @@ impl PbrAsset {
         );
 
         let dynamic_alignment = Self::calculate_dynamic_alignment(renderer.context.clone());
-
-        let number_of_meshes = assets.iter().fold(0, |total_meshes, asset| {
-            total_meshes + asset.number_of_meshes
-        });
 
         let dynamic_uniform_buffer = Buffer::new_mapped_basic(
             renderer.context.clone(),
@@ -61,11 +61,6 @@ impl PbrAsset {
             descriptor_set,
             dynamic_alignment,
         };
-
-        let textures = assets
-            .iter()
-            .flat_map(|asset| &asset.textures)
-            .collect::<Vec<_>>();
 
         pbr_asset.update_descriptor_set(renderer.context.clone(), number_of_meshes, &textures);
         pbr_asset

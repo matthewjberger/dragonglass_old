@@ -121,7 +121,17 @@ impl GltfPipeline {
         for asset_name in asset_names.iter() {
             assets.push(GltfAsset::new(&renderer, asset_name));
         }
-        let pbr_asset = PbrAsset::from_gltf(&renderer, &assets);
+
+        let number_of_meshes = assets.iter().fold(0, |total_meshes, asset| {
+            total_meshes + asset.number_of_meshes
+        });
+
+        let textures = assets
+            .iter()
+            .flat_map(|asset| &asset.textures)
+            .collect::<Vec<_>>();
+
+        let pbr_asset = PbrAsset::new(&renderer, number_of_meshes, &textures);
 
         let gltf_pipeline = Self {
             pipeline,
