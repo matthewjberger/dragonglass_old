@@ -1,7 +1,6 @@
 pub use self::{
     context::VulkanContext,
     debug_layer::{DebugLayer, LayerName, LayerNameVec},
-    image_view::ImageView,
     instance::Instance,
     logical_device::LogicalDevice,
     physical_device::PhysicalDevice,
@@ -12,7 +11,6 @@ pub use self::{
 
 pub mod context;
 pub mod debug_layer;
-pub mod image_view;
 pub mod instance;
 pub mod logical_device;
 pub mod physical_device;

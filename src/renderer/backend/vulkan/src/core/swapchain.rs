@@ -1,7 +1,4 @@
-use crate::{
-    core::{ImageView, VulkanContext},
-    sync::CurrentFrameSynchronization,
-};
+use crate::{core::VulkanContext, resource::ImageView, sync::CurrentFrameSynchronization};
 use ash::{extensions::khr::Swapchain as AshSwapchain, vk};
 use std::sync::Arc;
 

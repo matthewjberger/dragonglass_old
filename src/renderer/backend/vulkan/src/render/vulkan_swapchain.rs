@@ -1,7 +1,7 @@
 use crate::{
-    core::{ImageView, Swapchain, SwapchainProperties, VulkanContext},
+    core::{Swapchain, SwapchainProperties, VulkanContext},
     render::{Framebuffer, RenderPass},
-    resource::{CommandPool, Texture},
+    resource::{CommandPool, ImageView, Texture},
 };
 use ash::vk;
 use std::sync::Arc;

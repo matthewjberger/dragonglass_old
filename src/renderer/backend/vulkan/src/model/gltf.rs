@@ -1,7 +1,7 @@
 use crate::{
-    core::{ImageView, VulkanContext},
+    core::VulkanContext,
     render::Renderer,
-    resource::{Buffer, Sampler, Texture, TextureDescription},
+    resource::{Buffer, ImageView, Sampler, Texture, TextureDescription},
 };
 use ash::vk;
 use nalgebra_glm as glm;
