@@ -13,11 +13,11 @@ pub struct PushConstantBlockMaterial {
     pub color_texture_set: i32,
 }
 
-pub struct GltfPipeline {
+pub struct PbrPipeline {
     pub pipeline: GraphicsPipeline,
 }
 
-impl GltfPipeline {
+impl PbrPipeline {
     pub fn new(renderer: &mut Renderer) -> Self {
         let (vertex_shader, fragment_shader, _shader_entry_point_name) =
             Self::create_shaders(renderer.context.clone());
@@ -78,7 +78,7 @@ impl GltfPipeline {
             .build();
 
         let descriptor_set_layout =
-            GltfPipelineData::descriptor_set_layout(renderer.context.clone());
+            PbrPipelineData::descriptor_set_layout(renderer.context.clone());
         let pipeline_layout =
             Self::create_pipeline_layout(renderer.context.clone(), &descriptor_set_layout);
 
@@ -224,7 +224,7 @@ pub struct DynamicUniformBufferObject {
     pub model: glm::Mat4,
 }
 
-pub struct GltfPipelineData {
+pub struct PbrPipelineData {
     pub descriptor_pool: DescriptorPool,
     pub uniform_buffer: Buffer,
     pub dynamic_uniform_buffer: Buffer,
@@ -232,7 +232,7 @@ pub struct GltfPipelineData {
     pub descriptor_set: vk::DescriptorSet,
 }
 
-impl GltfPipelineData {
+impl PbrPipelineData {
     pub fn new(
         renderer: &Renderer,
         number_of_meshes: usize,
@@ -259,7 +259,7 @@ impl GltfPipelineData {
             vk_mem::MemoryUsage::CpuToGpu,
         );
 
-        let data = GltfPipelineData {
+        let data = PbrPipelineData {
             descriptor_pool,
             uniform_buffer,
             dynamic_uniform_buffer,

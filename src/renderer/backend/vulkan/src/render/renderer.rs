@@ -1,7 +1,7 @@
 use crate::{
     core::VulkanContext,
     model::gltf::GltfAsset,
-    pipelines::gltf::{GltfPipeline, GltfPipelineData, PushConstantBlockMaterial},
+    pipelines::pbr::{PbrPipeline, PbrPipelineData, PushConstantBlockMaterial},
     render::VulkanSwapchain,
     resource::CommandPool,
     sync::SynchronizationSet,
@@ -18,9 +18,9 @@ pub struct Renderer {
     pub current_frame: usize,
     pub command_pool: CommandPool,
     pub transient_command_pool: CommandPool,
-    pub pipeline_gltf: Option<GltfPipeline>,
+    pub pbr_pipeline: Option<PbrPipeline>,
+    pub pbr_pipeline_data: Option<PbrPipelineData>,
     pub assets: Vec<GltfAsset>,
-    pub gltf_pipeline_data: Option<GltfPipelineData>,
 }
 
 impl Renderer {
@@ -45,17 +45,17 @@ impl Renderer {
 
         let mut renderer = Renderer {
             context,
-            pipeline_gltf: None,
+            pbr_pipeline: None,
             synchronization_set,
             current_frame: 0,
             vulkan_swapchain,
             command_pool,
             transient_command_pool,
             assets: Vec::new(),
-            gltf_pipeline_data: None,
+            pbr_pipeline_data: None,
         };
 
-        renderer.pipeline_gltf = Some(GltfPipeline::new(&mut renderer));
+        renderer.pbr_pipeline = Some(PbrPipeline::new(&mut renderer));
         renderer
     }
 
@@ -81,7 +81,7 @@ impl Renderer {
             .flat_map(|asset| &asset.textures)
             .collect::<Vec<_>>();
 
-        self.gltf_pipeline_data = Some(GltfPipelineData::new(&self, number_of_meshes, &textures));
+        self.pbr_pipeline_data = Some(PbrPipelineData::new(&self, number_of_meshes, &textures));
         self.assets = assets;
     }
 
@@ -165,7 +165,7 @@ impl Renderer {
                 .cmd_bind_pipeline(
                     command_buffer,
                     vk::PipelineBindPoint::GRAPHICS,
-                    self.pipeline_gltf.as_ref().unwrap().pipeline.pipeline(),
+                    self.pbr_pipeline.as_ref().unwrap().pipeline.pipeline(),
                 );
         }
 
@@ -228,11 +228,11 @@ impl Renderer {
     }
 
     unsafe fn draw_asset(&self, asset: &GltfAsset, command_buffer: vk::CommandBuffer) {
-        let gltf_pipeline_data = self
-            .gltf_pipeline_data
+        let pbr_pipeline_data = self
+            .pbr_pipeline_data
             .as_ref()
             .expect("Failed to get pbr asset!");
-        let pipeline_layout = self.pipeline_gltf.as_ref().unwrap().pipeline.layout();
+        let pipeline_layout = self.pbr_pipeline.as_ref().unwrap().pipeline.layout();
         let offsets = [0];
         let vertex_buffers = [asset.vertex_buffer.buffer()];
         self.context
@@ -263,9 +263,11 @@ impl Renderer {
                                 vk::PipelineBindPoint::GRAPHICS,
                                 pipeline_layout,
                                 0,
-                                &[gltf_pipeline_data.descriptor_set],
-                                &[(mesh.mesh_id as u64 * gltf_pipeline_data.dynamic_alignment)
-                                    as _],
+                                &[pbr_pipeline_data.descriptor_set],
+                                &[
+                                    (mesh.mesh_id as u64 * pbr_pipeline_data.dynamic_alignment)
+                                        as _,
+                                ],
                             );
 
                         for primitive in mesh.primitives.iter() {

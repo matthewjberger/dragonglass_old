@@ -1,6 +1,6 @@
 use crate::{
     model::gltf::GltfAsset,
-    pipelines::gltf::{DynamicUniformBufferObject, UniformBufferObject},
+    pipelines::pbr::{DynamicUniformBufferObject, UniformBufferObject},
     render::Renderer,
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
@@ -84,7 +84,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                 let asset_transform = transform.translate * transform.rotate * transform.scale;
                 let asset_index = 0;
                 let asset = &renderer.assets[asset_index];
-                let pbr_asset = &renderer.gltf_pipeline_data.as_ref().unwrap();
+                let pbr_asset = &renderer.pbr_pipeline_data.as_ref().unwrap();
 
                 let ubo = UniformBufferObject {
                     view: camera_view_matrix.0,
