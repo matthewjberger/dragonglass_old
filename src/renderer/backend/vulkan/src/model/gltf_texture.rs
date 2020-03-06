@@ -54,7 +54,11 @@ impl GltfTextureBundle {
             &allocation_create_info,
             &image_create_info,
         );
-        texture.upload_data(&renderer.command_pool, renderer.graphics_queue, description);
+        texture.upload_data(
+            &renderer.command_pool,
+            renderer.context.graphics_queue(),
+            description,
+        );
 
         let create_info = vk::ImageViewCreateInfo::builder()
             .image(texture.image())

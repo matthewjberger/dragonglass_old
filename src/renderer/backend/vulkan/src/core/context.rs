@@ -1,5 +1,8 @@
 use crate::core::{Instance, LogicalDevice, PhysicalDevice, Surface};
-use ash::{version::InstanceV1_0, vk};
+use ash::{
+    version::{DeviceV1_0, InstanceV1_0},
+    vk,
+};
 use snafu::{ResultExt, Snafu};
 use vk_mem::{Allocator, AllocatorCreateInfo};
 
@@ -136,5 +139,31 @@ impl VulkanContext {
         self.physical_device
             .queue_family_index_set()
             .present_queue_family_index()
+    }
+
+    // TODO: Move these down to the logical device
+    pub fn graphics_queue(&self) -> vk::Queue {
+        unsafe {
+            self.logical_device()
+                .logical_device()
+                .get_device_queue(self.graphics_queue_family_index(), 0)
+        }
+    }
+
+    pub fn present_queue(&self) -> vk::Queue {
+        unsafe {
+            self.logical_device()
+                .logical_device()
+                .get_device_queue(self.present_queue_family_index(), 0)
+        }
+    }
+
+    pub fn wait_idle(&self) {
+        unsafe {
+            self.logical_device()
+                .logical_device()
+                .device_wait_idle()
+                .expect("Failed to wait for the logical device to be idle!")
+        }
     }
 }

@@ -53,13 +53,13 @@ impl GltfAsset {
         Self::update_ubo_indices(&mut scenes);
 
         let vertex_buffer = renderer.transient_command_pool.create_device_local_buffer(
-            renderer.graphics_queue,
+            renderer.context.graphics_queue(),
             vk::BufferUsageFlags::VERTEX_BUFFER,
             &vertices,
         );
 
         let index_buffer = renderer.transient_command_pool.create_device_local_buffer(
-            renderer.graphics_queue,
+            renderer.context.graphics_queue(),
             vk::BufferUsageFlags::INDEX_BUFFER,
             &indices,
         );

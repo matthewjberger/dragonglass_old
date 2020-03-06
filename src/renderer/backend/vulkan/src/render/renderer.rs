@@ -14,8 +14,6 @@ use std::{slice, sync::Arc};
 pub struct Renderer {
     pub context: Arc<VulkanContext>,
     pub vulkan_swapchain: VulkanSwapchain,
-    pub graphics_queue: vk::Queue,
-    pub present_queue: vk::Queue,
     pub synchronization_set: SynchronizationSet,
     pub current_frame: usize,
     pub command_pool: CommandPool,
@@ -33,28 +31,6 @@ impl Renderer {
         let synchronization_set =
             SynchronizationSet::new(context.clone()).expect("Failed to create sync objects");
 
-        unsafe {
-            context
-                .logical_device()
-                .logical_device()
-                .device_wait_idle()
-                .expect("Failed to wait for the logical device to be idle!")
-        };
-
-        let graphics_queue = unsafe {
-            context
-                .logical_device()
-                .logical_device()
-                .get_device_queue(context.graphics_queue_family_index(), 0)
-        };
-
-        let present_queue = unsafe {
-            context
-                .logical_device()
-                .logical_device()
-                .get_device_queue(context.present_queue_family_index(), 0)
-        };
-
         let command_pool = CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::empty());
 
         let transient_command_pool =
@@ -65,14 +41,11 @@ impl Renderer {
             .expect("Failed to get the window's inner size!");
         let dimensions = [logical_size.width as u32, logical_size.height as u32];
 
-        let vulkan_swapchain =
-            VulkanSwapchain::new(context.clone(), dimensions, graphics_queue, &command_pool);
+        let vulkan_swapchain = VulkanSwapchain::new(context.clone(), dimensions, &command_pool);
 
         let mut renderer = Renderer {
             context,
-            graphics_queue,
             pipeline_gltf: None,
-            present_queue,
             synchronization_set,
             current_frame: 0,
             vulkan_swapchain,

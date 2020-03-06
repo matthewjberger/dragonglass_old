@@ -130,7 +130,7 @@ pub fn render_system() -> Box<dyn Runnable> {
             let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
             renderer.command_pool.submit_command_buffer(
                 image_index as usize,
-                renderer.graphics_queue,
+                renderer.context.graphics_queue(),
                 &wait_stages,
                 &current_frame_synchronization,
             );
@@ -139,7 +139,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                 renderer.vulkan_swapchain.swapchain.present_rendered_image(
                     &current_frame_synchronization,
                     &image_indices,
-                    renderer.present_queue,
+                    renderer.context.present_queue(),
                 );
 
             match swapchain_presentation_result {

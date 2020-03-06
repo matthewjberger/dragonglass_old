@@ -18,7 +18,6 @@ impl VulkanSwapchain {
     pub fn new(
         context: Arc<VulkanContext>,
         dimensions: [u32; 2],
-        graphics_queue: vk::Queue,
         command_pool: &CommandPool,
     ) -> Self {
         let depth_format = context.determine_depth_format(
@@ -33,13 +32,11 @@ impl VulkanSwapchain {
         let swapchain_extent = swapchain.properties().extent;
         let depth_texture =
             Self::create_depth_texture(context.clone(), swapchain_extent, depth_format);
-
-        command_pool.transition_image_layout(
-            graphics_queue,
-            depth_texture.image(),
+        Self::transition_depth_texture(
+            context.graphics_queue(),
+            &command_pool,
+            &depth_texture,
             depth_format,
-            vk::ImageLayout::UNDEFINED,
-            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         );
 
         let depth_texture_view =
@@ -151,6 +148,48 @@ impl VulkanSwapchain {
             ..Default::default()
         };
         Texture::new(context, &image_allocation_create_info, &image_create_info)
+    }
+
+    fn transition_depth_texture(
+        graphics_queue: vk::Queue,
+        command_pool: &CommandPool,
+        depth_texture: &Texture,
+        depth_format: vk::Format,
+    ) {
+        let mut aspect_mask = vk::ImageAspectFlags::DEPTH;
+        let has_stencil_component = depth_format == vk::Format::D32_SFLOAT_S8_UINT
+            || depth_format == vk::Format::D24_UNORM_S8_UINT;
+
+        if has_stencil_component {
+            aspect_mask |= vk::ImageAspectFlags::STENCIL;
+        }
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .image(depth_texture.image())
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .src_access_mask(vk::AccessFlags::empty())
+            .dst_access_mask(
+                vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                    | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            )
+            .build();
+        let barriers = [barrier];
+
+        command_pool.transition_image_layout(
+            graphics_queue,
+            &barriers,
+            vk::PipelineStageFlags::TOP_OF_PIPE,
+            vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+        );
     }
 
     fn create_depth_texture_view(

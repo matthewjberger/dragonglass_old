@@ -274,81 +274,19 @@ impl CommandPool {
     pub fn transition_image_layout(
         &self,
         transition_queue: vk::Queue,
-        image: vk::Image,
-        format: vk::Format,
-        old_layout: vk::ImageLayout,
-        new_layout: vk::ImageLayout,
+        barriers: &[vk::ImageMemoryBarrier],
+        src_stage_mask: vk::PipelineStageFlags,
+        dst_stage_mask: vk::PipelineStageFlags,
     ) {
         self.execute_command_once(transition_queue, |command_buffer| {
-            let (src_access_mask, dst_access_mask, src_stage, dst_stage) =
-                match (old_layout, new_layout) {
-                    (vk::ImageLayout::UNDEFINED, vk::ImageLayout::TRANSFER_DST_OPTIMAL) => (
-                        vk::AccessFlags::empty(),
-                        vk::AccessFlags::TRANSFER_WRITE,
-                        vk::PipelineStageFlags::TOP_OF_PIPE,
-                        vk::PipelineStageFlags::TRANSFER,
-                    ),
-                    (
-                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                        vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                    ) => (
-                        vk::AccessFlags::TRANSFER_WRITE,
-                        vk::AccessFlags::SHADER_READ,
-                        vk::PipelineStageFlags::TRANSFER,
-                        vk::PipelineStageFlags::FRAGMENT_SHADER,
-                    ),
-                    (
-                        vk::ImageLayout::UNDEFINED,
-                        vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                    ) => (
-                        vk::AccessFlags::empty(),
-                        vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                            | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-                        vk::PipelineStageFlags::TOP_OF_PIPE,
-                        vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-                    ),
-                    _ => panic!(
-                        "Unsupported layout transition({:?} => {:?})",
-                        old_layout, new_layout
-                    ),
-                };
-
-            let aspect_mask = if new_layout == vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL {
-                let mut mask = vk::ImageAspectFlags::DEPTH;
-                if Self::has_stencil_component(format) {
-                    mask |= vk::ImageAspectFlags::STENCIL;
-                }
-                mask
-            } else {
-                vk::ImageAspectFlags::COLOR
-            };
-
-            let barrier = vk::ImageMemoryBarrier::builder()
-                .old_layout(old_layout)
-                .new_layout(new_layout)
-                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-                .image(image)
-                .subresource_range(vk::ImageSubresourceRange {
-                    aspect_mask,
-                    base_mip_level: 0,
-                    level_count: 1,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .src_access_mask(src_access_mask)
-                .dst_access_mask(dst_access_mask)
-                .build();
-            let barriers = [barrier];
-
             unsafe {
                 self.context
                     .logical_device()
                     .logical_device()
                     .cmd_pipeline_barrier(
                         command_buffer,
-                        src_stage,
-                        dst_stage,
+                        src_stage_mask,
+                        dst_stage_mask,
                         vk::DependencyFlags::empty(),
                         &[],
                         &[],
@@ -356,11 +294,6 @@ impl CommandPool {
                     )
             };
         });
-    }
-
-    // TODO: Move this to a more specific component
-    pub fn has_stencil_component(format: vk::Format) -> bool {
-        format == vk::Format::D32_SFLOAT_S8_UINT || format == vk::Format::D24_UNORM_S8_UINT
     }
 }
 
