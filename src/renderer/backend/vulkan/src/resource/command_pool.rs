@@ -166,40 +166,19 @@ impl CommandPool {
         transition_queue: vk::Queue,
         buffer: vk::Buffer,
         image: vk::Image,
-        width: u32,
-        height: u32,
+        regions: &[vk::BufferImageCopy],
     ) {
-        self.execute_command_once(transition_queue, |command_buffer| {
-            let region = vk::BufferImageCopy::builder()
-                .buffer_offset(0)
-                .buffer_row_length(0)
-                .buffer_image_height(0)
-                .image_subresource(vk::ImageSubresourceLayers {
-                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                    mip_level: 0,
-                    base_array_layer: 0,
-                    layer_count: 1,
-                })
-                .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
-                .image_extent(vk::Extent3D {
-                    width,
-                    height,
-                    depth: 1,
-                })
-                .build();
-            let regions = [region];
-            unsafe {
-                self.context
-                    .logical_device()
-                    .logical_device()
-                    .cmd_copy_buffer_to_image(
-                        command_buffer,
-                        buffer,
-                        image,
-                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                        &regions,
-                    )
-            }
+        self.execute_command_once(transition_queue, |command_buffer| unsafe {
+            self.context
+                .logical_device()
+                .logical_device()
+                .cmd_copy_buffer_to_image(
+                    command_buffer,
+                    buffer,
+                    image,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    regions,
+                )
         });
     }
 
