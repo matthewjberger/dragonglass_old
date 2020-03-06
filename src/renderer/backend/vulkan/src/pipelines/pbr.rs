@@ -213,6 +213,9 @@ impl PbrPipeline {
     }
 }
 
+// This should match the number of textures defined in the shader
+const MAX_TEXTURES: u32 = 100;
+
 #[derive(Debug, Clone, Copy)]
 pub struct UniformBufferObject {
     pub view: glm::Mat4,
@@ -299,7 +302,7 @@ impl PbrPipelineData {
             .build();
         let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
             .binding(2)
-            .descriptor_count(100) // TODO: Make this a constant
+            .descriptor_count(MAX_TEXTURES)
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .build();
@@ -324,7 +327,7 @@ impl PbrPipelineData {
 
         let sampler_pool_size = vk::DescriptorPoolSize {
             ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            descriptor_count: 100,
+            descriptor_count: MAX_TEXTURES,
         };
 
         let pool_sizes = [ubo_pool_size, dynamic_ubo_pool_size, sampler_pool_size];
@@ -372,8 +375,8 @@ impl PbrPipelineData {
             .collect::<Vec<_>>();
 
         let number_of_images = image_infos.len();
-        let required_images = 100;
-        if number_of_images < 100 {
+        let required_images = MAX_TEXTURES as usize;
+        if number_of_images < required_images {
             let remaining = required_images - number_of_images;
             for _ in 0..remaining {
                 // FIXME: Write a default texture
