@@ -93,11 +93,17 @@ impl CommandPool {
             vk_mem::MemoryUsage::GpuOnly,
         );
 
+        let region = vk::BufferCopy {
+            src_offset: 0,
+            dst_offset: 0,
+            size: buffer_size,
+        };
+        let regions = [region];
         self.copy_buffer_to_buffer(
             graphics_queue,
             staging_buffer.buffer(),
             vertex_buffer.buffer(),
-            buffer_size,
+            &regions,
         );
 
         vertex_buffer
@@ -140,18 +146,9 @@ impl CommandPool {
         transfer_queue: vk::Queue,
         source: vk::Buffer,
         destination: vk::Buffer,
-        size: vk::DeviceSize,
+        regions: &[vk::BufferCopy],
     ) {
         self.execute_command_once(transfer_queue, |command_buffer| {
-            // Define the region for the buffer copy
-            let region = vk::BufferCopy {
-                src_offset: 0,
-                dst_offset: 0,
-                size,
-            };
-            let regions = [region];
-
-            // Copy the bytes of the staging buffer to the vertex buffer
             unsafe {
                 self.context
                     .logical_device()
