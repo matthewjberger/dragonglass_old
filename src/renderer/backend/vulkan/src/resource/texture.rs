@@ -1,46 +1,13 @@
 use crate::{
     core::VulkanContext,
-    resource::{Buffer, CommandPool},
+    resource::{texture_description::TextureDescription, Buffer, CommandPool},
 };
 use ash::vk;
-use image::DynamicImage;
 use std::sync::Arc;
 
 // TODO: Add snafu errors
 
 // TODO: Allow creating texture from passed in pixel data
-
-pub struct Dimension {
-    pub width: u32,
-    pub height: u32,
-}
-
-// These are parameters needed for
-// *both* creating and uploading image data
-pub struct TextureDescription {
-    pub format: vk::Format,
-    pub dimensions: Dimension,
-    pub pixels: Vec<u8>,
-}
-
-#[allow(dead_code)]
-impl TextureDescription {
-    fn from_file(path: &str, format: vk::Format) -> Self {
-        let image = image::open(path).expect("Failed to open image path!");
-        Self::from_image(&image, format)
-    }
-
-    fn from_image(image: &DynamicImage, format: vk::Format) -> Self {
-        let image = image.to_rgba();
-        let width = image.width();
-        let height = image.height();
-        TextureDescription {
-            format,
-            dimensions: Dimension { width, height },
-            pixels: image.into_raw(),
-        }
-    }
-}
 
 // The order of the struct fields matters here
 // because it determines drop order
@@ -74,7 +41,7 @@ impl Texture {
         &self,
         command_pool: &CommandPool,
         graphics_queue: vk::Queue,
-        description: TextureDescription,
+        description: &TextureDescription,
     ) {
         let buffer = Buffer::new_mapped_basic(
             self.context.clone(),
@@ -122,8 +89,8 @@ impl Texture {
             })
             .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
             .image_extent(vk::Extent3D {
-                width: description.dimensions.width,
-                height: description.dimensions.height,
+                width: description.width,
+                height: description.height,
                 depth: 1,
             })
             .build();

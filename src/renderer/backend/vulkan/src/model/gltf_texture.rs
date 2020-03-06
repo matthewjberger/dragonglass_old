@@ -1,11 +1,10 @@
 use crate::{
-    core::ImageView,
+    core::{ImageView, VulkanContext},
     render::Renderer,
-    resource::{Dimension, Sampler, Texture, TextureDescription},
+    resource::{Sampler, Texture, TextureDescription},
 };
 use ash::vk;
-use gltf::image::Format;
-use image::{ImageBuffer, Pixel, RgbImage};
+use std::sync::Arc;
 
 pub struct GltfTextureBundle {
     pub texture: Texture,
@@ -14,20 +13,39 @@ pub struct GltfTextureBundle {
 }
 
 impl GltfTextureBundle {
-    pub fn new(renderer: &Renderer, texture_properties: &gltf::image::Data) -> Self {
-        let texture_format = convert_to_vulkan_format(texture_properties.format);
-        let (pixels, texture_format) = Self::convert_pixels(&texture_properties, texture_format);
+    pub fn new(renderer: &Renderer, image_data: &gltf::image::Data) -> Self {
+        let description = TextureDescription::from_gltf(&image_data);
 
+        let texture = Self::create_texture(renderer.context.clone(), &description);
+
+        texture.upload_data(
+            &renderer.command_pool,
+            renderer.context.graphics_queue(),
+            &description,
+        );
+
+        let view = Self::create_image_view(renderer.context.clone(), &texture, description.format);
+
+        let sampler = Self::create_sampler(renderer.context.clone());
+
+        GltfTextureBundle {
+            texture,
+            view,
+            sampler,
+        }
+    }
+
+    fn create_texture(context: Arc<VulkanContext>, description: &TextureDescription) -> Texture {
         let image_create_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(vk::Extent3D {
-                width: texture_properties.width,
-                height: texture_properties.height,
+                width: description.width,
+                height: description.height,
                 depth: 1,
             })
             .mip_levels(1)
             .array_layers(1)
-            .format(texture_format)
+            .format(description.format)
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
@@ -36,34 +54,23 @@ impl GltfTextureBundle {
             .flags(vk::ImageCreateFlags::empty())
             .build();
 
-        let description = TextureDescription {
-            format: texture_format,
-            dimensions: Dimension {
-                width: texture_properties.width,
-                height: texture_properties.height,
-            },
-            pixels,
-        };
-
         let allocation_create_info = vk_mem::AllocationCreateInfo {
             usage: vk_mem::MemoryUsage::GpuOnly,
             ..Default::default()
         };
-        let texture = Texture::new(
-            renderer.context.clone(),
-            &allocation_create_info,
-            &image_create_info,
-        );
-        texture.upload_data(
-            &renderer.command_pool,
-            renderer.context.graphics_queue(),
-            description,
-        );
 
+        Texture::new(context, &allocation_create_info, &image_create_info)
+    }
+
+    fn create_image_view(
+        context: Arc<VulkanContext>,
+        texture: &Texture,
+        format: vk::Format,
+    ) -> ImageView {
         let create_info = vk::ImageViewCreateInfo::builder()
             .image(texture.image())
             .view_type(vk::ImageViewType::TYPE_2D)
-            .format(texture_format)
+            .format(format)
             .components(vk::ComponentMapping {
                 r: vk::ComponentSwizzle::IDENTITY,
                 g: vk::ComponentSwizzle::IDENTITY,
@@ -78,8 +85,10 @@ impl GltfTextureBundle {
                 layer_count: 1,
             })
             .build();
-        let view = ImageView::new(renderer.context.clone(), create_info);
+        ImageView::new(context, create_info)
+    }
 
+    fn create_sampler(context: Arc<VulkanContext>) -> Sampler {
         let sampler_info = vk::SamplerCreateInfo::builder()
             .mag_filter(vk::Filter::LINEAR)
             .min_filter(vk::Filter::LINEAR)
@@ -97,57 +106,6 @@ impl GltfTextureBundle {
             .min_lod(0.0)
             .max_lod(0.0)
             .build();
-        let sampler = Sampler::new(renderer.context.clone(), sampler_info);
-
-        GltfTextureBundle {
-            texture,
-            view,
-            sampler,
-        }
-    }
-
-    pub fn convert_pixels(
-        texture_properties: &gltf::image::Data,
-        mut texture_format: vk::Format,
-    ) -> (Vec<u8>, vk::Format) {
-        // 24-bit formats are unsupported, so they
-        // need to have an alpha channel added to make them 32-bit
-        let pixels: Vec<u8> = match texture_format {
-            vk::Format::R8G8B8_UNORM => {
-                texture_format = vk::Format::R8G8B8A8_UNORM;
-                Self::attach_alpha_channel(&texture_properties)
-            }
-            vk::Format::B8G8R8_UNORM => {
-                texture_format = vk::Format::B8G8R8A8_UNORM;
-                Self::attach_alpha_channel(&texture_properties)
-            }
-            _ => texture_properties.pixels.to_vec(),
-        };
-        (pixels, texture_format)
-    }
-
-    pub fn attach_alpha_channel(texture_properties: &gltf::image::Data) -> Vec<u8> {
-        let image_buffer: RgbImage = ImageBuffer::from_raw(
-            texture_properties.width,
-            texture_properties.height,
-            texture_properties.pixels.to_vec(),
-        )
-        .expect("Failed to create an image buffer");
-
-        image_buffer
-            .pixels()
-            .flat_map(|pixel| pixel.to_rgba().channels().to_vec())
-            .collect::<Vec<_>>()
-    }
-}
-
-pub fn convert_to_vulkan_format(format: Format) -> vk::Format {
-    match format {
-        Format::R8 => vk::Format::R8_UNORM,
-        Format::R8G8 => vk::Format::R8G8_UNORM,
-        Format::R8G8B8A8 => vk::Format::R8G8B8A8_UNORM,
-        Format::B8G8R8A8 => vk::Format::B8G8R8A8_UNORM,
-        Format::R8G8B8 => vk::Format::R8G8B8_UNORM,
-        Format::B8G8R8 => vk::Format::B8G8R8_UNORM,
+        Sampler::new(context, sampler_info)
     }
 }
