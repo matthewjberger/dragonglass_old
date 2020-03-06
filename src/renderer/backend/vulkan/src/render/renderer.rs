@@ -1,7 +1,7 @@
 use crate::{
     core::VulkanContext,
-    model::{gltf::GltfAsset, pbr_asset::PbrAsset},
-    pipelines::{gltf::PushConstantBlockMaterial, GltfPipeline},
+    model::gltf::GltfAsset,
+    pipelines::gltf::{GltfPipeline, GltfPipelineData, PushConstantBlockMaterial},
     render::VulkanSwapchain,
     resource::CommandPool,
     sync::SynchronizationSet,
@@ -20,7 +20,7 @@ pub struct Renderer {
     pub transient_command_pool: CommandPool,
     pub pipeline_gltf: Option<GltfPipeline>,
     pub assets: Vec<GltfAsset>,
-    pub pbr_asset: Option<PbrAsset>,
+    pub gltf_pipeline_data: Option<GltfPipelineData>,
 }
 
 impl Renderer {
@@ -52,7 +52,7 @@ impl Renderer {
             command_pool,
             transient_command_pool,
             assets: Vec::new(),
-            pbr_asset: None,
+            gltf_pipeline_data: None,
         };
 
         renderer.pipeline_gltf = Some(GltfPipeline::new(&mut renderer));
@@ -81,7 +81,7 @@ impl Renderer {
             .flat_map(|asset| &asset.textures)
             .collect::<Vec<_>>();
 
-        self.pbr_asset = Some(PbrAsset::new(&self, number_of_meshes, &textures));
+        self.gltf_pipeline_data = Some(GltfPipelineData::new(&self, number_of_meshes, &textures));
         self.assets = assets;
     }
 
@@ -228,7 +228,10 @@ impl Renderer {
     }
 
     unsafe fn draw_asset(&self, asset: &GltfAsset, command_buffer: vk::CommandBuffer) {
-        let pbr_asset = self.pbr_asset.as_ref().expect("Failed to get pbr asset!");
+        let gltf_pipeline_data = self
+            .gltf_pipeline_data
+            .as_ref()
+            .expect("Failed to get pbr asset!");
         let pipeline_layout = self.pipeline_gltf.as_ref().unwrap().pipeline.layout();
         let offsets = [0];
         let vertex_buffers = [asset.vertex_buffer.buffer()];
@@ -260,8 +263,9 @@ impl Renderer {
                                 vk::PipelineBindPoint::GRAPHICS,
                                 pipeline_layout,
                                 0,
-                                &[pbr_asset.descriptor_set],
-                                &[(mesh.mesh_id as u64 * pbr_asset.dynamic_alignment) as _],
+                                &[gltf_pipeline_data.descriptor_set],
+                                &[(mesh.mesh_id as u64 * gltf_pipeline_data.dynamic_alignment)
+                                    as _],
                             );
 
                         for primitive in mesh.primitives.iter() {
