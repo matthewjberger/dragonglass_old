@@ -42,12 +42,12 @@ impl Texture {
         command_pool: &CommandPool,
         graphics_queue: vk::Queue,
         description: &TextureDescription,
+        regions: &[vk::BufferImageCopy],
     ) {
         let buffer = Buffer::new_mapped_basic(
             self.context.clone(),
             self.allocation_info.get_size() as _,
             vk::BufferUsageFlags::TRANSFER_SRC,
-            //vk::MemoryPropertyFlags::HOST_VISIBLE,
             vk_mem::MemoryUsage::CpuToGpu,
         );
         buffer.upload_to_buffer(&description.pixels, 0, std::mem::align_of::<u8>() as _);
@@ -77,24 +77,6 @@ impl Texture {
             vk::PipelineStageFlags::TRANSFER,
         );
 
-        let region = vk::BufferImageCopy::builder()
-            .buffer_offset(0)
-            .buffer_row_length(0)
-            .buffer_image_height(0)
-            .image_subresource(vk::ImageSubresourceLayers {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
-            .image_extent(vk::Extent3D {
-                width: description.width,
-                height: description.height,
-                depth: 1,
-            })
-            .build();
-        let regions = [region];
         command_pool.copy_buffer_to_image(graphics_queue, buffer.buffer(), self.image(), &regions);
 
         let barrier = vk::ImageMemoryBarrier::builder()

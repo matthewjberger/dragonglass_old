@@ -247,6 +247,7 @@ impl CommandPool {
         };
     }
 
+    // TODO: Move this to the texture module
     pub fn transition_image_layout(
         &self,
         transition_queue: vk::Queue,
