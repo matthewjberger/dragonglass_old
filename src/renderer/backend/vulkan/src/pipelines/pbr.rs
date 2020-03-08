@@ -1,6 +1,6 @@
 use crate::{
     core::VulkanContext,
-    model::gltf::GltfTextureBundle,
+    model::gltf::GltfTextureData,
     render::{GraphicsPipeline, Renderer},
     resource::{Buffer, DescriptorPool, DescriptorSetLayout, PipelineLayout, Shader},
 };
@@ -239,7 +239,7 @@ impl PbrPipelineData {
     pub fn new(
         renderer: &Renderer,
         number_of_meshes: usize,
-        textures: &[&GltfTextureBundle],
+        textures: &[&GltfTextureData],
     ) -> Self {
         let descriptor_set_layout = Self::descriptor_set_layout(renderer.context.clone());
         let descriptor_pool = Self::create_descriptor_pool(renderer.context.clone());
@@ -344,7 +344,7 @@ impl PbrPipelineData {
         &self,
         context: Arc<VulkanContext>,
         number_of_meshes: usize,
-        textures: &[&GltfTextureBundle],
+        textures: &[&GltfTextureData],
     ) {
         let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
         let buffer_info = vk::DescriptorBufferInfo::builder()

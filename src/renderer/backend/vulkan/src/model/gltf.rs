@@ -37,7 +37,7 @@ pub struct Primitive {
 
 pub struct GltfAsset {
     pub gltf: gltf::Document,
-    pub textures: Vec<GltfTextureBundle>,
+    pub textures: Vec<GltfTextureData>,
     pub scenes: Vec<Scene>,
     pub vertex_buffer: Buffer,
     pub index_buffer: Buffer,
@@ -51,7 +51,7 @@ impl GltfAsset {
 
         let textures = asset_textures
             .iter()
-            .map(|properties| GltfTextureBundle::new(&renderer, properties))
+            .map(|properties| GltfTextureData::new(&renderer, properties))
             .collect::<Vec<_>>();
 
         let (mut scenes, vertices, indices) = Self::prepare_scenes(&gltf, &buffers, &renderer);
@@ -299,13 +299,13 @@ impl GltfAsset {
     }
 }
 
-pub struct GltfTextureBundle {
+pub struct GltfTextureData {
     pub texture: Texture,
     pub view: ImageView,
     pub sampler: Sampler,
 }
 
-impl GltfTextureBundle {
+impl GltfTextureData {
     pub fn new(renderer: &Renderer, image_data: &gltf::image::Data) -> Self {
         let description = TextureDescription::from_gltf(&image_data);
 
@@ -323,7 +323,7 @@ impl GltfTextureBundle {
 
         let sampler = Self::create_sampler(renderer.context.clone());
 
-        GltfTextureBundle {
+        GltfTextureData {
             texture,
             view,
             sampler,
