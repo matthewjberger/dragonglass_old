@@ -1,7 +1,7 @@
 use crate::{
     core::VulkanContext,
     render::Renderer,
-    resource::{Buffer, ImageView, Sampler, Texture, TextureDescription},
+    resource::{Buffer, CommandPool, ImageView, Sampler, Texture, TextureDescription},
 };
 use ash::vk;
 use nalgebra_glm as glm;
@@ -311,6 +311,32 @@ impl GltfTextureBundle {
 
         let texture = Self::create_texture(renderer.context.clone(), &description);
 
+        Self::upload_texture_data(
+            &renderer,
+            &renderer.command_pool,
+            renderer.context.graphics_queue(),
+            &texture,
+            &description,
+        );
+
+        let view = Self::create_image_view(renderer.context.clone(), &texture, description.format);
+
+        let sampler = Self::create_sampler(renderer.context.clone());
+
+        GltfTextureBundle {
+            texture,
+            view,
+            sampler,
+        }
+    }
+
+    pub fn upload_texture_data(
+        renderer: &Renderer,
+        command_pool: &CommandPool,
+        graphics_queue: vk::Queue,
+        texture: &Texture,
+        description: &TextureDescription,
+    ) {
         let region = vk::BufferImageCopy::builder()
             .buffer_offset(0)
             .buffer_row_length(0)
@@ -329,22 +355,70 @@ impl GltfTextureBundle {
             })
             .build();
         let regions = [region];
-        texture.upload_data(
-            &renderer.command_pool,
-            renderer.context.graphics_queue(),
-            &description,
+        let buffer = Buffer::new_mapped_basic(
+            renderer.context.clone(),
+            texture.allocation_info().get_size() as _,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk_mem::MemoryUsage::CpuToGpu,
+        );
+        buffer.upload_to_buffer(&description.pixels, 0, std::mem::align_of::<u8>() as _);
+
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .image(texture.image())
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .src_access_mask(vk::AccessFlags::empty())
+            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .build();
+        let barriers = [barrier];
+
+        command_pool.transition_image_layout(
+            graphics_queue,
+            &barriers,
+            vk::PipelineStageFlags::TOP_OF_PIPE,
+            vk::PipelineStageFlags::TRANSFER,
+        );
+
+        command_pool.copy_buffer_to_image(
+            graphics_queue,
+            buffer.buffer(),
+            texture.image(),
             &regions,
         );
 
-        let view = Self::create_image_view(renderer.context.clone(), &texture, description.format);
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .image(texture.image())
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .dst_access_mask(vk::AccessFlags::SHADER_READ)
+            .build();
+        let barriers = [barrier];
 
-        let sampler = Self::create_sampler(renderer.context.clone());
-
-        GltfTextureBundle {
-            texture,
-            view,
-            sampler,
-        }
+        command_pool.transition_image_layout(
+            graphics_queue,
+            &barriers,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::PipelineStageFlags::FRAGMENT_SHADER,
+        );
     }
 
     fn create_texture(context: Arc<VulkanContext>, description: &TextureDescription) -> Texture {
