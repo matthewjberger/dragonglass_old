@@ -1,7 +1,10 @@
 use crate::{
     core::VulkanContext,
     model::gltf::{GltfAsset, Mesh, Primitive},
-    pipelines::pbr::{PbrPipeline, PbrPipelineData, PushConstantBlockMaterial},
+    pipelines::{
+        pbr::{PbrPipeline, PbrPipelineData, PushConstantBlockMaterial},
+        skybox::{SkyboxPipeline, SkyboxPipelineData, SkyboxTextureData},
+    },
     render::VulkanSwapchain,
     resource::CommandPool,
     sync::SynchronizationSet,
@@ -20,6 +23,8 @@ pub struct Renderer {
     pub transient_command_pool: CommandPool,
     pub pbr_pipeline: Option<PbrPipeline>,
     pub pbr_pipeline_data: Option<PbrPipelineData>,
+    pub skybox_pipeline: Option<SkyboxPipeline>,
+    pub skybox_pipeline_data: Option<SkyboxPipelineData>,
     pub assets: Vec<GltfAsset>,
 }
 
@@ -45,17 +50,20 @@ impl Renderer {
 
         let mut renderer = Renderer {
             context,
-            pbr_pipeline: None,
             synchronization_set,
             current_frame: 0,
             vulkan_swapchain,
             command_pool,
             transient_command_pool,
             assets: Vec::new(),
+            pbr_pipeline: None,
             pbr_pipeline_data: None,
+            skybox_pipeline: None,
+            skybox_pipeline_data: None,
         };
 
         renderer.pbr_pipeline = Some(PbrPipeline::new(&mut renderer));
+        renderer.skybox_pipeline = Some(SkyboxPipeline::new(&mut renderer));
         renderer
     }
 
@@ -83,6 +91,20 @@ impl Renderer {
 
         self.pbr_pipeline_data = Some(PbrPipelineData::new(&self, number_of_meshes, &textures));
         self.assets = assets;
+
+        // TODO: Load this from the ECS
+        let skybox_texture_data = SkyboxTextureData::new(
+            &self,
+            [
+                "examples/assets/skyboxes/mountains/back.tga".to_string(),
+                "examples/assets/skyboxes/mountains/back.tga".to_string(),
+                "examples/assets/skyboxes/mountains/back.tga".to_string(),
+                "examples/assets/skyboxes/mountains/back.tga".to_string(),
+                "examples/assets/skyboxes/mountains/back.tga".to_string(),
+                "examples/assets/skyboxes/mountains/back.tga".to_string(),
+            ],
+        );
+        self.skybox_pipeline_data = Some(SkyboxPipelineData::new(&self, &skybox_texture_data));
     }
 
     pub fn allocate_command_buffers(&mut self) {

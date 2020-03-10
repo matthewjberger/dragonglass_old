@@ -77,6 +77,19 @@ pub fn render_system() -> Box<dyn Runnable> {
                 1000_f32,
             );
 
+            let ubo = UniformBufferObject {
+                view: camera_view_matrix.0,
+                projection,
+            };
+            let ubos = [ubo];
+
+            // renderer
+            //     .skybox_pipeline_data
+            //     .as_ref()
+            //     .unwrap()
+            //     .uniform_buffer
+            //     .upload_to_buffer(&ubos, 0, std::mem::align_of::<UniformBufferObject>() as _);
+
             for transform in query.iter(&mut world) {
                 // TODO: Keep track of the global transform using the gltf document
                 // and render meshes at the correct transform
@@ -86,11 +99,6 @@ pub fn render_system() -> Box<dyn Runnable> {
                 let asset = &renderer.assets[asset_index];
                 let pbr_asset = &renderer.pbr_pipeline_data.as_ref().unwrap();
 
-                let ubo = UniformBufferObject {
-                    view: camera_view_matrix.0,
-                    projection,
-                };
-                let ubos = [ubo];
                 pbr_asset.uniform_buffer.upload_to_buffer(
                     &ubos,
                     0,

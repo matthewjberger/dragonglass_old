@@ -1,6 +1,6 @@
 use crate::{
     core::VulkanContext,
-    model::gltf::GltfTextureData,
+    model::gltf::GltfAsset,
     render::{GraphicsPipeline, Renderer},
     resource::{
         Buffer, CommandPool, DescriptorPool, DescriptorSetLayout, ImageView, PipelineLayout,
@@ -38,7 +38,7 @@ impl SkyboxPipeline {
             .rasterizer_discard_enable(false)
             .polygon_mode(vk::PolygonMode::FILL)
             .line_width(1.0)
-            .cull_mode(vk::CullModeFlags::NONE)
+            .cull_mode(vk::CullModeFlags::FRONT)
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .depth_bias_enable(false)
             .depth_bias_constant_factor(0.0)
@@ -193,10 +193,11 @@ pub struct SkyboxPipelineData {
     pub descriptor_pool: DescriptorPool,
     pub descriptor_set: vk::DescriptorSet,
     pub uniform_buffer: Buffer,
+    pub model: GltfAsset,
 }
 
 impl SkyboxPipelineData {
-    pub fn new(renderer: &Renderer, textures: &[&GltfTextureData]) -> Self {
+    pub fn new(renderer: &Renderer, texture_data: &SkyboxTextureData) -> Self {
         let descriptor_set_layout = Self::descriptor_set_layout(renderer.context.clone());
         let descriptor_pool = Self::create_descriptor_pool(renderer.context.clone());
         let descriptor_set =
@@ -209,13 +210,16 @@ impl SkyboxPipelineData {
             vk_mem::MemoryUsage::CpuOnly,
         );
 
+        let model = GltfAsset::new(&renderer, "examples/assets/models/Box.glb");
+
         let data = SkyboxPipelineData {
             descriptor_pool,
             descriptor_set,
             uniform_buffer,
+            model,
         };
 
-        data.update_descriptor_set(renderer.context.clone(), &textures);
+        data.update_descriptor_set(renderer.context.clone(), texture_data);
         data
     }
 
@@ -261,7 +265,7 @@ impl SkyboxPipelineData {
         DescriptorPool::new(context, pool_info)
     }
 
-    fn update_descriptor_set(&self, context: Arc<VulkanContext>, textures: &[&GltfTextureData]) {
+    fn update_descriptor_set(&self, context: Arc<VulkanContext>, texture_data: &SkyboxTextureData) {
         let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
         let buffer_info = vk::DescriptorBufferInfo::builder()
             .buffer(self.uniform_buffer.buffer())
@@ -270,16 +274,12 @@ impl SkyboxPipelineData {
             .build();
         let buffer_infos = [buffer_info];
 
-        let image_infos = textures
-            .iter()
-            .map(|texture| {
-                vk::DescriptorImageInfo::builder()
-                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                    .image_view(texture.view.view())
-                    .sampler(texture.sampler.sampler())
-                    .build()
-            })
-            .collect::<Vec<_>>();
+        let image_info = vk::DescriptorImageInfo::builder()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(texture_data.view.view())
+            .sampler(texture_data.sampler.sampler())
+            .build();
+        let image_infos = [image_info];
 
         let ubo_descriptor_write = vk::WriteDescriptorSet::builder()
             .dst_set(self.descriptor_set)
@@ -315,20 +315,24 @@ pub struct SkyboxTextureData {
 }
 
 impl SkyboxTextureData {
-    pub fn new(renderer: &Renderer, image_data: &gltf::image::Data) -> Self {
-        let description = TextureDescription::from_gltf(&image_data);
+    pub fn new(renderer: &Renderer, cubemap_faces: [String; 6]) -> Self {
+        let format = vk::Format::R8G8B8A8_UNORM;
+        let descriptions = cubemap_faces
+            .iter()
+            .map(|path| TextureDescription::from_file(&path, format))
+            .collect::<Vec<_>>();
 
-        let texture = Self::create_texture(renderer.context.clone(), &description);
+        let texture = Self::create_texture(renderer.context.clone(), 1920, 1080, format);
 
         Self::upload_texture_data(
             &renderer,
             &renderer.command_pool,
             renderer.context.graphics_queue(),
             &texture,
-            &description,
+            &descriptions,
         );
 
-        let view = Self::create_image_view(renderer.context.clone(), &texture, description.format);
+        let view = Self::create_image_view(renderer.context.clone(), &texture, format);
 
         let sampler = Self::create_sampler(renderer.context.clone());
 
@@ -344,33 +348,41 @@ impl SkyboxTextureData {
         command_pool: &CommandPool,
         graphics_queue: vk::Queue,
         texture: &Texture,
-        description: &TextureDescription,
+        descriptions: &[TextureDescription],
     ) {
-        let region = vk::BufferImageCopy::builder()
-            .buffer_offset(0)
-            .buffer_row_length(0)
-            .buffer_image_height(0)
-            .image_subresource(vk::ImageSubresourceLayers {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 6,
+        let regions = descriptions
+            .iter()
+            .map(|description| {
+                vk::BufferImageCopy::builder()
+                    .buffer_offset(0)
+                    .buffer_row_length(0)
+                    .buffer_image_height(0)
+                    .image_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: 0,
+                        base_array_layer: 0,
+                        layer_count: 6,
+                    })
+                    .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+                    .image_extent(vk::Extent3D {
+                        width: description.width,
+                        height: description.height,
+                        depth: 1,
+                    })
+                    .build()
             })
-            .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
-            .image_extent(vk::Extent3D {
-                width: description.width,
-                height: description.height,
-                depth: 1,
-            })
-            .build();
-        let regions = [region];
+            .collect::<Vec<_>>();
+        let pixels = descriptions
+            .iter()
+            .map(|description| &description.pixels)
+            .collect::<Vec<_>>();
         let buffer = Buffer::new_mapped_basic(
             renderer.context.clone(),
             texture.allocation_info().get_size() as _,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk_mem::MemoryUsage::CpuToGpu,
         );
-        buffer.upload_to_buffer(&description.pixels, 0, std::mem::align_of::<u8>() as _);
+        buffer.upload_to_buffer(&pixels, 0, std::mem::align_of::<u8>() as _);
 
         let barrier = vk::ImageMemoryBarrier::builder()
             .old_layout(vk::ImageLayout::UNDEFINED)
@@ -430,23 +442,28 @@ impl SkyboxTextureData {
         );
     }
 
-    fn create_texture(context: Arc<VulkanContext>, description: &TextureDescription) -> Texture {
+    fn create_texture(
+        context: Arc<VulkanContext>,
+        width: u32,
+        height: u32,
+        format: vk::Format,
+    ) -> Texture {
         let image_create_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(vk::Extent3D {
-                width: description.width,
-                height: description.height,
+                width,
+                height,
                 depth: 1,
             })
             .mip_levels(1)
             .array_layers(6)
-            .format(description.format)
+            .format(format)
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .samples(vk::SampleCountFlags::TYPE_1)
-            .flags(vk::ImageCreateFlags::empty())
+            .flags(vk::ImageCreateFlags::CUBE_COMPATIBLE)
             .build();
 
         let allocation_create_info = vk_mem::AllocationCreateInfo {

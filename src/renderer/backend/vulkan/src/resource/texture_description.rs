@@ -11,12 +11,12 @@ pub struct TextureDescription {
 
 #[allow(dead_code)]
 impl TextureDescription {
-    fn from_file(path: &str, format: vk::Format) -> Self {
+    pub fn from_file(path: &str, format: vk::Format) -> Self {
         let image = image::open(path).expect("Failed to open image path!");
         Self::from_image(&image, format)
     }
 
-    fn from_image(image: &DynamicImage, format: vk::Format) -> Self {
+    pub fn from_image(image: &DynamicImage, format: vk::Format) -> Self {
         let image = image.to_rgba();
         let width = image.width();
         let height = image.height();
