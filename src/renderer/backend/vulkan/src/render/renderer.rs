@@ -1,6 +1,6 @@
 use crate::{
     core::VulkanContext,
-    model::gltf::GltfAsset,
+    model::gltf::{GltfAsset, Mesh, Primitive},
     pipelines::pbr::{PbrPipeline, PbrPipelineData, PushConstantBlockMaterial},
     render::VulkanSwapchain,
     resource::CommandPool,
@@ -228,11 +228,6 @@ impl Renderer {
     }
 
     unsafe fn draw_asset(&self, asset: &GltfAsset, command_buffer: vk::CommandBuffer) {
-        let pbr_pipeline_data = self
-            .pbr_pipeline_data
-            .as_ref()
-            .expect("Failed to get pbr asset!");
-        let pipeline_layout = self.pbr_pipeline.as_ref().unwrap().pipeline.layout();
         let offsets = [0];
         let vertex_buffers = [asset.vertex_buffer.buffer()];
         self.context
@@ -255,72 +250,86 @@ impl Renderer {
                 let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
                 while let Some(node_index) = dfs.next(&graph) {
                     if let Some(mesh) = graph[node_index].mesh.as_ref() {
-                        self.context
-                            .logical_device()
-                            .logical_device()
-                            .cmd_bind_descriptor_sets(
-                                command_buffer,
-                                vk::PipelineBindPoint::GRAPHICS,
-                                pipeline_layout,
-                                0,
-                                &[pbr_pipeline_data.descriptor_set],
-                                &[
-                                    (mesh.mesh_id as u64 * pbr_pipeline_data.dynamic_alignment)
-                                        as _,
-                                ],
-                            );
-
-                        for primitive in mesh.primitives.iter() {
-                            let mut material = PushConstantBlockMaterial {
-                                base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
-                                color_texture_set: -1,
-                            };
-
-                            if let Some(material_index) = primitive.material_index {
-                                let primitive_material = asset
-                                    .gltf
-                                    .materials()
-                                    .nth(material_index)
-                                    .expect("Failed to retrieve material!");
-                                let pbr = primitive_material.pbr_metallic_roughness();
-
-                                if let Some(base_color_texture) = pbr.base_color_texture() {
-                                    material.color_texture_set =
-                                        base_color_texture.texture().index() as i32;
-                                } else {
-                                    material.base_color_factor =
-                                        glm::Vec4::from(pbr.base_color_factor());
-                                }
-                            } else {
-                                material.base_color_factor = glm::vec4(0.0, 0.0, 0.0, 1.0);
-                            }
-
-                            self.context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_push_constants(
-                                    command_buffer,
-                                    pipeline_layout,
-                                    vk::ShaderStageFlags::ALL_GRAPHICS,
-                                    0,
-                                    Self::byte_slice_from(&material),
-                                );
-
-                            self.context
-                                .logical_device()
-                                .logical_device()
-                                .cmd_draw_indexed(
-                                    command_buffer,
-                                    primitive.number_of_indices,
-                                    1,
-                                    primitive.first_index,
-                                    0,
-                                    0,
-                                );
-                        }
+                        self.draw_mesh(command_buffer, &asset, mesh)
                     }
                 }
             }
         }
+    }
+
+    unsafe fn draw_mesh(&self, command_buffer: vk::CommandBuffer, asset: &GltfAsset, mesh: &Mesh) {
+        let pbr_pipeline_data = self
+            .pbr_pipeline_data
+            .as_ref()
+            .expect("Failed to get pbr asset!");
+        let pipeline_layout = self.pbr_pipeline.as_ref().unwrap().pipeline.layout();
+        self.context
+            .logical_device()
+            .logical_device()
+            .cmd_bind_descriptor_sets(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                pipeline_layout,
+                0,
+                &[pbr_pipeline_data.descriptor_set],
+                &[(mesh.mesh_id as u64 * pbr_pipeline_data.dynamic_alignment) as _],
+            );
+
+        for primitive in mesh.primitives.iter() {
+            self.draw_primitive(&asset, &primitive, command_buffer, pipeline_layout);
+        }
+    }
+
+    unsafe fn draw_primitive(
+        &self,
+        asset: &GltfAsset,
+        primitive: &Primitive,
+        command_buffer: vk::CommandBuffer,
+        pipeline_layout: vk::PipelineLayout,
+    ) {
+        let mut material = PushConstantBlockMaterial {
+            base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
+            color_texture_set: -1,
+        };
+
+        if let Some(material_index) = primitive.material_index {
+            let primitive_material = asset
+                .gltf
+                .materials()
+                .nth(material_index)
+                .expect("Failed to retrieve material!");
+            let pbr = primitive_material.pbr_metallic_roughness();
+
+            if let Some(base_color_texture) = pbr.base_color_texture() {
+                material.color_texture_set = base_color_texture.texture().index() as i32;
+            } else {
+                material.base_color_factor = glm::Vec4::from(pbr.base_color_factor());
+            }
+        } else {
+            material.base_color_factor = glm::vec4(0.0, 0.0, 0.0, 1.0);
+        }
+
+        self.context
+            .logical_device()
+            .logical_device()
+            .cmd_push_constants(
+                command_buffer,
+                pipeline_layout,
+                vk::ShaderStageFlags::ALL_GRAPHICS,
+                0,
+                Self::byte_slice_from(&material),
+            );
+
+        self.context
+            .logical_device()
+            .logical_device()
+            .cmd_draw_indexed(
+                command_buffer,
+                primitive.number_of_indices,
+                1,
+                primitive.first_index,
+                0,
+                0,
+            );
     }
 }
