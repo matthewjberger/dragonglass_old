@@ -18,6 +18,9 @@ void main() {
   if (material.colorTextureSet > -1)
   {
     outColor = texture(textures[material.colorTextureSet], fragCoords);
+	if (outColor.a < 0.01) {
+		discard;
+	}
   } else {
     outColor = material.baseColorFactor;
   }
