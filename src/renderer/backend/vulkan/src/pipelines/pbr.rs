@@ -7,7 +7,6 @@ use crate::{
 use ash::{version::DeviceV1_0, vk};
 use dragonglass_core::byte_slice_from;
 use nalgebra_glm as glm;
-use petgraph::{graph::NodeIndex, visit::Dfs};
 use std::{ffi::CString, mem, sync::Arc};
 
 pub struct PushConstantBlockMaterial {
@@ -476,47 +475,42 @@ impl PbrRenderer {
             );
         }
 
-        for scene in asset.scenes.iter() {
-            for graph in scene.node_graphs.iter() {
-                let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
-                while let Some(node_index) = dfs.next(&graph) {
-                    if let Some(mesh) = graph[node_index].mesh.as_ref() {
-                        unsafe {
-                            device.cmd_bind_descriptor_sets(
-                                self.command_buffer,
-                                vk::PipelineBindPoint::GRAPHICS,
-                                self.pipeline_layout,
-                                0,
-                                &[self.descriptor_set],
-                                &[(mesh.mesh_id as u64 * self.dynamic_alignment) as _],
-                            );
-                        }
+        asset.walk(|node_index, graph| {
+            if let Some(mesh) = graph[node_index].mesh.as_ref() {
+                unsafe {
+                    device.cmd_bind_descriptor_sets(
+                        self.command_buffer,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        self.pipeline_layout,
+                        0,
+                        &[self.descriptor_set],
+                        &[(mesh.mesh_id as u64 * self.dynamic_alignment) as _],
+                    );
+                }
 
-                        for primitive in mesh.primitives.iter() {
-                            let material = Self::create_material(&asset, &primitive);
-                            unsafe {
-                                device.cmd_push_constants(
-                                    self.command_buffer,
-                                    self.pipeline_layout,
-                                    vk::ShaderStageFlags::ALL_GRAPHICS,
-                                    0,
-                                    byte_slice_from(&material),
-                                );
+                for primitive in mesh.primitives.iter() {
+                    let material = Self::create_material(&asset, &primitive);
+                    unsafe {
+                        device.cmd_push_constants(
+                            self.command_buffer,
+                            self.pipeline_layout,
+                            vk::ShaderStageFlags::ALL_GRAPHICS,
+                            0,
+                            byte_slice_from(&material),
+                        );
 
-                                device.cmd_draw_indexed(
-                                    self.command_buffer,
-                                    primitive.number_of_indices,
-                                    1,
-                                    primitive.first_index,
-                                    0,
-                                    0,
-                                );
-                            }
-                        }
+                        device.cmd_draw_indexed(
+                            self.command_buffer,
+                            primitive.number_of_indices,
+                            1,
+                            primitive.first_index,
+                            0,
+                            0,
+                        );
                     }
                 }
             }
-        }
+        });
     }
 
     fn create_material(asset: &GltfAsset, primitive: &Primitive) -> PushConstantBlockMaterial {

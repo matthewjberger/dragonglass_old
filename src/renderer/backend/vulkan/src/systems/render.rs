@@ -11,7 +11,6 @@ use dragonglass_core::{
 };
 use legion::prelude::*;
 use nalgebra_glm as glm;
-use petgraph::{graph::NodeIndex, visit::Dfs};
 
 pub fn prepare_renderer_system() -> Box<dyn Schedulable> {
     SystemBuilder::new("prepare_renderer")
@@ -77,6 +76,12 @@ pub fn render_system() -> Box<dyn Runnable> {
                 1000_f32,
             );
 
+            let ubo = UniformBufferObject {
+                view: camera_view_matrix.0,
+                projection,
+            };
+            let ubos = [ubo];
+
             for transform in query.iter(&mut world) {
                 // TODO: Keep track of the global transform using the gltf document
                 // and render meshes at the correct transform
@@ -88,13 +93,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                 let pbr_data = &renderer
                     .pbr_pipeline_data
                     .as_ref()
-                    .expect("Failed to get pbr asset!");
-
-                let ubo = UniformBufferObject {
-                    view: camera_view_matrix.0,
-                    projection,
-                };
-                let ubos = [ubo];
+                    .expect("Failed to get pbr pipeline data!");
                 pbr_data.uniform_buffer.upload_to_buffer(
                     &ubos,
                     0,
@@ -104,29 +103,22 @@ pub fn render_system() -> Box<dyn Runnable> {
                 let full_dynamic_ubo_size =
                     (asset.number_of_meshes as u64 * pbr_data.dynamic_alignment) as u64;
 
-                for scene in asset.scenes.iter() {
-                    for graph in scene.node_graphs.iter() {
-                        let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
-                        while let Some(node_index) = dfs.next(&graph) {
-                            let global_transform =
-                                GltfAsset::calculate_global_transform(node_index, graph);
-                            if let Some(mesh) = graph[node_index].mesh.as_ref() {
-                                let dynamic_ubo = DynamicUniformBufferObject {
-                                    model: asset_transform * global_transform,
-                                };
-                                let ubos = [dynamic_ubo];
-                                let buffer = &pbr_data.dynamic_uniform_buffer;
-                                let offset =
-                                    (pbr_data.dynamic_alignment * mesh.mesh_id as u64) as usize;
+                asset.walk(|node_index, graph| {
+                    let global_transform = GltfAsset::calculate_global_transform(node_index, graph);
+                    if let Some(mesh) = graph[node_index].mesh.as_ref() {
+                        let dynamic_ubo = DynamicUniformBufferObject {
+                            model: asset_transform * global_transform,
+                        };
+                        let ubos = [dynamic_ubo];
+                        let buffer = &pbr_data.dynamic_uniform_buffer;
+                        let offset = (pbr_data.dynamic_alignment * mesh.mesh_id as u64) as usize;
 
-                                buffer.upload_to_buffer(&ubos, offset, pbr_data.dynamic_alignment);
-                                buffer
-                                    .flush(0, full_dynamic_ubo_size as _)
-                                    .expect("Failed to flush buffer!");
-                            }
-                        }
+                        buffer.upload_to_buffer(&ubos, offset, pbr_data.dynamic_alignment);
+                        buffer
+                            .flush(0, full_dynamic_ubo_size as _)
+                            .expect("Failed to flush buffer!");
                     }
-                }
+                });
             }
 
             let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];

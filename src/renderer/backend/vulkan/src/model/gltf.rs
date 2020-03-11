@@ -227,6 +227,28 @@ impl GltfAsset {
         }
     }
 
+    fn update_ubo_indices(scenes: &mut Vec<Scene>) {
+        let mut indices = Vec::new();
+        for (scene_index, scene) in scenes.iter().enumerate() {
+            for (graph_index, graph) in scene.node_graphs.iter().enumerate() {
+                let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
+                while let Some(node_index) = dfs.next(&graph) {
+                    if graph[node_index].mesh.is_some() {
+                        indices.push((scene_index, graph_index, node_index));
+                    }
+                }
+            }
+        }
+
+        for (mesh_id, (scene_index, graph_index, node_index)) in indices.into_iter().enumerate() {
+            scenes[scene_index].node_graphs[graph_index][node_index]
+                .mesh
+                .as_mut()
+                .expect("Failed to get mesh!")
+                .mesh_id = mesh_id;
+        }
+    }
+
     pub fn path_between_nodes(
         starting_node_index: NodeIndex,
         node_index: NodeIndex,
@@ -276,25 +298,17 @@ impl GltfAsset {
             })
     }
 
-    fn update_ubo_indices(scenes: &mut Vec<Scene>) {
-        let mut indices = Vec::new();
-        for (scene_index, scene) in scenes.iter().enumerate() {
-            for (graph_index, graph) in scene.node_graphs.iter().enumerate() {
+    pub fn walk<F>(&self, action: F)
+    where
+        F: Fn(NodeIndex, &NodeGraph),
+    {
+        for scene in self.scenes.iter() {
+            for graph in scene.node_graphs.iter() {
                 let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
                 while let Some(node_index) = dfs.next(&graph) {
-                    if graph[node_index].mesh.is_some() {
-                        indices.push((scene_index, graph_index, node_index));
-                    }
+                    action(node_index, &graph);
                 }
             }
-        }
-
-        for (mesh_id, (scene_index, graph_index, node_index)) in indices.into_iter().enumerate() {
-            scenes[scene_index].node_graphs[graph_index][node_index]
-                .mesh
-                .as_mut()
-                .expect("Failed to get mesh!")
-                .mesh_id = mesh_id;
         }
     }
 }

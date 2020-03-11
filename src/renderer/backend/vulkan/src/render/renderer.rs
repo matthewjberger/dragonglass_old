@@ -3,7 +3,7 @@ use crate::{
     model::gltf::GltfAsset,
     pipelines::{
         pbr::{PbrPipeline, PbrPipelineData, PbrRenderer},
-        skybox::{SkyboxPipeline, SkyboxPipelineData},
+        skybox::{SkyboxPipeline, SkyboxPipelineData, SkyboxRenderer},
     },
     render::VulkanSwapchain,
     resource::CommandPool,
@@ -162,6 +162,7 @@ impl Renderer {
                 );
         }
 
+        self.render_skybox(command_buffer);
         self.render_assets(command_buffer);
 
         unsafe {
@@ -176,6 +177,29 @@ impl Renderer {
                 .end_command_buffer(command_buffer)
                 .expect("Failed to end the command buffer for a render pass!");
         }
+    }
+
+    pub fn render_skybox(&self, command_buffer: vk::CommandBuffer) {
+        let device = &self.context.logical_device().logical_device();
+
+        let skybox_pipeline = self
+            .skybox_pipeline
+            .as_ref()
+            .expect("Failed to get skybox pipeline!");
+
+        skybox_pipeline.bind(device, command_buffer);
+
+        let skybox_pipeline_data = self
+            .skybox_pipeline_data
+            .as_ref()
+            .expect("Failed to get skybox pipeline data!");
+
+        let _skybox_renderer =
+            SkyboxRenderer::new(command_buffer, &skybox_pipeline, &skybox_pipeline_data);
+
+        self.update_viewport(command_buffer);
+
+        // TODO: Render skybox
     }
 
     pub fn render_assets(&self, command_buffer: vk::CommandBuffer) {
@@ -193,14 +217,13 @@ impl Renderer {
             .as_ref()
             .expect("Failed to get pbr pipeline data!");
 
-        let gltf_asset_renderer =
-            PbrRenderer::new(command_buffer, &pbr_pipeline, &pbr_pipeline_data);
+        let pbr_renderer = PbrRenderer::new(command_buffer, &pbr_pipeline, &pbr_pipeline_data);
 
         self.update_viewport(command_buffer);
 
         self.assets
             .iter()
-            .for_each(|asset| gltf_asset_renderer.draw_asset(device, &asset));
+            .for_each(|asset| pbr_renderer.draw_asset(device, &asset));
     }
 
     pub fn update_viewport(&self, command_buffer: vk::CommandBuffer) {
