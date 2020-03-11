@@ -15,11 +15,11 @@ pub struct PushConstantBlockMaterial {
     pub color_texture_set: i32,
 }
 
-pub struct PbrPipeline {
+pub struct SkyboxPipeline {
     pub pipeline: GraphicsPipeline,
 }
 
-impl PbrPipeline {
+impl SkyboxPipeline {
     pub fn new(renderer: &mut Renderer) -> Self {
         let (vertex_shader, fragment_shader, _shader_entry_point_name) =
             Self::create_shaders(renderer.context.clone());
@@ -80,7 +80,7 @@ impl PbrPipeline {
             .build();
 
         let descriptor_set_layout =
-            PbrPipelineData::descriptor_set_layout(renderer.context.clone());
+            SkyboxPipelineData::descriptor_set_layout(renderer.context.clone());
         let pipeline_layout =
             Self::create_pipeline_layout(renderer.context.clone(), &descriptor_set_layout);
 
@@ -239,7 +239,7 @@ pub struct DynamicUniformBufferObject {
     pub model: glm::Mat4,
 }
 
-pub struct PbrPipelineData {
+pub struct SkyboxPipelineData {
     pub descriptor_pool: DescriptorPool,
     pub uniform_buffer: Buffer,
     pub dynamic_uniform_buffer: Buffer,
@@ -247,7 +247,7 @@ pub struct PbrPipelineData {
     pub descriptor_set: vk::DescriptorSet,
 }
 
-impl PbrPipelineData {
+impl SkyboxPipelineData {
     pub fn new(
         renderer: &Renderer,
         number_of_meshes: usize,
@@ -274,7 +274,7 @@ impl PbrPipelineData {
             vk_mem::MemoryUsage::CpuToGpu,
         );
 
-        let data = PbrPipelineData {
+        let data = SkyboxPipelineData {
             descriptor_pool,
             uniform_buffer,
             dynamic_uniform_buffer,
@@ -441,18 +441,18 @@ impl PbrPipelineData {
     }
 }
 
-pub struct PbrRenderer {
+pub struct SkyboxRenderer {
     command_buffer: vk::CommandBuffer,
     pipeline_layout: vk::PipelineLayout,
     dynamic_alignment: u64,
     descriptor_set: vk::DescriptorSet,
 }
 
-impl PbrRenderer {
+impl SkyboxRenderer {
     pub fn new(
         command_buffer: vk::CommandBuffer,
-        pipeline: &PbrPipeline,
-        pipeline_data: &PbrPipelineData,
+        pipeline: &SkyboxPipeline,
+        pipeline_data: &SkyboxPipelineData,
     ) -> Self {
         Self {
             command_buffer,

@@ -1,15 +1,16 @@
 use crate::{
     core::VulkanContext,
-    model::gltf::{GltfAsset, Mesh, Primitive},
-    pipelines::pbr::{PbrPipeline, PbrPipelineData, PushConstantBlockMaterial},
+    model::gltf::GltfAsset,
+    pipelines::{
+        pbr::{PbrPipeline, PbrPipelineData, PbrRenderer},
+        skybox::{SkyboxPipeline, SkyboxPipelineData},
+    },
     render::VulkanSwapchain,
     resource::CommandPool,
     sync::SynchronizationSet,
 };
 use ash::{version::DeviceV1_0, vk};
-use nalgebra_glm as glm;
-use petgraph::{graph::NodeIndex, visit::Dfs};
-use std::{slice, sync::Arc};
+use std::sync::Arc;
 
 pub struct Renderer {
     pub context: Arc<VulkanContext>,
@@ -18,9 +19,11 @@ pub struct Renderer {
     pub current_frame: usize,
     pub command_pool: CommandPool,
     pub transient_command_pool: CommandPool,
+    pub assets: Vec<GltfAsset>,
     pub pbr_pipeline: Option<PbrPipeline>,
     pub pbr_pipeline_data: Option<PbrPipelineData>,
-    pub assets: Vec<GltfAsset>,
+    pub skybox_pipeline: Option<SkyboxPipeline>,
+    pub skybox_pipeline_data: Option<SkyboxPipelineData>,
 }
 
 impl Renderer {
@@ -45,17 +48,20 @@ impl Renderer {
 
         let mut renderer = Renderer {
             context,
-            pbr_pipeline: None,
             synchronization_set,
             current_frame: 0,
             vulkan_swapchain,
             command_pool,
             transient_command_pool,
             assets: Vec::new(),
+            pbr_pipeline: None,
             pbr_pipeline_data: None,
+            skybox_pipeline: None,
+            skybox_pipeline_data: None,
         };
 
         renderer.pbr_pipeline = Some(PbrPipeline::new(&mut renderer));
+        renderer.skybox_pipeline = Some(SkyboxPipeline::new(&mut renderer));
         renderer
     }
 
@@ -82,6 +88,10 @@ impl Renderer {
             .collect::<Vec<_>>();
 
         self.pbr_pipeline_data = Some(PbrPipelineData::new(&self, number_of_meshes, &textures));
+
+        self.skybox_pipeline_data =
+            Some(SkyboxPipelineData::new(&self, number_of_meshes, &textures));
+
         self.assets = assets;
     }
 
@@ -101,18 +111,11 @@ impl Renderer {
             .for_each(|(index, buffer)| {
                 let command_buffer = *buffer;
                 let framebuffer = self.vulkan_swapchain.framebuffers[index].framebuffer();
-                self.create_render_pass(framebuffer, command_buffer);
+                self.draw(framebuffer, command_buffer);
             });
     }
 
-    pub fn create_render_pass(
-        &self,
-        framebuffer: vk::Framebuffer,
-        command_buffer: vk::CommandBuffer,
-    ) {
-        // TODO: Move render pass creation into here
-
-        // Begin the command buffer
+    pub fn draw(&self, framebuffer: vk::Framebuffer, command_buffer: vk::CommandBuffer) {
         let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE)
             .build();
@@ -124,7 +127,6 @@ impl Renderer {
                 .expect("Failed to begin command buffer for the render pass!")
         };
 
-        // TODO: Pass in clear values
         let clear_values = [
             vk::ClearValue {
                 color: vk::ClearColorValue {
@@ -158,22 +160,9 @@ impl Renderer {
                     &render_pass_begin_info,
                     vk::SubpassContents::INLINE,
                 );
-
-            self.context
-                .logical_device()
-                .logical_device()
-                .cmd_bind_pipeline(
-                    command_buffer,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    self.pbr_pipeline.as_ref().unwrap().pipeline.pipeline(),
-                );
         }
 
-        self.update_viewport(command_buffer);
-
-        self.assets
-            .iter()
-            .for_each(|asset| unsafe { self.draw_asset(&asset, command_buffer) });
+        self.render_assets(command_buffer);
 
         unsafe {
             self.context
@@ -189,7 +178,33 @@ impl Renderer {
         }
     }
 
-    fn update_viewport(&self, command_buffer: vk::CommandBuffer) {
+    pub fn render_assets(&self, command_buffer: vk::CommandBuffer) {
+        let device = &self.context.logical_device().logical_device();
+
+        let pbr_pipeline = self
+            .pbr_pipeline
+            .as_ref()
+            .expect("Failed to get pbr pipeline!");
+
+        pbr_pipeline.bind(device, command_buffer);
+
+        let pbr_pipeline_data = self
+            .pbr_pipeline_data
+            .as_ref()
+            .expect("Failed to get pbr pipeline data!");
+
+        let gltf_asset_renderer =
+            PbrRenderer::new(command_buffer, &pbr_pipeline, &pbr_pipeline_data);
+
+        self.update_viewport(command_buffer);
+
+        self.assets
+            .iter()
+            .for_each(|asset| gltf_asset_renderer.draw_asset(device, &asset));
+    }
+
+    pub fn update_viewport(&self, command_buffer: vk::CommandBuffer) {
+        let device = self.context.logical_device().logical_device();
         let extent = self.vulkan_swapchain.swapchain.properties().extent;
 
         let viewport = vk::Viewport {
@@ -209,127 +224,8 @@ impl Renderer {
         let scissors = [scissor];
 
         unsafe {
-            self.context
-                .logical_device()
-                .logical_device()
-                .cmd_set_viewport(command_buffer, 0, &viewports);
-
-            self.context
-                .logical_device()
-                .logical_device()
-                .cmd_set_scissor(command_buffer, 0, &scissors);
+            device.cmd_set_viewport(command_buffer, 0, &viewports);
+            device.cmd_set_scissor(command_buffer, 0, &scissors);
         }
-    }
-
-    // TODO: Move this to a seperate class or even the mod.rs file
-    unsafe fn byte_slice_from<T: Sized>(data: &T) -> &[u8] {
-        let data_ptr = (data as *const T) as *const u8;
-        slice::from_raw_parts(data_ptr, std::mem::size_of::<T>())
-    }
-
-    unsafe fn draw_asset(&self, asset: &GltfAsset, command_buffer: vk::CommandBuffer) {
-        let offsets = [0];
-        let vertex_buffers = [asset.vertex_buffer.buffer()];
-        self.context
-            .logical_device()
-            .logical_device()
-            .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
-
-        self.context
-            .logical_device()
-            .logical_device()
-            .cmd_bind_index_buffer(
-                command_buffer,
-                asset.index_buffer.buffer(),
-                0,
-                vk::IndexType::UINT32,
-            );
-
-        for scene in asset.scenes.iter() {
-            for graph in scene.node_graphs.iter() {
-                let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
-                while let Some(node_index) = dfs.next(&graph) {
-                    if let Some(mesh) = graph[node_index].mesh.as_ref() {
-                        self.draw_mesh(command_buffer, &asset, mesh)
-                    }
-                }
-            }
-        }
-    }
-
-    unsafe fn draw_mesh(&self, command_buffer: vk::CommandBuffer, asset: &GltfAsset, mesh: &Mesh) {
-        let pbr_pipeline_data = self
-            .pbr_pipeline_data
-            .as_ref()
-            .expect("Failed to get pbr asset!");
-        let pipeline_layout = self.pbr_pipeline.as_ref().unwrap().pipeline.layout();
-        self.context
-            .logical_device()
-            .logical_device()
-            .cmd_bind_descriptor_sets(
-                command_buffer,
-                vk::PipelineBindPoint::GRAPHICS,
-                pipeline_layout,
-                0,
-                &[pbr_pipeline_data.descriptor_set],
-                &[(mesh.mesh_id as u64 * pbr_pipeline_data.dynamic_alignment) as _],
-            );
-
-        for primitive in mesh.primitives.iter() {
-            self.draw_primitive(&asset, &primitive, command_buffer, pipeline_layout);
-        }
-    }
-
-    unsafe fn draw_primitive(
-        &self,
-        asset: &GltfAsset,
-        primitive: &Primitive,
-        command_buffer: vk::CommandBuffer,
-        pipeline_layout: vk::PipelineLayout,
-    ) {
-        let mut material = PushConstantBlockMaterial {
-            base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
-            color_texture_set: -1,
-        };
-
-        if let Some(material_index) = primitive.material_index {
-            let primitive_material = asset
-                .gltf
-                .materials()
-                .nth(material_index)
-                .expect("Failed to retrieve material!");
-            let pbr = primitive_material.pbr_metallic_roughness();
-
-            if let Some(base_color_texture) = pbr.base_color_texture() {
-                material.color_texture_set = base_color_texture.texture().index() as i32;
-            } else {
-                material.base_color_factor = glm::Vec4::from(pbr.base_color_factor());
-            }
-        } else {
-            material.base_color_factor = glm::vec4(0.0, 0.0, 0.0, 1.0);
-        }
-
-        self.context
-            .logical_device()
-            .logical_device()
-            .cmd_push_constants(
-                command_buffer,
-                pipeline_layout,
-                vk::ShaderStageFlags::ALL_GRAPHICS,
-                0,
-                Self::byte_slice_from(&material),
-            );
-
-        self.context
-            .logical_device()
-            .logical_device()
-            .cmd_draw_indexed(
-                command_buffer,
-                primitive.number_of_indices,
-                1,
-                primitive.first_index,
-                0,
-                0,
-            );
     }
 }

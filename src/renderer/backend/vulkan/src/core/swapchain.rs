@@ -225,7 +225,11 @@ Creating swapchain.
             image_count
         );
 
-        let images = unsafe { swapchain.get_swapchain_images(swapchain_khr).unwrap() };
+        let images = unsafe {
+            swapchain
+                .get_swapchain_images(swapchain_khr)
+                .expect("Failed to get swapchain khr!")
+        };
         let image_views = images
             .iter()
             .map(|image| {

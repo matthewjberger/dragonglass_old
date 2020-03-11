@@ -84,21 +84,25 @@ pub fn render_system() -> Box<dyn Runnable> {
                 let asset_transform = transform.translate * transform.rotate * transform.scale;
                 let asset_index = 0;
                 let asset = &renderer.assets[asset_index];
-                let pbr_asset = &renderer.pbr_pipeline_data.as_ref().unwrap();
+
+                let pbr_data = &renderer
+                    .pbr_pipeline_data
+                    .as_ref()
+                    .expect("Failed to get pbr asset!");
 
                 let ubo = UniformBufferObject {
                     view: camera_view_matrix.0,
                     projection,
                 };
                 let ubos = [ubo];
-                pbr_asset.uniform_buffer.upload_to_buffer(
+                pbr_data.uniform_buffer.upload_to_buffer(
                     &ubos,
                     0,
                     std::mem::align_of::<UniformBufferObject>() as _,
                 );
 
                 let full_dynamic_ubo_size =
-                    (asset.number_of_meshes as u64 * pbr_asset.dynamic_alignment) as u64;
+                    (asset.number_of_meshes as u64 * pbr_data.dynamic_alignment) as u64;
 
                 for scene in asset.scenes.iter() {
                     for graph in scene.node_graphs.iter() {
@@ -111,11 +115,11 @@ pub fn render_system() -> Box<dyn Runnable> {
                                     model: asset_transform * global_transform,
                                 };
                                 let ubos = [dynamic_ubo];
-                                let buffer = &pbr_asset.dynamic_uniform_buffer;
+                                let buffer = &pbr_data.dynamic_uniform_buffer;
                                 let offset =
-                                    (pbr_asset.dynamic_alignment * mesh.mesh_id as u64) as usize;
+                                    (pbr_data.dynamic_alignment * mesh.mesh_id as u64) as usize;
 
-                                buffer.upload_to_buffer(&ubos, offset, pbr_asset.dynamic_alignment);
+                                buffer.upload_to_buffer(&ubos, offset, pbr_data.dynamic_alignment);
                                 buffer
                                     .flush(0, full_dynamic_ubo_size as _)
                                     .expect("Failed to flush buffer!");

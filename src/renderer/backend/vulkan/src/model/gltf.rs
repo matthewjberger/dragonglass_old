@@ -293,7 +293,7 @@ impl GltfAsset {
             scenes[scene_index].node_graphs[graph_index][node_index]
                 .mesh
                 .as_mut()
-                .unwrap()
+                .expect("Failed to get mesh!")
                 .mesh_id = mesh_id;
         }
     }
