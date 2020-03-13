@@ -1,10 +1,7 @@
 use crate::{
     core::VulkanContext,
     model::gltf::GltfAsset,
-    pipelines::{
-        pbr::{PbrPipeline, PbrPipelineData, PbrRenderer},
-        skybox::{SkyboxPipeline, SkyboxPipelineData, SkyboxRenderer},
-    },
+    pipelines::pbr::{PbrPipeline, PbrPipelineData, PbrRenderer},
     render::VulkanSwapchain,
     resource::CommandPool,
     sync::SynchronizationSet,
@@ -22,8 +19,6 @@ pub struct Renderer {
     pub assets: Vec<GltfAsset>,
     pub pbr_pipeline: Option<PbrPipeline>,
     pub pbr_pipeline_data: Option<PbrPipelineData>,
-    pub skybox_pipeline: Option<SkyboxPipeline>,
-    pub skybox_pipeline_data: Option<SkyboxPipelineData>,
 }
 
 impl Renderer {
@@ -56,12 +51,9 @@ impl Renderer {
             assets: Vec::new(),
             pbr_pipeline: None,
             pbr_pipeline_data: None,
-            skybox_pipeline: None,
-            skybox_pipeline_data: None,
         };
 
         renderer.pbr_pipeline = Some(PbrPipeline::new(&mut renderer));
-        renderer.skybox_pipeline = Some(SkyboxPipeline::new(&mut renderer));
         renderer
     }
 
@@ -88,9 +80,6 @@ impl Renderer {
             .collect::<Vec<_>>();
 
         self.pbr_pipeline_data = Some(PbrPipelineData::new(&self, number_of_meshes, &textures));
-
-        self.skybox_pipeline_data =
-            Some(SkyboxPipelineData::new(&self, number_of_meshes, &textures));
 
         self.assets = assets;
     }
@@ -162,7 +151,6 @@ impl Renderer {
                 );
         }
 
-        self.render_skybox(command_buffer);
         self.render_assets(command_buffer);
 
         unsafe {
@@ -177,29 +165,6 @@ impl Renderer {
                 .end_command_buffer(command_buffer)
                 .expect("Failed to end the command buffer for a render pass!");
         }
-    }
-
-    pub fn render_skybox(&self, command_buffer: vk::CommandBuffer) {
-        let device = &self.context.logical_device().logical_device();
-
-        let skybox_pipeline = self
-            .skybox_pipeline
-            .as_ref()
-            .expect("Failed to get skybox pipeline!");
-
-        skybox_pipeline.bind(device, command_buffer);
-
-        let skybox_pipeline_data = self
-            .skybox_pipeline_data
-            .as_ref()
-            .expect("Failed to get skybox pipeline data!");
-
-        let _skybox_renderer =
-            SkyboxRenderer::new(command_buffer, &skybox_pipeline, &skybox_pipeline_data);
-
-        self.update_viewport(command_buffer);
-
-        // TODO: Render skybox
     }
 
     pub fn render_assets(&self, command_buffer: vk::CommandBuffer) {
