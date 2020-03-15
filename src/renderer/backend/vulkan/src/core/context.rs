@@ -70,14 +70,20 @@ impl VulkanContext {
         let depth_sample_counts = properties.limits.framebuffer_depth_sample_counts;
         let sample_counts = color_sample_counts.min(depth_sample_counts);
 
-        match sample_counts {
-            vk::SampleCountFlags::TYPE_64 => vk::SampleCountFlags::TYPE_64,
-            vk::SampleCountFlags::TYPE_32 => vk::SampleCountFlags::TYPE_32,
-            vk::SampleCountFlags::TYPE_16 => vk::SampleCountFlags::TYPE_16,
-            vk::SampleCountFlags::TYPE_8 => vk::SampleCountFlags::TYPE_8,
-            vk::SampleCountFlags::TYPE_4 => vk::SampleCountFlags::TYPE_4,
-            vk::SampleCountFlags::TYPE_2 => vk::SampleCountFlags::TYPE_2,
-            _ => vk::SampleCountFlags::TYPE_1,
+        if sample_counts.contains(vk::SampleCountFlags::TYPE_64) {
+            vk::SampleCountFlags::TYPE_64
+        } else if sample_counts.contains(vk::SampleCountFlags::TYPE_32) {
+            vk::SampleCountFlags::TYPE_32
+        } else if sample_counts.contains(vk::SampleCountFlags::TYPE_16) {
+            vk::SampleCountFlags::TYPE_16
+        } else if sample_counts.contains(vk::SampleCountFlags::TYPE_8) {
+            vk::SampleCountFlags::TYPE_8
+        } else if sample_counts.contains(vk::SampleCountFlags::TYPE_4) {
+            vk::SampleCountFlags::TYPE_4
+        } else if sample_counts.contains(vk::SampleCountFlags::TYPE_2) {
+            vk::SampleCountFlags::TYPE_2
+        } else {
+            vk::SampleCountFlags::TYPE_1
         }
     }
 
