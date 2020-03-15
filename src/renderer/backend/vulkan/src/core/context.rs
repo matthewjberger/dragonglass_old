@@ -101,6 +101,13 @@ impl VulkanContext {
         }
     }
 
+    pub fn physical_device_format_properties(&self, format: vk::Format) -> vk::FormatProperties {
+        unsafe {
+            self.instance()
+                .get_physical_device_format_properties(self.physical_device(), format)
+        }
+    }
+
     pub fn allocator(&self) -> &vk_mem::Allocator {
         &self.allocator
     }

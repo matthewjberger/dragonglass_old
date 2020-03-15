@@ -7,6 +7,7 @@ pub struct TextureDescription {
     pub width: u32,
     pub height: u32,
     pub pixels: Vec<u8>,
+    pub mip_levels: u32,
 }
 
 #[allow(dead_code)]
@@ -25,6 +26,7 @@ impl TextureDescription {
             width,
             height,
             pixels: image.into_raw(),
+            mip_levels: Self::calculate_mip_levels(width, height),
         }
     }
 
@@ -36,7 +38,12 @@ impl TextureDescription {
             width: data.width,
             height: data.height,
             pixels,
+            mip_levels: Self::calculate_mip_levels(data.width, data.height),
         }
+    }
+
+    fn calculate_mip_levels(width: u32, height: u32) -> u32 {
+        ((width.min(height) as f32).log2().floor() + 1.0) as u32
     }
 
     fn convert_pixels(

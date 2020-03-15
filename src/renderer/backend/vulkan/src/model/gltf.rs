@@ -3,7 +3,7 @@ use crate::{
     render::Renderer,
     resource::{Buffer, CommandPool, ImageView, Sampler, Texture, TextureDescription},
 };
-use ash::vk;
+use ash::{version::DeviceV1_0, vk};
 use nalgebra_glm as glm;
 use petgraph::{
     graph::{Graph, NodeIndex},
@@ -326,16 +326,15 @@ impl GltfTextureData {
         let texture = Self::create_texture(renderer.context.clone(), &description);
 
         Self::upload_texture_data(
-            &renderer,
+            renderer.context.clone(),
             &renderer.command_pool,
-            renderer.context.graphics_queue(),
             &texture,
             &description,
         );
 
-        let view = Self::create_image_view(renderer.context.clone(), &texture, description.format);
+        let view = Self::create_image_view(renderer.context.clone(), &texture, &description);
 
-        let sampler = Self::create_sampler(renderer.context.clone());
+        let sampler = Self::create_sampler(renderer.context.clone(), description.mip_levels);
 
         GltfTextureData {
             texture,
@@ -345,9 +344,8 @@ impl GltfTextureData {
     }
 
     pub fn upload_texture_data(
-        renderer: &Renderer,
+        context: Arc<VulkanContext>,
         command_pool: &CommandPool,
-        graphics_queue: vk::Queue,
         texture: &Texture,
         description: &TextureDescription,
     ) {
@@ -370,7 +368,7 @@ impl GltfTextureData {
             .build();
         let regions = [region];
         let buffer = Buffer::new_mapped_basic(
-            renderer.context.clone(),
+            context.clone(),
             texture.allocation_info().get_size() as _,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk_mem::MemoryUsage::CpuToGpu,
@@ -386,7 +384,7 @@ impl GltfTextureData {
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: vk::ImageAspectFlags::COLOR,
                 base_mip_level: 0,
-                level_count: 1,
+                level_count: description.mip_levels,
                 base_array_layer: 0,
                 layer_count: 1,
             })
@@ -396,43 +394,20 @@ impl GltfTextureData {
         let barriers = [barrier];
 
         command_pool.transition_image_layout(
-            graphics_queue,
+            context.graphics_queue(),
             &barriers,
             vk::PipelineStageFlags::TOP_OF_PIPE,
             vk::PipelineStageFlags::TRANSFER,
         );
 
         command_pool.copy_buffer_to_image(
-            graphics_queue,
+            context.graphics_queue(),
             buffer.buffer(),
             texture.image(),
             &regions,
         );
 
-        let barrier = vk::ImageMemoryBarrier::builder()
-            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .image(texture.image())
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .dst_access_mask(vk::AccessFlags::SHADER_READ)
-            .build();
-        let barriers = [barrier];
-
-        command_pool.transition_image_layout(
-            graphics_queue,
-            &barriers,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::FRAGMENT_SHADER,
-        );
+        Self::generate_mipmaps(context, &command_pool, &texture, &description);
     }
 
     fn create_texture(context: Arc<VulkanContext>, description: &TextureDescription) -> Texture {
@@ -443,12 +418,16 @@ impl GltfTextureData {
                 height: description.height,
                 depth: 1,
             })
-            .mip_levels(1)
+            .mip_levels(description.mip_levels)
             .array_layers(1)
             .format(description.format)
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
+            .usage(
+                vk::ImageUsageFlags::TRANSFER_SRC
+                    | vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::SAMPLED,
+            )
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .samples(vk::SampleCountFlags::TYPE_1)
             .flags(vk::ImageCreateFlags::empty())
@@ -465,12 +444,12 @@ impl GltfTextureData {
     fn create_image_view(
         context: Arc<VulkanContext>,
         texture: &Texture,
-        format: vk::Format,
+        description: &TextureDescription,
     ) -> ImageView {
         let create_info = vk::ImageViewCreateInfo::builder()
             .image(texture.image())
             .view_type(vk::ImageViewType::TYPE_2D)
-            .format(format)
+            .format(description.format)
             .components(vk::ComponentMapping {
                 r: vk::ComponentSwizzle::IDENTITY,
                 g: vk::ComponentSwizzle::IDENTITY,
@@ -480,7 +459,7 @@ impl GltfTextureData {
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: vk::ImageAspectFlags::COLOR,
                 base_mip_level: 0,
-                level_count: 1,
+                level_count: description.mip_levels,
                 base_array_layer: 0,
                 layer_count: 1,
             })
@@ -488,7 +467,7 @@ impl GltfTextureData {
         ImageView::new(context, create_info)
     }
 
-    fn create_sampler(context: Arc<VulkanContext>) -> Sampler {
+    fn create_sampler(context: Arc<VulkanContext>, mip_levels: u32) -> Sampler {
         let sampler_info = vk::SamplerCreateInfo::builder()
             .mag_filter(vk::Filter::LINEAR)
             .min_filter(vk::Filter::LINEAR)
@@ -504,8 +483,192 @@ impl GltfTextureData {
             .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
             .mip_lod_bias(0.0)
             .min_lod(0.0)
-            .max_lod(0.0)
+            .max_lod(mip_levels as _)
             .build();
         Sampler::new(context, sampler_info)
+    }
+
+    fn generate_mipmaps(
+        context: Arc<VulkanContext>,
+        command_pool: &CommandPool,
+        texture: &Texture,
+        texture_description: &TextureDescription,
+    ) {
+        let format_properties =
+            context.physical_device_format_properties(texture_description.format);
+
+        if !format_properties
+            .optimal_tiling_features
+            .contains(vk::FormatFeatureFlags::SAMPLED_IMAGE_FILTER_LINEAR)
+        {
+            panic!(
+                "Linear blitting is not supported for format: {:?}",
+                texture_description.format
+            );
+        }
+
+        command_pool.execute_command_once(context.graphics_queue(), |command_buffer| {
+            let mut mip_width = texture_description.width as i32;
+            let mut mip_height = texture_description.height as i32;
+            for level in 1..texture_description.mip_levels {
+                let next_mip_width = if mip_width > 1 {
+                    mip_width / 2
+                } else {
+                    mip_width
+                };
+
+                let next_mip_height = if mip_height > 1 {
+                    mip_height / 2
+                } else {
+                    mip_height
+                };
+
+                let barrier = vk::ImageMemoryBarrier::builder()
+                    .image(texture.image())
+                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                        level_count: 1,
+                        base_mip_level: level - 1,
+                    })
+                    .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                    .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                    .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
+                    .build();
+                let barriers = [barrier];
+
+                unsafe {
+                    context
+                        .logical_device()
+                        .logical_device()
+                        .cmd_pipeline_barrier(
+                            command_buffer,
+                            vk::PipelineStageFlags::TRANSFER,
+                            vk::PipelineStageFlags::TRANSFER,
+                            vk::DependencyFlags::empty(),
+                            &[],
+                            &[],
+                            &barriers,
+                        );
+                }
+
+                let blit = vk::ImageBlit::builder()
+                    .src_offsets([
+                        vk::Offset3D { x: 0, y: 0, z: 0 },
+                        vk::Offset3D {
+                            x: mip_width,
+                            y: mip_height,
+                            z: 1,
+                        },
+                    ])
+                    .src_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: level - 1,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    })
+                    .dst_offsets([
+                        vk::Offset3D { x: 0, y: 0, z: 0 },
+                        vk::Offset3D {
+                            x: next_mip_width,
+                            y: next_mip_height,
+                            z: 1,
+                        },
+                    ])
+                    .dst_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: level,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    })
+                    .build();
+                let blits = [blit];
+
+                unsafe {
+                    context.logical_device().logical_device().cmd_blit_image(
+                        command_buffer,
+                        texture.image(),
+                        vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                        texture.image(),
+                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                        &blits,
+                        vk::Filter::LINEAR,
+                    )
+                }
+
+                let barrier = vk::ImageMemoryBarrier::builder()
+                    .image(texture.image())
+                    .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                        level_count: 1,
+                        base_mip_level: level - 1,
+                    })
+                    .old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+                    .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .src_access_mask(vk::AccessFlags::TRANSFER_READ)
+                    .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                    .build();
+                let barriers = [barrier];
+
+                unsafe {
+                    context
+                        .logical_device()
+                        .logical_device()
+                        .cmd_pipeline_barrier(
+                            command_buffer,
+                            vk::PipelineStageFlags::TRANSFER,
+                            vk::PipelineStageFlags::FRAGMENT_SHADER,
+                            vk::DependencyFlags::empty(),
+                            &[],
+                            &[],
+                            &barriers,
+                        );
+                }
+
+                mip_width = next_mip_width;
+                mip_height = next_mip_height;
+            }
+
+            let barrier = vk::ImageMemoryBarrier::builder()
+                .image(texture.image())
+                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .subresource_range(vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                    base_array_layer: 0,
+                    layer_count: 1,
+                    level_count: 1,
+                    base_mip_level: texture_description.mip_levels - 1,
+                })
+                .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                .build();
+            let barriers = [barrier];
+
+            unsafe {
+                context
+                    .logical_device()
+                    .logical_device()
+                    .cmd_pipeline_barrier(
+                        command_buffer,
+                        vk::PipelineStageFlags::TRANSFER,
+                        vk::PipelineStageFlags::FRAGMENT_SHADER,
+                        vk::DependencyFlags::empty(),
+                        &[],
+                        &[],
+                        &barriers,
+                    );
+            }
+        });
     }
 }
