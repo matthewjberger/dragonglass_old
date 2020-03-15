@@ -64,6 +64,23 @@ impl VulkanContext {
         })
     }
 
+    pub fn max_usable_samples(&self) -> vk::SampleCountFlags {
+        let properties = self.physical_device_properties();
+        let color_sample_counts = properties.limits.framebuffer_color_sample_counts;
+        let depth_sample_counts = properties.limits.framebuffer_depth_sample_counts;
+        let sample_counts = color_sample_counts.min(depth_sample_counts);
+
+        match sample_counts {
+            vk::SampleCountFlags::TYPE_64 => vk::SampleCountFlags::TYPE_64,
+            vk::SampleCountFlags::TYPE_32 => vk::SampleCountFlags::TYPE_32,
+            vk::SampleCountFlags::TYPE_16 => vk::SampleCountFlags::TYPE_16,
+            vk::SampleCountFlags::TYPE_8 => vk::SampleCountFlags::TYPE_8,
+            vk::SampleCountFlags::TYPE_4 => vk::SampleCountFlags::TYPE_4,
+            vk::SampleCountFlags::TYPE_2 => vk::SampleCountFlags::TYPE_2,
+            _ => vk::SampleCountFlags::TYPE_1,
+        }
+    }
+
     pub fn determine_depth_format(
         &self,
         tiling: vk::ImageTiling,

@@ -9,9 +9,9 @@ use std::sync::Arc;
 pub struct VulkanSwapchain {
     pub swapchain: Swapchain,
     pub render_pass: RenderPass,
+    pub framebuffers: Vec<Framebuffer>,
     pub depth_texture: Texture,
     pub depth_texture_view: ImageView,
-    pub framebuffers: Vec<Framebuffer>,
 }
 
 impl VulkanSwapchain {
@@ -30,8 +30,10 @@ impl VulkanSwapchain {
             Self::create_render_pass(context.clone(), &swapchain.properties(), depth_format);
 
         let swapchain_extent = swapchain.properties().extent;
+
         let depth_texture =
             Self::create_depth_texture(context.clone(), swapchain_extent, depth_format);
+
         Self::transition_depth_texture(
             context.graphics_queue(),
             &command_pool,
@@ -48,9 +50,9 @@ impl VulkanSwapchain {
         VulkanSwapchain {
             swapchain,
             render_pass,
+            framebuffers,
             depth_texture,
             depth_texture_view,
-            framebuffers,
         }
     }
 
