@@ -102,6 +102,7 @@ impl App {
 
         let camera = Camera {
             speed: 5.0,
+            position: glm::vec3(1.0, 1.0, 1.0),
             ..Default::default()
         };
         world.insert((), vec![(camera,)]);
