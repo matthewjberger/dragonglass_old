@@ -47,7 +47,7 @@ pub fn fps_camera_key_system() -> Box<dyn Schedulable> {
         .with_query(<Write<Camera>>::query())
         .build(move |_, mut world, (input, delta_time), query| {
             for mut camera in query.iter(&mut world) {
-                let velocity = camera.speed * delta_time.0 as f32;
+                let velocity = (camera.speed * delta_time.0 as f32) + 0.02;
 
                 let x_delta = camera.right * velocity;
                 let y_delta = camera.front * velocity;
