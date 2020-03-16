@@ -50,9 +50,9 @@ impl PbrPipeline {
             .build();
 
         let multisampling_create_info = vk::PipelineMultisampleStateCreateInfo::builder()
-            .sample_shading_enable(false)
+            .sample_shading_enable(true)
             .rasterization_samples(renderer.context.max_usable_samples())
-            .min_sample_shading(1.0)
+            .min_sample_shading(0.2)
             .alpha_to_coverage_enable(false)
             .alpha_to_one_enable(false)
             .build();
