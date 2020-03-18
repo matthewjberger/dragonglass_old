@@ -71,10 +71,10 @@ impl CommandPool {
 
     pub fn create_device_local_buffer<T: Copy>(
         &self,
-        graphics_queue: vk::Queue,
         usage_flags: vk::BufferUsageFlags,
         vertices: &[T],
     ) -> Buffer {
+        let graphics_queue = self.context.graphics_queue();
         let buffer_size = (vertices.len() * std::mem::size_of::<T>()) as ash::vk::DeviceSize;
 
         let staging_buffer = Buffer::new_mapped_basic(
@@ -86,7 +86,7 @@ impl CommandPool {
 
         staging_buffer.upload_to_buffer(&vertices, 0, std::mem::align_of::<T>() as _);
 
-        let vertex_buffer = Buffer::new_mapped_basic(
+        let device_local_buffer = Buffer::new_mapped_basic(
             self.context.clone(),
             buffer_size,
             vk::BufferUsageFlags::TRANSFER_DST | usage_flags,
@@ -102,11 +102,11 @@ impl CommandPool {
         self.copy_buffer_to_buffer(
             graphics_queue,
             staging_buffer.buffer(),
-            vertex_buffer.buffer(),
+            device_local_buffer.buffer(),
             &regions,
         );
 
-        vertex_buffer
+        device_local_buffer
     }
 
     // TODO: refactor this to use less parameters
@@ -250,12 +250,11 @@ impl CommandPool {
     // TODO: Move this to the texture module
     pub fn transition_image_layout(
         &self,
-        transition_queue: vk::Queue,
         barriers: &[vk::ImageMemoryBarrier],
         src_stage_mask: vk::PipelineStageFlags,
         dst_stage_mask: vk::PipelineStageFlags,
     ) {
-        self.execute_command_once(transition_queue, |command_buffer| {
+        self.execute_command_once(self.context.graphics_queue(), |command_buffer| {
             unsafe {
                 self.context
                     .logical_device()

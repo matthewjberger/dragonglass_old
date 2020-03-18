@@ -36,12 +36,7 @@ impl VulkanSwapchain {
         let depth_texture =
             Self::create_depth_texture(context.clone(), swapchain_extent, depth_format);
 
-        Self::transition_depth_texture(
-            context.graphics_queue(),
-            &command_pool,
-            &depth_texture,
-            depth_format,
-        );
+        Self::transition_depth_texture(&command_pool, &depth_texture, depth_format);
 
         let depth_texture_view =
             Self::create_depth_texture_view(context.clone(), &depth_texture, depth_format);
@@ -49,12 +44,7 @@ impl VulkanSwapchain {
         let color_format = swapchain.properties().format.format;
         let color_texture =
             Self::create_color_texture(context.clone(), swapchain_extent, color_format);
-        Self::transition_color_texture(
-            context.graphics_queue(),
-            &command_pool,
-            &color_texture,
-            color_format,
-        );
+        Self::transition_color_texture(&command_pool, &color_texture, color_format);
         let color_texture_view =
             Self::create_color_texture_view(context.clone(), &color_texture, color_format);
 
@@ -228,7 +218,6 @@ impl VulkanSwapchain {
     }
 
     fn transition_depth_texture(
-        graphics_queue: vk::Queue,
         command_pool: &CommandPool,
         depth_texture: &Texture,
         depth_format: vk::Format,
@@ -262,7 +251,6 @@ impl VulkanSwapchain {
         let barriers = [barrier];
 
         command_pool.transition_image_layout(
-            graphics_queue,
             &barriers,
             vk::PipelineStageFlags::TOP_OF_PIPE,
             vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
@@ -328,7 +316,6 @@ impl VulkanSwapchain {
     }
 
     fn transition_color_texture(
-        graphics_queue: vk::Queue,
         command_pool: &CommandPool,
         color_texture: &Texture,
         color_format: vk::Format,
@@ -361,7 +348,6 @@ impl VulkanSwapchain {
         let barriers = [barrier];
 
         command_pool.transition_image_layout(
-            graphics_queue,
             &barriers,
             vk::PipelineStageFlags::TOP_OF_PIPE,
             vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
