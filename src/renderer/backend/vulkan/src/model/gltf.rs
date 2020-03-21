@@ -1,6 +1,6 @@
 use crate::{
     core::VulkanContext,
-    model::Model,
+    model::ModelBuffers,
     render::Renderer,
     resource::{Buffer, CommandPool, ImageView, Sampler, Texture, TextureDescription},
 };
@@ -41,7 +41,7 @@ pub struct GltfAsset {
     pub textures: Vec<GltfTextureData>,
     pub scenes: Vec<Scene>,
     pub number_of_meshes: usize,
-    pub model: Model,
+    pub buffers: ModelBuffers,
 }
 
 impl GltfAsset {
@@ -59,13 +59,13 @@ impl GltfAsset {
 
         let number_of_meshes = gltf.nodes().filter(|node| node.mesh().is_some()).count();
 
-        let model = Model::new(&renderer.transient_command_pool, &vertices, &indices);
+        let buffers = ModelBuffers::new(&renderer.transient_command_pool, &vertices, &indices);
         GltfAsset {
             gltf,
             textures,
             scenes,
             number_of_meshes,
-            model,
+            buffers,
         }
     }
 

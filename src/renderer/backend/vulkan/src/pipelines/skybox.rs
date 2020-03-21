@@ -465,13 +465,13 @@ impl SkyboxRenderer {
 
     pub fn draw_asset(&self, device: &ash::Device, asset: &GltfAsset) {
         let offsets = [0];
-        let vertex_buffers = [asset.model.vertex_buffer.buffer()];
+        let vertex_buffers = [asset.buffers.vertex_buffer.buffer()];
 
         unsafe {
             device.cmd_bind_vertex_buffers(self.command_buffer, 0, &vertex_buffers, &offsets);
             device.cmd_bind_index_buffer(
                 self.command_buffer,
-                asset.model.index_buffer.buffer(),
+                asset.buffers.index_buffer.buffer(),
                 0,
                 vk::IndexType::UINT32,
             );

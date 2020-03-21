@@ -201,25 +201,25 @@ impl Renderer {
             .iter()
             .for_each(|asset| skybox_renderer.draw_asset(device, &asset));
 
-        // let pbr_pipeline = self
-        //     .pbr_pipeline
-        //     .as_ref()
-        //     .expect("Failed to get pbr pipeline!");
+        let pbr_pipeline = self
+            .pbr_pipeline
+            .as_ref()
+            .expect("Failed to get pbr pipeline!");
 
-        // pbr_pipeline.bind(device, command_buffer);
+        pbr_pipeline.bind(device, command_buffer);
 
-        // let pbr_pipeline_data = self
-        //     .pbr_pipeline_data
-        //     .as_ref()
-        //     .expect("Failed to get pbr pipeline data!");
+        let pbr_pipeline_data = self
+            .pbr_pipeline_data
+            .as_ref()
+            .expect("Failed to get pbr pipeline data!");
 
-        // let pbr_renderer = PbrRenderer::new(command_buffer, &pbr_pipeline, &pbr_pipeline_data);
+        let pbr_renderer = PbrRenderer::new(command_buffer, &pbr_pipeline, &pbr_pipeline_data);
 
-        // self.update_viewport(command_buffer);
+        self.update_viewport(command_buffer);
 
-        // self.assets
-        //     .iter()
-        //     .for_each(|asset| pbr_renderer.draw_asset(device, &asset));
+        self.assets
+            .iter()
+            .for_each(|asset| pbr_renderer.draw_asset(device, &asset));
     }
 
     pub fn update_viewport(&self, command_buffer: vk::CommandBuffer) {
