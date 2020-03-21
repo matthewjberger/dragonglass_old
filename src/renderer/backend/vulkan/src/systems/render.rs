@@ -93,6 +93,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                 asset.walk(|node_index, graph| {
                     let global_transform = GltfAsset::calculate_global_transform(node_index, graph);
                     if let Some(mesh) = graph[node_index].mesh.as_ref() {
+                        // FIXME: Make this render a box instead of every asset
                         if let Some(skybox_data) = &renderer.skybox_pipeline_data.as_ref() {
                             skybox_data.uniform_buffer.upload_to_buffer(
                                 &ubos,

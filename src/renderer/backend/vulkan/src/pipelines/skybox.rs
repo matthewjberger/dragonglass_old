@@ -27,8 +27,8 @@ impl SkyboxPipeline {
             Self::create_shaders(renderer.context.clone());
         let shader_state_info = [vertex_shader.state_info(), fragment_shader.state_info()];
 
-        let descriptions = Self::create_vertex_input_descriptions();
-        let attributes = Self::create_vertex_attributes();
+        let descriptions = GltfAsset::create_vertex_input_descriptions();
+        let attributes = GltfAsset::create_vertex_attributes();
         let vertex_input_create_info = vk::PipelineVertexInputStateCreateInfo::builder()
             .vertex_binding_descriptions(&descriptions)
             .vertex_attribute_descriptions(&attributes)
@@ -141,44 +141,6 @@ impl SkyboxPipeline {
         .expect("Failed to create fragment shader!");
 
         (vertex_shader, fragment_shader, shader_entry_point_name)
-    }
-
-    fn create_vertex_input_descriptions() -> [vk::VertexInputBindingDescription; 1] {
-        let vertex_input_binding_description = vk::VertexInputBindingDescription::builder()
-            .binding(0)
-            .stride((8 * mem::size_of::<f32>()) as _)
-            .input_rate(vk::VertexInputRate::VERTEX)
-            .build();
-        [vertex_input_binding_description]
-    }
-
-    fn create_vertex_attributes() -> [vk::VertexInputAttributeDescription; 3] {
-        let position_description = vk::VertexInputAttributeDescription::builder()
-            .binding(0)
-            .location(0)
-            .format(vk::Format::R32G32B32_SFLOAT)
-            .offset(0)
-            .build();
-
-        let normal_description = vk::VertexInputAttributeDescription::builder()
-            .binding(0)
-            .location(1)
-            .format(vk::Format::R32G32B32_SFLOAT)
-            .offset((3 * mem::size_of::<f32>()) as _)
-            .build();
-
-        let tex_coord_description = vk::VertexInputAttributeDescription::builder()
-            .binding(0)
-            .location(2)
-            .format(vk::Format::R32G32_SFLOAT)
-            .offset((6 * mem::size_of::<f32>()) as _)
-            .build();
-
-        [
-            position_description,
-            normal_description,
-            tex_coord_description,
-        ]
     }
 
     pub fn create_color_blend_attachments() -> [vk::PipelineColorBlendAttachmentState; 1] {

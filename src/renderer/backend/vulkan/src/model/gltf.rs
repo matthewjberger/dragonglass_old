@@ -299,6 +299,44 @@ impl GltfAsset {
             }
         }
     }
+
+    pub fn create_vertex_attributes() -> [vk::VertexInputAttributeDescription; 3] {
+        let position_description = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(0)
+            .format(vk::Format::R32G32B32_SFLOAT)
+            .offset(0)
+            .build();
+
+        let normal_description = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(1)
+            .format(vk::Format::R32G32B32_SFLOAT)
+            .offset((3 * std::mem::size_of::<f32>()) as _)
+            .build();
+
+        let tex_coord_description = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(2)
+            .format(vk::Format::R32G32_SFLOAT)
+            .offset((6 * std::mem::size_of::<f32>()) as _)
+            .build();
+
+        [
+            position_description,
+            normal_description,
+            tex_coord_description,
+        ]
+    }
+
+    pub fn create_vertex_input_descriptions() -> [vk::VertexInputBindingDescription; 1] {
+        let vertex_input_binding_description = vk::VertexInputBindingDescription::builder()
+            .binding(0)
+            .stride((8 * std::mem::size_of::<f32>()) as _)
+            .input_rate(vk::VertexInputRate::VERTEX)
+            .build();
+        [vertex_input_binding_description]
+    }
 }
 
 pub struct GltfTextureData {
