@@ -126,7 +126,7 @@ impl SkyboxPipeline {
 
         let vertex_shader = Shader::from_file(
             context.clone(),
-            "examples/assets/shaders/shader.vert.spv",
+            "examples/assets/shaders/skybox.vert.spv",
             vk::ShaderStageFlags::VERTEX,
             &shader_entry_point_name,
         )
@@ -134,7 +134,7 @@ impl SkyboxPipeline {
 
         let fragment_shader = Shader::from_file(
             context,
-            "examples/assets/shaders/shader.frag.spv",
+            "examples/assets/shaders/skybox.frag.spv",
             vk::ShaderStageFlags::FRAGMENT,
             &shader_entry_point_name,
         )

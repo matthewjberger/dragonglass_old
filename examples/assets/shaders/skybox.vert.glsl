@@ -1,23 +1,40 @@
 #version 450
+#extension GL_ARB_separate_shader_objects : enable
+#extension GL_ARB_shading_language_420pack : enable
 
-layout (location = 0) in vec3 inPos;
+layout(location = 0) in vec3 vPosition;
+layout(location = 1) in vec3 vColor;
+layout(location = 2) in vec2 vCoords;
 
-layout (binding = 0) uniform UBO
-{
-	mat4 projection;
-	mat4 model;
-} ubo;
+layout(binding = 0) uniform UboView {
+  mat4 view;
+  mat4 projection;
+} uboView;
 
-layout (location = 0) out vec3 outUVW;
+layout(binding = 1) uniform UboInstance {
+  mat4 model;
+} uboInstance;
 
-out gl_PerVertex
-{
-	vec4 gl_Position;
-};
+layout(push_constant) uniform Constants {
+  vec4 baseColorFactor;
+  int colorTextureSet;
+} constants;
 
-void main()
-{
-	outUVW = inPos;
-	outUVW.x *= -1.0;
-	gl_Position = ubo.projection * ubo.model * vec4(inPos.xyz, 1.0);
+layout(location = 0) out vec3 fragColor;
+layout(location = 1) out vec2 fragCoords;
+
+void main() {
+
+  fragColor = vColor;
+  fragCoords = vCoords;
+
+  gl_Position = uboView.projection * uboView.view * uboInstance.model * vec4(vPosition, 1.0);
+
+  // Flip the y coordinate when displaying gltf models
+  // because Vulkan's coordinate system origin is in the top left
+  // corner with the Y-axis pointing downwards
+  // OpenGL's coordinate system origin is in the lower left with the
+  // Y-axis pointing up
+  gl_Position.y = -gl_Position.y;
+
 }
