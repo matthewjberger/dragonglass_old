@@ -1,8 +1,13 @@
 pub use self::{
-    buffer::Buffer, command_pool::CommandPool, descriptor_pool::DescriptorPool,
-    descriptor_set_layout::DescriptorSetLayout, image_view::ImageView,
-    pipeline_layout::PipelineLayout, sampler::Sampler, shader::Shader, texture::Texture,
-    texture_description::TextureDescription,
+    buffer::Buffer,
+    command_pool::CommandPool,
+    descriptor_pool::DescriptorPool,
+    descriptor_set_layout::DescriptorSetLayout,
+    image_view::ImageView,
+    pipeline_layout::PipelineLayout,
+    sampler::Sampler,
+    shader::Shader,
+    texture::{Texture, TextureDescription},
 };
 
 pub mod buffer;
@@ -14,4 +19,3 @@ pub mod pipeline_layout;
 pub mod sampler;
 pub mod shader;
 pub mod texture;
-pub mod texture_description;
