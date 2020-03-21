@@ -324,7 +324,7 @@ impl GltfTextureData {
 
         let sampler = Self::create_sampler(renderer.context.clone(), description.mip_levels);
 
-        GltfTextureData {
+        Self {
             texture,
             view,
             sampler,

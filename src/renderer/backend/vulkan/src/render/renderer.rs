@@ -1,7 +1,10 @@
 use crate::{
     core::VulkanContext,
     model::gltf::GltfAsset,
-    pipelines::pbr::{PbrPipeline, PbrPipelineData, PbrRenderer},
+    pipelines::{
+        pbr::{PbrPipeline, PbrPipelineData, PbrRenderer},
+        skybox::{SkyboxPipeline, SkyboxPipelineData, SkyboxRenderer},
+    },
     render::VulkanSwapchain,
     resource::CommandPool,
     sync::SynchronizationSet,
@@ -19,6 +22,8 @@ pub struct Renderer {
     pub assets: Vec<GltfAsset>,
     pub pbr_pipeline: Option<PbrPipeline>,
     pub pbr_pipeline_data: Option<PbrPipelineData>,
+    pub skybox_pipeline: Option<SkyboxPipeline>,
+    pub skybox_pipeline_data: Option<SkyboxPipelineData>,
 }
 
 impl Renderer {
@@ -51,9 +56,12 @@ impl Renderer {
             assets: Vec::new(),
             pbr_pipeline: None,
             pbr_pipeline_data: None,
+            skybox_pipeline: None,
+            skybox_pipeline_data: None,
         };
 
         renderer.pbr_pipeline = Some(PbrPipeline::new(&mut renderer));
+        renderer.skybox_pipeline = Some(SkyboxPipeline::new(&mut renderer));
         renderer
     }
 
@@ -80,6 +88,8 @@ impl Renderer {
             .collect::<Vec<_>>();
 
         self.pbr_pipeline_data = Some(PbrPipelineData::new(&self, number_of_meshes, &textures));
+        self.skybox_pipeline_data =
+            Some(SkyboxPipelineData::new(&self, number_of_meshes, &textures));
 
         self.assets = assets;
     }
@@ -170,25 +180,46 @@ impl Renderer {
     pub fn render_assets(&self, command_buffer: vk::CommandBuffer) {
         let device = &self.context.logical_device().logical_device();
 
-        let pbr_pipeline = self
-            .pbr_pipeline
+        let skybox_pipeline = self
+            .skybox_pipeline
             .as_ref()
-            .expect("Failed to get pbr pipeline!");
+            .expect("Failed to get skybox pipeline!");
 
-        pbr_pipeline.bind(device, command_buffer);
+        skybox_pipeline.bind(device, command_buffer);
 
-        let pbr_pipeline_data = self
-            .pbr_pipeline_data
+        let skybox_pipeline_data = self
+            .skybox_pipeline_data
             .as_ref()
-            .expect("Failed to get pbr pipeline data!");
+            .expect("Failed to get skybox pipeline data!");
 
-        let pbr_renderer = PbrRenderer::new(command_buffer, &pbr_pipeline, &pbr_pipeline_data);
+        let skybox_renderer =
+            SkyboxRenderer::new(command_buffer, &skybox_pipeline, &skybox_pipeline_data);
 
         self.update_viewport(command_buffer);
 
         self.assets
             .iter()
-            .for_each(|asset| pbr_renderer.draw_asset(device, &asset));
+            .for_each(|asset| skybox_renderer.draw_asset(device, &asset));
+
+        // let pbr_pipeline = self
+        //     .pbr_pipeline
+        //     .as_ref()
+        //     .expect("Failed to get pbr pipeline!");
+
+        // pbr_pipeline.bind(device, command_buffer);
+
+        // let pbr_pipeline_data = self
+        //     .pbr_pipeline_data
+        //     .as_ref()
+        //     .expect("Failed to get pbr pipeline data!");
+
+        // let pbr_renderer = PbrRenderer::new(command_buffer, &pbr_pipeline, &pbr_pipeline_data);
+
+        // self.update_viewport(command_buffer);
+
+        // self.assets
+        //     .iter()
+        //     .for_each(|asset| pbr_renderer.draw_asset(device, &asset));
     }
 
     pub fn update_viewport(&self, command_buffer: vk::CommandBuffer) {

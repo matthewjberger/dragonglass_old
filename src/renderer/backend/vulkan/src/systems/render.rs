@@ -90,33 +90,57 @@ pub fn render_system() -> Box<dyn Runnable> {
                 let asset_index = 0;
                 let asset = &renderer.assets[asset_index];
 
-                let pbr_data = &renderer
-                    .pbr_pipeline_data
-                    .as_ref()
-                    .expect("Failed to get pbr pipeline data!");
-                pbr_data.uniform_buffer.upload_to_buffer(
-                    &ubos,
-                    0,
-                    std::mem::align_of::<UniformBufferObject>() as _,
-                );
-
-                let full_dynamic_ubo_size =
-                    (asset.number_of_meshes as u64 * pbr_data.dynamic_alignment) as u64;
-
                 asset.walk(|node_index, graph| {
                     let global_transform = GltfAsset::calculate_global_transform(node_index, graph);
                     if let Some(mesh) = graph[node_index].mesh.as_ref() {
-                        let dynamic_ubo = DynamicUniformBufferObject {
-                            model: asset_transform * global_transform,
-                        };
-                        let ubos = [dynamic_ubo];
-                        let buffer = &pbr_data.dynamic_uniform_buffer;
-                        let offset = (pbr_data.dynamic_alignment * mesh.mesh_id as u64) as usize;
+                        if let Some(skybox_data) = &renderer.skybox_pipeline_data.as_ref() {
+                            skybox_data.uniform_buffer.upload_to_buffer(
+                                &ubos,
+                                0,
+                                std::mem::align_of::<UniformBufferObject>() as _,
+                            );
 
-                        buffer.upload_to_buffer(&ubos, offset, pbr_data.dynamic_alignment);
-                        buffer
-                            .flush(0, full_dynamic_ubo_size as _)
-                            .expect("Failed to flush buffer!");
+                            let full_dynamic_ubo_size = (asset.number_of_meshes as u64
+                                * skybox_data.dynamic_alignment)
+                                as u64;
+
+                            let dynamic_ubo = DynamicUniformBufferObject {
+                                model: asset_transform * global_transform,
+                            };
+                            let ubos = [dynamic_ubo];
+                            let buffer = &skybox_data.dynamic_uniform_buffer;
+                            let offset =
+                                (skybox_data.dynamic_alignment * mesh.mesh_id as u64) as usize;
+
+                            buffer.upload_to_buffer(&ubos, offset, skybox_data.dynamic_alignment);
+                            buffer
+                                .flush(0, full_dynamic_ubo_size as _)
+                                .expect("Failed to flush buffer!");
+                        }
+
+                        if let Some(pbr_data) = &renderer.pbr_pipeline_data.as_ref() {
+                            pbr_data.uniform_buffer.upload_to_buffer(
+                                &ubos,
+                                0,
+                                std::mem::align_of::<UniformBufferObject>() as _,
+                            );
+
+                            let full_dynamic_ubo_size =
+                                (asset.number_of_meshes as u64 * pbr_data.dynamic_alignment) as u64;
+
+                            let dynamic_ubo = DynamicUniformBufferObject {
+                                model: asset_transform * global_transform,
+                            };
+                            let ubos = [dynamic_ubo];
+                            let buffer = &pbr_data.dynamic_uniform_buffer;
+                            let offset =
+                                (pbr_data.dynamic_alignment * mesh.mesh_id as u64) as usize;
+
+                            buffer.upload_to_buffer(&ubos, offset, pbr_data.dynamic_alignment);
+                            buffer
+                                .flush(0, full_dynamic_ubo_size as _)
+                                .expect("Failed to flush buffer!");
+                        }
                     }
                 });
             }
