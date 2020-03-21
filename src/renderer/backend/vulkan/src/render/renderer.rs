@@ -88,8 +88,7 @@ impl Renderer {
             .collect::<Vec<_>>();
 
         self.pbr_pipeline_data = Some(PbrPipelineData::new(&self, number_of_meshes, &textures));
-        self.skybox_pipeline_data =
-            Some(SkyboxPipelineData::new(&self, number_of_meshes, &textures));
+        self.skybox_pipeline_data = Some(SkyboxPipelineData::new(&self));
 
         self.assets = assets;
     }
@@ -197,9 +196,7 @@ impl Renderer {
 
         self.update_viewport(command_buffer);
 
-        self.assets
-            .iter()
-            .for_each(|asset| skybox_renderer.draw_asset(device, &asset));
+        skybox_renderer.draw(device);
 
         let pbr_pipeline = self
             .pbr_pipeline

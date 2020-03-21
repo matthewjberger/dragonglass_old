@@ -59,7 +59,8 @@ impl GltfAsset {
 
         let number_of_meshes = gltf.nodes().filter(|node| node.mesh().is_some()).count();
 
-        let buffers = ModelBuffers::new(&renderer.transient_command_pool, &vertices, &indices);
+        let buffers =
+            ModelBuffers::new(&renderer.transient_command_pool, &vertices, Some(&indices));
         GltfAsset {
             gltf,
             textures,

@@ -1,6 +1,9 @@
 use crate::{
     model::gltf::GltfAsset,
-    pipelines::pbr::{DynamicUniformBufferObject, UniformBufferObject},
+    pipelines::{
+        pbr::{DynamicUniformBufferObject, UniformBufferObject},
+        skybox::UniformBufferObject as SkyboxUniformBufferObject,
+    },
     render::Renderer,
     sync::{SynchronizationSet, SynchronizationSetConstants},
 };
@@ -76,6 +79,21 @@ pub fn render_system() -> Box<dyn Runnable> {
                 1000_f32,
             );
 
+            if let Some(skybox_data) = &renderer.skybox_pipeline_data.as_ref() {
+                let skybox_ubo = SkyboxUniformBufferObject {
+                    model: glm::translate(&glm::Mat4::identity(), &glm::vec3(0.0, 2.0, 0.0)),
+                    view: camera_view_matrix.0,
+                    projection,
+                };
+                let skybox_ubos = [skybox_ubo];
+
+                skybox_data.uniform_buffer.upload_to_buffer(
+                    &skybox_ubos,
+                    0,
+                    std::mem::align_of::<SkyboxUniformBufferObject>() as _,
+                );
+            }
+
             let ubo = UniformBufferObject {
                 view: camera_view_matrix.0,
                 projection,
@@ -93,32 +111,6 @@ pub fn render_system() -> Box<dyn Runnable> {
                 asset.walk(|node_index, graph| {
                     let global_transform = GltfAsset::calculate_global_transform(node_index, graph);
                     if let Some(mesh) = graph[node_index].mesh.as_ref() {
-                        // FIXME: Make this render a box instead of every asset
-                        if let Some(skybox_data) = &renderer.skybox_pipeline_data.as_ref() {
-                            skybox_data.uniform_buffer.upload_to_buffer(
-                                &ubos,
-                                0,
-                                std::mem::align_of::<UniformBufferObject>() as _,
-                            );
-
-                            let full_dynamic_ubo_size = (asset.number_of_meshes as u64
-                                * skybox_data.dynamic_alignment)
-                                as u64;
-
-                            let dynamic_ubo = DynamicUniformBufferObject {
-                                model: asset_transform * global_transform,
-                            };
-                            let ubos = [dynamic_ubo];
-                            let buffer = &skybox_data.dynamic_uniform_buffer;
-                            let offset =
-                                (skybox_data.dynamic_alignment * mesh.mesh_id as u64) as usize;
-
-                            buffer.upload_to_buffer(&ubos, offset, skybox_data.dynamic_alignment);
-                            buffer
-                                .flush(0, full_dynamic_ubo_size as _)
-                                .expect("Failed to flush buffer!");
-                        }
-
                         if let Some(pbr_data) = &renderer.pbr_pipeline_data.as_ref() {
                             pbr_data.uniform_buffer.upload_to_buffer(
                                 &ubos,

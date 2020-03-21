@@ -430,7 +430,12 @@ impl PbrRenderer {
             device.cmd_bind_vertex_buffers(self.command_buffer, 0, &vertex_buffers, &offsets);
             device.cmd_bind_index_buffer(
                 self.command_buffer,
-                asset.buffers.index_buffer.buffer(),
+                asset
+                    .buffers
+                    .index_buffer
+                    .as_ref()
+                    .expect("Failed to get index buffer!")
+                    .buffer(),
                 0,
                 vk::IndexType::UINT32,
             );
