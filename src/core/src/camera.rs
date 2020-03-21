@@ -40,6 +40,29 @@ impl Default for Camera {
     }
 }
 
+impl Camera {
+    pub fn look_at(&mut self, target: &glm::Vec3) {
+        self.front = (target - self.position).normalize();
+        self.pitch_degrees = self.front.y.asin().to_degrees();
+        self.yaw_degrees = (self.front.x / self.front.y.asin().cos())
+            .acos()
+            .to_degrees();
+        self.calculate_vectors();
+    }
+
+    pub fn calculate_vectors(&mut self) {
+        let pitch_radians = self.pitch_degrees.to_radians();
+        let yaw_radians = self.yaw_degrees.to_radians();
+        self.front = glm::vec3(
+            pitch_radians.cos() * yaw_radians.cos(),
+            pitch_radians.sin(),
+            yaw_radians.sin() * pitch_radians.cos(),
+        )
+        .normalize();
+        self.right = self.front.cross(&self.world_up).normalize();
+        self.up = self.right.cross(&self.front).normalize();
+    }
+}
 pub fn fps_camera_key_system() -> Box<dyn Schedulable> {
     SystemBuilder::new("fps_camera_key")
         .read_resource::<Input>()
@@ -79,7 +102,7 @@ pub fn fps_camera_mouse_system() -> Box<dyn Schedulable> {
         .with_query(<Write<Camera>>::query())
         .build(move |_, mut world, (input, camera_view_matrix), query| {
             // TODO: Support multiple cameras
-            let mut camera = &mut query.iter(&mut world).collect::<Vec<_>>()[0];
+            let camera = &mut query.iter(&mut world).collect::<Vec<_>>()[0];
 
             let (x_offset, y_offset) = (
                 (input.mouse.offset_from_center.x as i32) as f32 * camera.sensitivity,
@@ -95,22 +118,9 @@ pub fn fps_camera_mouse_system() -> Box<dyn Schedulable> {
                 camera.pitch_degrees = -pitch_threshold
             }
 
-            calculate_vectors(&mut camera);
+            camera.calculate_vectors();
 
             let target = camera.position + camera.front;
             camera_view_matrix.0 = glm::look_at(&camera.position, &target, &camera.up);
         })
-}
-
-pub fn calculate_vectors(camera: &mut Camera) {
-    let pitch_radians = camera.pitch_degrees.to_radians();
-    let yaw_radians = camera.yaw_degrees.to_radians();
-    camera.front = glm::vec3(
-        pitch_radians.cos() * yaw_radians.cos(),
-        pitch_radians.sin(),
-        yaw_radians.sin() * pitch_radians.cos(),
-    )
-    .normalize();
-    camera.right = camera.front.cross(&camera.world_up).normalize();
-    camera.up = camera.right.cross(&camera.front).normalize();
 }

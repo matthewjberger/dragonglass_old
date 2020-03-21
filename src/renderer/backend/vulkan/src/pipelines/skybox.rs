@@ -92,7 +92,7 @@ impl SkyboxPipeline {
             .rasterizer_discard_enable(false)
             .polygon_mode(vk::PolygonMode::FILL)
             .line_width(1.0)
-            .cull_mode(vk::CullModeFlags::NONE)
+            .cull_mode(vk::CullModeFlags::FRONT)
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
             .depth_bias_enable(false)
             .depth_bias_constant_factor(0.0)
@@ -549,7 +549,7 @@ impl Cubemap {
                 depth: 1,
             })
             .mip_levels(description.mip_levels)
-            .array_layers(1)
+            .array_layers(6)
             .format(description.format)
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
@@ -560,7 +560,7 @@ impl Cubemap {
             )
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .samples(vk::SampleCountFlags::TYPE_1)
-            .flags(vk::ImageCreateFlags::empty())
+            .flags(vk::ImageCreateFlags::CUBE_COMPATIBLE)
             .build();
 
         let allocation_create_info = vk_mem::AllocationCreateInfo {
@@ -578,7 +578,7 @@ impl Cubemap {
     ) -> ImageView {
         let create_info = vk::ImageViewCreateInfo::builder()
             .image(texture.image())
-            .view_type(vk::ImageViewType::TYPE_2D)
+            .view_type(vk::ImageViewType::CUBE)
             .format(description.format)
             .components(vk::ComponentMapping {
                 r: vk::ComponentSwizzle::IDENTITY,
@@ -601,9 +601,9 @@ impl Cubemap {
         let sampler_info = vk::SamplerCreateInfo::builder()
             .mag_filter(vk::Filter::LINEAR)
             .min_filter(vk::Filter::LINEAR)
-            .address_mode_u(vk::SamplerAddressMode::REPEAT)
-            .address_mode_v(vk::SamplerAddressMode::REPEAT)
-            .address_mode_w(vk::SamplerAddressMode::REPEAT)
+            .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
             .anisotropy_enable(true)
             .max_anisotropy(16.0)
             .border_color(vk::BorderColor::INT_OPAQUE_BLACK)

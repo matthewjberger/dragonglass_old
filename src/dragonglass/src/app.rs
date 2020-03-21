@@ -100,11 +100,12 @@ impl App {
             .add_thread_local(render_system())
             .build();
 
-        let camera = Camera {
+        let mut camera = Camera {
             speed: 5.0,
-            position: glm::vec3(1.0, 1.0, 1.0),
+            position: glm::vec3(3.8, 3.16, -1.59),
             ..Default::default()
         };
+        camera.look_at(&glm::vec3(0.0, 0.0, 0.0));
         world.insert((), vec![(camera,)]);
         world.insert(
             (),
