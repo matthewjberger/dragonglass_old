@@ -408,7 +408,7 @@ impl Cubemap {
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: vk::ImageAspectFlags::COLOR,
                 base_mip_level: 0,
-                level_count: 0,
+                level_count: 1,
                 base_array_layer: 0,
                 layer_count: 6,
             })
