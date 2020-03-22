@@ -49,7 +49,7 @@ impl TextureDescription {
         }
     }
 
-    fn calculate_mip_levels(width: u32, height: u32) -> u32 {
+    pub fn calculate_mip_levels(width: u32, height: u32) -> u32 {
         ((width.min(height) as f32).log2().floor() + 1.0) as u32
     }
 
@@ -342,22 +342,23 @@ impl Cubemap {
         command_pool: &CommandPool,
         faces: &CubemapFaces,
     ) -> Self {
+        let format = vk::Format::R8G8B8A8_UNORM;
+        let face_descriptions = faces
+            .ordered_faces()
+            .map(|face| TextureDescription::from_file(&face, format))
+            .collect::<Vec<_>>();
+
         // TODO: Calculate miplevels and dimension
-        let dimension = 1920;
+        let dimension = face_descriptions[0].width;
         let cubemap_description = TextureDescription {
             width: dimension,
             height: dimension,
             pixels: Vec::new(),
-            format: vk::Format::R8G8B8A8_UNORM,
-            mip_levels: 1,
+            format,
+            mip_levels: TextureDescription::calculate_mip_levels(dimension, dimension),
         };
 
         let texture = Self::create_texture(context.clone(), &cubemap_description);
-
-        let face_descriptions = faces
-            .ordered_faces()
-            .map(|face| TextureDescription::from_file(&face, cubemap_description.format))
-            .collect::<Vec<_>>();
 
         Self::upload_texture_data(
             context.clone(),
@@ -440,7 +441,7 @@ impl Cubemap {
                 base_mip_level: 0,
                 level_count: cubemap_description.mip_levels,
                 base_array_layer: 0,
-                layer_count: 1,
+                layer_count: 6,
             })
             .src_access_mask(vk::AccessFlags::empty())
             .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)

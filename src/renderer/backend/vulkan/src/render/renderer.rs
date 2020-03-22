@@ -27,6 +27,7 @@ pub struct Renderer {
     pub pbr_pipeline_data: Option<PbrPipelineData>,
     pub skybox_pipeline: Option<SkyboxPipeline>,
     pub skybox_pipeline_data: Option<SkyboxPipelineData>,
+    pub cubemap: Option<Cubemap>,
 }
 
 impl Renderer {
@@ -61,6 +62,7 @@ impl Renderer {
             pbr_pipeline_data: None,
             skybox_pipeline: None,
             skybox_pipeline_data: None,
+            cubemap: None,
         };
 
         renderer.pbr_pipeline = Some(PbrPipeline::new(&mut renderer));
@@ -100,9 +102,13 @@ impl Renderer {
         };
 
         let cubemap = Cubemap::new(self.context.clone(), &self.transient_command_pool, &faces);
+        self.cubemap = Some(cubemap);
 
         self.pbr_pipeline_data = Some(PbrPipelineData::new(&self, number_of_meshes, &textures));
-        self.skybox_pipeline_data = Some(SkyboxPipelineData::new(&self));
+        self.skybox_pipeline_data = Some(SkyboxPipelineData::new(
+            &self,
+            self.cubemap.as_ref().expect("Failed to get cubemap!"),
+        ));
 
         self.assets = assets;
     }

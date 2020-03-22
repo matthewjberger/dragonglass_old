@@ -2,7 +2,9 @@ use crate::{
     core::VulkanContext,
     model::ModelBuffers,
     render::{GraphicsPipeline, Renderer},
-    resource::{Buffer, DescriptorPool, DescriptorSetLayout, PipelineLayout, Shader},
+    resource::{
+        texture::Cubemap, Buffer, DescriptorPool, DescriptorSetLayout, PipelineLayout, Shader,
+    },
 };
 use ash::{version::DeviceV1_0, vk};
 use nalgebra_glm as glm;
@@ -254,10 +256,7 @@ pub struct SkyboxPipelineData {
 }
 
 impl SkyboxPipelineData {
-    pub fn new(
-        renderer: &Renderer,
-        // textures: &[&GltfTextureData],
-    ) -> Self {
+    pub fn new(renderer: &Renderer, cubemap: &Cubemap) -> Self {
         let descriptor_set_layout = Self::descriptor_set_layout(renderer.context.clone());
         let descriptor_pool = Self::create_descriptor_pool(renderer.context.clone());
         let descriptor_set =
@@ -279,7 +278,7 @@ impl SkyboxPipelineData {
             cube,
         };
 
-        data.update_descriptor_set(renderer.context.clone());
+        data.update_descriptor_set(renderer.context.clone(), &cubemap);
         data
     }
 
@@ -290,13 +289,13 @@ impl SkyboxPipelineData {
             .descriptor_count(1)
             .stage_flags(vk::ShaderStageFlags::VERTEX)
             .build();
-        // let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
-        //     .binding(1)
-        //     .descriptor_count(1)
-        //     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-        //     .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-        //     .build();
-        let bindings = [ubo_binding];
+        let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
+            .binding(1)
+            .descriptor_count(1)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .build();
+        let bindings = [ubo_binding, sampler_binding];
 
         let layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
             .bindings(&bindings)
@@ -310,12 +309,12 @@ impl SkyboxPipelineData {
             descriptor_count: 1,
         };
 
-        // let sampler_pool_size = vk::DescriptorPoolSize {
-        //     ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-        //     descriptor_count: 1,
-        // };
+        let sampler_pool_size = vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: 1,
+        };
 
-        let pool_sizes = [ubo_pool_size];
+        let pool_sizes = [ubo_pool_size, sampler_pool_size];
 
         let pool_info = vk::DescriptorPoolCreateInfo::builder()
             .pool_sizes(&pool_sizes)
@@ -325,11 +324,7 @@ impl SkyboxPipelineData {
         DescriptorPool::new(context, pool_info)
     }
 
-    fn update_descriptor_set(
-        &self,
-        context: Arc<VulkanContext>,
-        // textures: &[&GltfTextureData],
-    ) {
+    fn update_descriptor_set(&self, context: Arc<VulkanContext>, cubemap: &Cubemap) {
         let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
         let buffer_info = vk::DescriptorBufferInfo::builder()
             .buffer(self.uniform_buffer.buffer())
@@ -337,17 +332,6 @@ impl SkyboxPipelineData {
             .range(uniform_buffer_size)
             .build();
         let buffer_infos = [buffer_info];
-
-        // let image_infos = textures
-        //     .iter()
-        //     .map(|texture| {
-        //         vk::DescriptorImageInfo::builder()
-        //             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-        //             .image_view(texture.view.view())
-        //             .sampler(texture.sampler.sampler())
-        //             .build()
-        //     })
-        //     .collect::<Vec<_>>();
 
         let ubo_descriptor_write = vk::WriteDescriptorSet::builder()
             .dst_set(self.descriptor_set)
@@ -357,15 +341,22 @@ impl SkyboxPipelineData {
             .buffer_info(&buffer_infos)
             .build();
 
-        // let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
-        //     .dst_set(self.descriptor_set)
-        //     .dst_binding(1)
-        //     .dst_array_element(0)
-        //     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-        //     .image_info(&image_infos)
-        //     .build();
+        let image_info = vk::DescriptorImageInfo::builder()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(cubemap.view.view())
+            .sampler(cubemap.sampler.sampler())
+            .build();
+        let image_infos = [image_info];
 
-        let descriptor_writes = vec![ubo_descriptor_write];
+        let sampler_descriptor_write = vk::WriteDescriptorSet::builder()
+            .dst_set(self.descriptor_set)
+            .dst_binding(1)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(&image_infos)
+            .build();
+
+        let descriptor_writes = vec![ubo_descriptor_write, sampler_descriptor_write];
 
         unsafe {
             context

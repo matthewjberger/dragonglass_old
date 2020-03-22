@@ -110,7 +110,7 @@ impl App {
         world.insert(
             (),
             vec![(
-                AssetName("examples/assets/models/Sponza/Sponza.gltf".to_string()),
+                AssetName("examples/assets/models/BoxAnimated.glb".to_string()),
                 Transform::default(),
             )],
         );
