@@ -99,7 +99,7 @@ impl Renderer {
             back: "examples/assets/skyboxes/bluemountains/back.jpg".to_string(),
         };
 
-        let cubemap = Cubemap::new(self.context.clone(), &self.transient_command_pool, &faces);
+        // let cubemap = Cubemap::new(self.context.clone(), &self.transient_command_pool, &faces);
 
         self.pbr_pipeline_data = Some(PbrPipelineData::new(&self, number_of_meshes, &textures));
         self.skybox_pipeline_data = Some(SkyboxPipelineData::new(&self));

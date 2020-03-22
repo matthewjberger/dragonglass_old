@@ -378,80 +378,80 @@ impl Cubemap {
         descriptions: &[TextureDescription],
         mip_levels: u32,
     ) {
-        let mut offset = 0;
-        let regions = descriptions
-            .iter()
-            .enumerate()
-            .flat_map(|(face_index, description)| {
-                (0..mip_levels)
-                    .map(|level| {
-                        let region = vk::BufferImageCopy::builder()
-                            .buffer_offset(offset as _)
-                            .buffer_row_length(0)
-                            .buffer_image_height(0)
-                            .image_subresource(vk::ImageSubresourceLayers {
-                                aspect_mask: vk::ImageAspectFlags::COLOR,
-                                mip_level: level,
-                                base_array_layer: face_index as _,
-                                layer_count: 1,
-                            })
-                            .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
-                            .image_extent(vk::Extent3D {
-                                width: description.width >> level,
-                                height: description.height >> level,
-                                depth: 1,
-                            })
-                            .build();
-                        offset += std::mem::size_of::<u8>() * description.pixels.len();
-                        region
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
+        // let mut offset = 0;
+        // let regions = descriptions
+        //     .iter()
+        //     .enumerate()
+        //     .flat_map(|(face_index, description)| {
+        //         (0..mip_levels)
+        //             .map(|level| {
+        //                 let region = vk::BufferImageCopy::builder()
+        //                     .buffer_offset(offset as _)
+        //                     .buffer_row_length(0)
+        //                     .buffer_image_height(0)
+        //                     .image_subresource(vk::ImageSubresourceLayers {
+        //                         aspect_mask: vk::ImageAspectFlags::COLOR,
+        //                         mip_level: level,
+        //                         base_array_layer: face_index as _,
+        //                         layer_count: 1,
+        //                     })
+        //                     .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+        //                     .image_extent(vk::Extent3D {
+        //                         width: description.width >> level,
+        //                         height: description.height >> level,
+        //                         depth: 1,
+        //                     })
+        //                     .build();
+        //                 offset += std::mem::size_of::<u8>() * description.pixels.len();
+        //                 region
+        //             })
+        //             .collect::<Vec<_>>()
+        //     })
+        //     .collect::<Vec<_>>();
 
-        let pixels = descriptions
-            .iter()
-            .flat_map(|description| &description.pixels)
-            .collect::<Vec<_>>();
+        // let pixels = descriptions
+        //     .iter()
+        //     .flat_map(|description| &description.pixels)
+        //     .collect::<Vec<_>>();
 
-        let buffer = Buffer::new_mapped_basic(
-            context.clone(),
-            texture.allocation_info().get_size() as _,
-            vk::BufferUsageFlags::TRANSFER_SRC,
-            vk_mem::MemoryUsage::CpuToGpu,
-        );
-        buffer.upload_to_buffer(&pixels, 0, std::mem::align_of::<u8>() as _);
+        // let buffer = Buffer::new_mapped_basic(
+        //     context.clone(),
+        //     (std::mem::align_of::<u8>() * pixels.len()) as _,
+        //     vk::BufferUsageFlags::TRANSFER_SRC,
+        //     vk_mem::MemoryUsage::CpuToGpu,
+        // );
+        // buffer.upload_to_buffer(&pixels, 0, std::mem::align_of::<u8>() as _);
 
-        let barrier = vk::ImageMemoryBarrier::builder()
-            .old_layout(vk::ImageLayout::UNDEFINED)
-            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .image(texture.image())
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: mip_levels,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .src_access_mask(vk::AccessFlags::empty())
-            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .build();
-        let barriers = [barrier];
+        // let barrier = vk::ImageMemoryBarrier::builder()
+        //     .old_layout(vk::ImageLayout::UNDEFINED)
+        //     .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+        //     .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+        //     .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+        //     .image(texture.image())
+        //     .subresource_range(vk::ImageSubresourceRange {
+        //         aspect_mask: vk::ImageAspectFlags::COLOR,
+        //         base_mip_level: 0,
+        //         level_count: mip_levels,
+        //         base_array_layer: 0,
+        //         layer_count: 1,
+        //     })
+        //     .src_access_mask(vk::AccessFlags::empty())
+        //     .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+        //     .build();
+        // let barriers = [barrier];
 
-        command_pool.transition_image_layout(
-            &barriers,
-            vk::PipelineStageFlags::TOP_OF_PIPE,
-            vk::PipelineStageFlags::TRANSFER,
-        );
+        // command_pool.transition_image_layout(
+        //     &barriers,
+        //     vk::PipelineStageFlags::TOP_OF_PIPE,
+        //     vk::PipelineStageFlags::TRANSFER,
+        // );
 
-        command_pool.copy_buffer_to_image(
-            context.graphics_queue(),
-            buffer.buffer(),
-            texture.image(),
-            &regions,
-        );
+        // command_pool.copy_buffer_to_image(
+        //     context.graphics_queue(),
+        //     buffer.buffer(),
+        //     texture.image(),
+        //     &regions,
+        // );
 
         // texture.generate_mipmaps(&command_pool, &description);
     }

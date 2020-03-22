@@ -69,13 +69,8 @@ impl CommandPool {
         self.command_buffers.clear();
     }
 
-    pub fn create_device_local_buffer<T: Copy>(
-        &self,
-        usage_flags: vk::BufferUsageFlags,
-        vertices: &[T],
-    ) -> Buffer {
-        let graphics_queue = self.context.graphics_queue();
-        let buffer_size = (vertices.len() * std::mem::size_of::<T>()) as ash::vk::DeviceSize;
+    pub fn create_staging_buffer<T: Copy>(&self, data: &[T]) -> Buffer {
+        let buffer_size = (data.len() * std::mem::size_of::<T>()) as ash::vk::DeviceSize;
 
         let staging_buffer = Buffer::new_mapped_basic(
             self.context.clone(),
@@ -83,24 +78,27 @@ impl CommandPool {
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk_mem::MemoryUsage::CpuOnly,
         );
+        staging_buffer.upload_to_buffer(&data, 0, std::mem::align_of::<T>() as _);
+        staging_buffer
+    }
 
-        staging_buffer.upload_to_buffer(&vertices, 0, std::mem::align_of::<T>() as _);
+    pub fn create_device_local_buffer<T: Copy>(
+        &self,
+        usage_flags: vk::BufferUsageFlags,
+        data: &[T],
+        regions: &[vk::BufferCopy],
+    ) -> Buffer {
+        let staging_buffer = self.create_staging_buffer(&data);
 
         let device_local_buffer = Buffer::new_mapped_basic(
             self.context.clone(),
-            buffer_size,
+            staging_buffer.allocation_info().get_size() as _,
             vk::BufferUsageFlags::TRANSFER_DST | usage_flags,
             vk_mem::MemoryUsage::GpuOnly,
         );
 
-        let region = vk::BufferCopy {
-            src_offset: 0,
-            dst_offset: 0,
-            size: buffer_size,
-        };
-        let regions = [region];
         self.copy_buffer_to_buffer(
-            graphics_queue,
+            self.context.graphics_queue(),
             staging_buffer.buffer(),
             device_local_buffer.buffer(),
             &regions,
