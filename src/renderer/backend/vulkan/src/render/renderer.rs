@@ -177,6 +177,7 @@ impl Renderer {
                 );
         }
 
+        self.render_skybox(command_buffer);
         self.render_assets(command_buffer);
 
         unsafe {
@@ -195,25 +196,6 @@ impl Renderer {
 
     pub fn render_assets(&self, command_buffer: vk::CommandBuffer) {
         let device = &self.context.logical_device().logical_device();
-
-        let skybox_pipeline = self
-            .skybox_pipeline
-            .as_ref()
-            .expect("Failed to get skybox pipeline!");
-
-        skybox_pipeline.bind(device, command_buffer);
-
-        let skybox_pipeline_data = self
-            .skybox_pipeline_data
-            .as_ref()
-            .expect("Failed to get skybox pipeline data!");
-
-        let skybox_renderer =
-            SkyboxRenderer::new(command_buffer, &skybox_pipeline, &skybox_pipeline_data);
-
-        self.update_viewport(command_buffer);
-
-        skybox_renderer.draw(device);
 
         let pbr_pipeline = self
             .pbr_pipeline
@@ -234,6 +216,29 @@ impl Renderer {
         self.assets
             .iter()
             .for_each(|asset| pbr_renderer.draw_asset(device, &asset));
+    }
+
+    pub fn render_skybox(&self, command_buffer: vk::CommandBuffer) {
+        let device = &self.context.logical_device().logical_device();
+
+        let skybox_pipeline = self
+            .skybox_pipeline
+            .as_ref()
+            .expect("Failed to get skybox pipeline!");
+
+        skybox_pipeline.bind(device, command_buffer);
+
+        let skybox_pipeline_data = self
+            .skybox_pipeline_data
+            .as_ref()
+            .expect("Failed to get skybox pipeline data!");
+
+        let skybox_renderer =
+            SkyboxRenderer::new(command_buffer, &skybox_pipeline, &skybox_pipeline_data);
+
+        self.update_viewport(command_buffer);
+
+        skybox_renderer.draw(device);
     }
 
     pub fn update_viewport(&self, command_buffer: vk::CommandBuffer) {

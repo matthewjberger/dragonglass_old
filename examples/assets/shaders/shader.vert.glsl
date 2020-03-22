@@ -28,13 +28,12 @@ void main() {
   fragColor = vColor;
   fragCoords = vCoords;
 
-  gl_Position = uboView.projection * uboView.view * uboInstance.model * vec4(vPosition, 1.0);
-
   // Flip the y coordinate when displaying gltf models
   // because Vulkan's coordinate system origin is in the top left
   // corner with the Y-axis pointing downwards
-  // OpenGL's coordinate system origin is in the lower left with the
-  // Y-axis pointing up
-  gl_Position.y = -gl_Position.y;
+  // OpenGL's coordinate system origin is in the lower left with the Y-axis pointing up
+  vec3 position = vPosition;
+  position.y *= -1.0;
 
+  gl_Position = uboView.projection * uboView.view * uboInstance.model * vec4(position, 1.0);
 }

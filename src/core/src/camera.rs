@@ -110,7 +110,7 @@ pub fn fps_camera_mouse_system() -> Box<dyn Schedulable> {
             );
 
             camera.yaw_degrees -= x_offset;
-            camera.pitch_degrees += y_offset;
+            camera.pitch_degrees -= y_offset;
 
             if camera.pitch_degrees > pitch_threshold {
                 camera.pitch_degrees = pitch_threshold
