@@ -1,4 +1,7 @@
-use crate::{core::VulkanContext, resource::CommandPool};
+use crate::{
+    core::VulkanContext,
+    resource::{Buffer, CommandPool, ImageView, Sampler},
+};
 use ash::{version::DeviceV1_0, vk};
 use gltf::image::Format;
 use image::{DynamicImage, ImageBuffer, Pixel, RgbImage};
@@ -304,5 +307,203 @@ impl Drop for Texture {
             .allocator()
             .destroy_image(self.image, &self.allocation)
             .expect("Failed to destroy image!");
+    }
+}
+
+pub struct Cubemap {
+    pub texture: Texture,
+    pub view: ImageView,
+    pub sampler: Sampler,
+}
+
+impl Cubemap {
+    pub fn new(
+        context: Arc<VulkanContext>,
+        command_pool: &CommandPool,
+        image_data: &gltf::image::Data,
+    ) -> Self {
+        let description = TextureDescription::from_gltf(&image_data);
+
+        let texture = Self::create_texture(context.clone(), &description);
+
+        Self::upload_texture_data(context.clone(), &command_pool, &texture, &description);
+
+        let view = Self::create_image_view(context.clone(), &texture, &description);
+
+        let sampler = Self::create_sampler(context, description.mip_levels);
+
+        Self {
+            texture,
+            view,
+            sampler,
+        }
+    }
+
+    pub fn upload_texture_data(
+        context: Arc<VulkanContext>,
+        command_pool: &CommandPool,
+        texture: &Texture,
+        description: &TextureDescription,
+    ) {
+        let region = vk::BufferImageCopy::builder()
+            .buffer_offset(0)
+            .buffer_row_length(0)
+            .buffer_image_height(0)
+            .image_subresource(vk::ImageSubresourceLayers {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                mip_level: 0,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+            .image_extent(vk::Extent3D {
+                width: description.width,
+                height: description.height,
+                depth: 1,
+            })
+            .build();
+        let regions = [region];
+        let buffer = Buffer::new_mapped_basic(
+            context.clone(),
+            texture.allocation_info().get_size() as _,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk_mem::MemoryUsage::CpuToGpu,
+        );
+        buffer.upload_to_buffer(&description.pixels, 0, std::mem::align_of::<u8>() as _);
+
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .image(texture.image())
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: description.mip_levels,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .src_access_mask(vk::AccessFlags::empty())
+            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .build();
+        let barriers = [barrier];
+
+        command_pool.transition_image_layout(
+            &barriers,
+            vk::PipelineStageFlags::TOP_OF_PIPE,
+            vk::PipelineStageFlags::TRANSFER,
+        );
+
+        command_pool.copy_buffer_to_image(
+            context.graphics_queue(),
+            buffer.buffer(),
+            texture.image(),
+            &regions,
+        );
+
+        texture.generate_mipmaps(&command_pool, &description);
+
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .image(texture.image())
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_array_layer: 0,
+                layer_count: 1,
+                level_count: 1,
+                base_mip_level: description.mip_levels - 1,
+            })
+            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .dst_access_mask(vk::AccessFlags::SHADER_READ)
+            .build();
+        let barriers = [barrier];
+
+        command_pool.transition_image_layout(
+            &barriers,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::PipelineStageFlags::FRAGMENT_SHADER,
+        );
+    }
+
+    fn create_texture(context: Arc<VulkanContext>, description: &TextureDescription) -> Texture {
+        let image_create_info = vk::ImageCreateInfo::builder()
+            .image_type(vk::ImageType::TYPE_2D)
+            .extent(vk::Extent3D {
+                width: description.width,
+                height: description.height,
+                depth: 1,
+            })
+            .mip_levels(description.mip_levels)
+            .array_layers(6)
+            .format(description.format)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .usage(
+                vk::ImageUsageFlags::TRANSFER_SRC
+                    | vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::SAMPLED,
+            )
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .flags(vk::ImageCreateFlags::CUBE_COMPATIBLE)
+            .build();
+
+        let allocation_create_info = vk_mem::AllocationCreateInfo {
+            usage: vk_mem::MemoryUsage::GpuOnly,
+            ..Default::default()
+        };
+
+        Texture::new(context, &allocation_create_info, &image_create_info)
+    }
+
+    fn create_image_view(
+        context: Arc<VulkanContext>,
+        texture: &Texture,
+        description: &TextureDescription,
+    ) -> ImageView {
+        let create_info = vk::ImageViewCreateInfo::builder()
+            .image(texture.image())
+            .view_type(vk::ImageViewType::CUBE)
+            .format(description.format)
+            .components(vk::ComponentMapping {
+                r: vk::ComponentSwizzle::IDENTITY,
+                g: vk::ComponentSwizzle::IDENTITY,
+                b: vk::ComponentSwizzle::IDENTITY,
+                a: vk::ComponentSwizzle::IDENTITY,
+            })
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: description.mip_levels,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .build();
+        ImageView::new(context, create_info)
+    }
+
+    fn create_sampler(context: Arc<VulkanContext>, mip_levels: u32) -> Sampler {
+        let sampler_info = vk::SamplerCreateInfo::builder()
+            .mag_filter(vk::Filter::LINEAR)
+            .min_filter(vk::Filter::LINEAR)
+            .address_mode_u(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
+            .anisotropy_enable(true)
+            .max_anisotropy(16.0)
+            .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
+            .unnormalized_coordinates(false)
+            .compare_enable(false)
+            .compare_op(vk::CompareOp::ALWAYS)
+            .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
+            .mip_lod_bias(0.0)
+            .min_lod(0.0)
+            .max_lod(mip_levels as _)
+            .build();
+        Sampler::new(context, sampler_info)
     }
 }
