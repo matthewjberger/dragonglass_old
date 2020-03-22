@@ -6,7 +6,10 @@ use crate::{
         skybox::{SkyboxPipeline, SkyboxPipelineData, SkyboxRenderer},
     },
     render::VulkanSwapchain,
-    resource::CommandPool,
+    resource::{
+        texture::{Cubemap, CubemapFaces},
+        CommandPool,
+    },
     sync::SynchronizationSet,
 };
 use ash::{version::DeviceV1_0, vk};
@@ -86,6 +89,17 @@ impl Renderer {
             .iter()
             .flat_map(|asset| &asset.textures)
             .collect::<Vec<_>>();
+
+        let faces = CubemapFaces {
+            left: "examples/assets/skyboxes/bluemountains/left.jpg".to_string(),
+            right: "examples/assets/skyboxes/bluemountains/right.jpg".to_string(),
+            top: "examples/assets/skyboxes/bluemountains/top.jpg".to_string(),
+            bottom: "examples/assets/skyboxes/bluemountains/bottom.jpg".to_string(),
+            front: "examples/assets/skyboxes/bluemountains/front.jpg".to_string(),
+            back: "examples/assets/skyboxes/bluemountains/back.jpg".to_string(),
+        };
+
+        let cubemap = Cubemap::new(self.context.clone(), &self.transient_command_pool, &faces);
 
         self.pbr_pipeline_data = Some(PbrPipelineData::new(&self, number_of_meshes, &textures));
         self.skybox_pipeline_data = Some(SkyboxPipelineData::new(&self));

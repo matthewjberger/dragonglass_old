@@ -5,7 +5,7 @@ use crate::{
 use ash::{version::DeviceV1_0, vk};
 use gltf::image::Format;
 use image::{DynamicImage, ImageBuffer, Pixel, RgbImage};
-use std::sync::Arc;
+use std::{iter, sync::Arc};
 
 // TODO: Add snafu errors
 
@@ -310,6 +310,26 @@ impl Drop for Texture {
     }
 }
 
+pub struct CubemapFaces {
+    pub right: String,
+    pub left: String,
+    pub top: String,
+    pub bottom: String,
+    pub front: String,
+    pub back: String,
+}
+
+impl CubemapFaces {
+    fn ordered_faces(&self) -> impl Iterator<Item = String> {
+        iter::once(self.right.to_string())
+            .chain(iter::once(self.left.to_string()))
+            .chain(iter::once(self.top.to_string()))
+            .chain(iter::once(self.bottom.to_string()))
+            .chain(iter::once(self.front.to_string()))
+            .chain(iter::once(self.back.to_string()))
+    }
+}
+
 pub struct Cubemap {
     pub texture: Texture,
     pub view: ImageView,
@@ -320,17 +340,29 @@ impl Cubemap {
     pub fn new(
         context: Arc<VulkanContext>,
         command_pool: &CommandPool,
-        image_data: &gltf::image::Data,
+        faces: &CubemapFaces,
     ) -> Self {
-        let description = TextureDescription::from_gltf(&image_data);
+        // TODO: Calculate miplevels
+        let mip_levels = 1;
 
-        let texture = Self::create_texture(context.clone(), &description);
+        let texture = Self::create_texture(context.clone(), 1920, mip_levels);
 
-        Self::upload_texture_data(context.clone(), &command_pool, &texture, &description);
+        let descriptions = faces
+            .ordered_faces()
+            .map(|face| TextureDescription::from_file(&face, vk::Format::R8G8B8A8_UNORM))
+            .collect::<Vec<_>>();
 
-        let view = Self::create_image_view(context.clone(), &texture, &description);
+        // Self::upload_texture_data(
+        //     context.clone(),
+        //     &command_pool,
+        //     &texture,
+        //     &descriptions,
+        //     mip_levels,
+        // );
 
-        let sampler = Self::create_sampler(context, description.mip_levels);
+        let view = Self::create_image_view(context.clone(), &texture, mip_levels);
+
+        let sampler = Self::create_sampler(context, mip_levels);
 
         Self {
             texture,
@@ -343,33 +375,52 @@ impl Cubemap {
         context: Arc<VulkanContext>,
         command_pool: &CommandPool,
         texture: &Texture,
-        description: &TextureDescription,
+        descriptions: &[TextureDescription],
+        mip_levels: u32,
     ) {
-        let region = vk::BufferImageCopy::builder()
-            .buffer_offset(0)
-            .buffer_row_length(0)
-            .buffer_image_height(0)
-            .image_subresource(vk::ImageSubresourceLayers {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 1,
+        let mut offset = 0;
+        let regions = descriptions
+            .iter()
+            .enumerate()
+            .flat_map(|(face_index, description)| {
+                (0..mip_levels)
+                    .map(|level| {
+                        let region = vk::BufferImageCopy::builder()
+                            .buffer_offset(offset as _)
+                            .buffer_row_length(0)
+                            .buffer_image_height(0)
+                            .image_subresource(vk::ImageSubresourceLayers {
+                                aspect_mask: vk::ImageAspectFlags::COLOR,
+                                mip_level: level,
+                                base_array_layer: face_index as _,
+                                layer_count: 1,
+                            })
+                            .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+                            .image_extent(vk::Extent3D {
+                                width: description.width >> level,
+                                height: description.height >> level,
+                                depth: 1,
+                            })
+                            .build();
+                        offset += std::mem::size_of::<u8>() * description.pixels.len();
+                        region
+                    })
+                    .collect::<Vec<_>>()
             })
-            .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
-            .image_extent(vk::Extent3D {
-                width: description.width,
-                height: description.height,
-                depth: 1,
-            })
-            .build();
-        let regions = [region];
+            .collect::<Vec<_>>();
+
+        let pixels = descriptions
+            .iter()
+            .flat_map(|description| &description.pixels)
+            .collect::<Vec<_>>();
+
         let buffer = Buffer::new_mapped_basic(
             context.clone(),
             texture.allocation_info().get_size() as _,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk_mem::MemoryUsage::CpuToGpu,
         );
-        buffer.upload_to_buffer(&description.pixels, 0, std::mem::align_of::<u8>() as _);
+        buffer.upload_to_buffer(&pixels, 0, std::mem::align_of::<u8>() as _);
 
         let barrier = vk::ImageMemoryBarrier::builder()
             .old_layout(vk::ImageLayout::UNDEFINED)
@@ -380,7 +431,7 @@ impl Cubemap {
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: vk::ImageAspectFlags::COLOR,
                 base_mip_level: 0,
-                level_count: description.mip_levels,
+                level_count: mip_levels,
                 base_array_layer: 0,
                 layer_count: 1,
             })
@@ -402,44 +453,20 @@ impl Cubemap {
             &regions,
         );
 
-        texture.generate_mipmaps(&command_pool, &description);
-
-        let barrier = vk::ImageMemoryBarrier::builder()
-            .image(texture.image())
-            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_array_layer: 0,
-                layer_count: 1,
-                level_count: 1,
-                base_mip_level: description.mip_levels - 1,
-            })
-            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .dst_access_mask(vk::AccessFlags::SHADER_READ)
-            .build();
-        let barriers = [barrier];
-
-        command_pool.transition_image_layout(
-            &barriers,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::FRAGMENT_SHADER,
-        );
+        // texture.generate_mipmaps(&command_pool, &description);
     }
 
-    fn create_texture(context: Arc<VulkanContext>, description: &TextureDescription) -> Texture {
+    fn create_texture(context: Arc<VulkanContext>, dimension: u32, mip_levels: u32) -> Texture {
         let image_create_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(vk::Extent3D {
-                width: description.width,
-                height: description.height,
+                width: dimension,
+                height: dimension,
                 depth: 1,
             })
-            .mip_levels(description.mip_levels)
+            .mip_levels(mip_levels)
             .array_layers(6)
-            .format(description.format)
+            .format(vk::Format::R8G8B8A8_UNORM)
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .usage(
@@ -463,12 +490,12 @@ impl Cubemap {
     fn create_image_view(
         context: Arc<VulkanContext>,
         texture: &Texture,
-        description: &TextureDescription,
+        mip_levels: u32,
     ) -> ImageView {
         let create_info = vk::ImageViewCreateInfo::builder()
             .image(texture.image())
             .view_type(vk::ImageViewType::CUBE)
-            .format(description.format)
+            .format(vk::Format::R8G8B8A8_UNORM)
             .components(vk::ComponentMapping {
                 r: vk::ComponentSwizzle::IDENTITY,
                 g: vk::ComponentSwizzle::IDENTITY,
@@ -478,9 +505,9 @@ impl Cubemap {
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: vk::ImageAspectFlags::COLOR,
                 base_mip_level: 0,
-                level_count: description.mip_levels,
+                level_count: mip_levels,
                 base_array_layer: 0,
-                layer_count: 1,
+                layer_count: 6,
             })
             .build();
         ImageView::new(context, create_info)
