@@ -325,8 +325,8 @@ impl CubemapFaces {
             .chain(iter::once(self.left.to_string()))
             .chain(iter::once(self.top.to_string()))
             .chain(iter::once(self.bottom.to_string()))
-            .chain(iter::once(self.front.to_string()))
             .chain(iter::once(self.back.to_string()))
+            .chain(iter::once(self.front.to_string()))
     }
 }
 
@@ -342,8 +342,14 @@ impl Cubemap {
         command_pool: &CommandPool,
         faces: &CubemapFaces,
     ) -> Self {
+        let format = vk::Format::R8G8B8A8_UNORM;
+        let face_descriptions = faces
+            .ordered_faces()
+            .map(|face| TextureDescription::from_file(&face, format))
+            .collect::<Vec<_>>();
+
         // TODO: Calculate miplevels and dimension
-        let dimension = 1920;
+        let dimension = face_descriptions[0].width;
         let cubemap_description = TextureDescription {
             width: dimension,
             height: dimension,
@@ -353,11 +359,6 @@ impl Cubemap {
         };
 
         let texture = Self::create_texture(context.clone(), &cubemap_description);
-
-        let face_descriptions = faces
-            .ordered_faces()
-            .map(|face| TextureDescription::from_file(&face, cubemap_description.format))
-            .collect::<Vec<_>>();
 
         Self::upload_texture_data(
             context.clone(),
@@ -385,37 +386,6 @@ impl Cubemap {
         face_descriptions: &[TextureDescription],
         cubemap_description: &TextureDescription,
     ) {
-        let mut offset = 0;
-        let regions = face_descriptions
-            .iter()
-            .enumerate()
-            .flat_map(|(face_index, description)| {
-                (0..cubemap_description.mip_levels)
-                    .map(|level| {
-                        let region = vk::BufferImageCopy::builder()
-                            .buffer_offset(offset as _)
-                            .buffer_row_length(0)
-                            .buffer_image_height(0)
-                            .image_subresource(vk::ImageSubresourceLayers {
-                                aspect_mask: vk::ImageAspectFlags::COLOR,
-                                mip_level: level,
-                                base_array_layer: face_index as _,
-                                layer_count: 1,
-                            })
-                            .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
-                            .image_extent(vk::Extent3D {
-                                width: description.width >> level,
-                                height: description.height >> level,
-                                depth: 1,
-                            })
-                            .build();
-                        offset += std::mem::size_of::<u8>() * description.pixels.len();
-                        region
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-
         let mut pixels: Vec<u8> = Vec::new();
         face_descriptions.iter().for_each(|description| {
             pixels.extend(&description.pixels);
@@ -423,7 +393,7 @@ impl Cubemap {
 
         let buffer = Buffer::new_mapped_basic(
             context.clone(),
-            (std::mem::align_of::<u8>() * pixels.len()) as _,
+            texture.allocation_info().get_size() as _,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk_mem::MemoryUsage::CpuToGpu,
         );
@@ -438,9 +408,9 @@ impl Cubemap {
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: vk::ImageAspectFlags::COLOR,
                 base_mip_level: 0,
-                level_count: cubemap_description.mip_levels,
+                level_count: 0,
                 base_array_layer: 0,
-                layer_count: 1,
+                layer_count: 6,
             })
             .src_access_mask(vk::AccessFlags::empty())
             .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
@@ -452,6 +422,33 @@ impl Cubemap {
             vk::PipelineStageFlags::TOP_OF_PIPE,
             vk::PipelineStageFlags::TRANSFER,
         );
+
+        let mut offset = 0;
+        let regions = face_descriptions
+            .iter()
+            .enumerate()
+            .map(|(face_index, face)| {
+                let region = vk::BufferImageCopy::builder()
+                    .buffer_offset(offset as _)
+                    .buffer_row_length(0)
+                    .buffer_image_height(0)
+                    .image_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        mip_level: 0,
+                        base_array_layer: face_index as _,
+                        layer_count: 1,
+                    })
+                    .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+                    .image_extent(vk::Extent3D {
+                        width: cubemap_description.width,
+                        height: cubemap_description.height,
+                        depth: 1,
+                    })
+                    .build();
+                offset += face.pixels.len() * std::mem::size_of::<u8>();
+                region
+            })
+            .collect::<Vec<_>>();
 
         command_pool.copy_buffer_to_image(
             context.graphics_queue(),
