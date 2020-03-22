@@ -434,30 +434,6 @@ impl GltfTextureData {
         );
 
         texture.generate_mipmaps(&command_pool, &description);
-
-        let barrier = vk::ImageMemoryBarrier::builder()
-            .image(texture.image())
-            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_array_layer: 0,
-                layer_count: 1,
-                level_count: 1,
-                base_mip_level: description.mip_levels - 1,
-            })
-            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .dst_access_mask(vk::AccessFlags::SHADER_READ)
-            .build();
-        let barriers = [barrier];
-
-        command_pool.transition_image_layout(
-            &barriers,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::FRAGMENT_SHADER,
-        );
     }
 
     fn create_texture(context: Arc<VulkanContext>, description: &TextureDescription) -> Texture {
