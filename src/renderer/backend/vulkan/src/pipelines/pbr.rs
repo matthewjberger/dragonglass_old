@@ -222,7 +222,7 @@ impl PbrPipelineData {
             renderer.context.clone(),
             mem::size_of::<UniformBufferObject>() as _,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
-            vk_mem::MemoryUsage::CpuOnly,
+            vk_mem::MemoryUsage::CpuToGpu,
         );
 
         let dynamic_alignment = Self::calculate_dynamic_alignment(renderer.context.clone());

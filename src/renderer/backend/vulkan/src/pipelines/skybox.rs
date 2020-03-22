@@ -267,7 +267,7 @@ impl SkyboxPipelineData {
             renderer.context.clone(),
             mem::size_of::<UniformBufferObject>() as _,
             vk::BufferUsageFlags::UNIFORM_BUFFER,
-            vk_mem::MemoryUsage::CpuOnly,
+            vk_mem::MemoryUsage::CpuToGpu,
         );
 
         let cube = ModelBuffers::new(&renderer.transient_command_pool, VERTICES, None);
