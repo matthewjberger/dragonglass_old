@@ -335,7 +335,7 @@ impl PbrPipelineData {
             .build();
         let dynamic_buffer_infos = [dynamic_buffer_info];
 
-        let image_infos = textures
+        let mut image_infos = textures
             .iter()
             .map(|texture| {
                 vk::DescriptorImageInfo::builder()
@@ -352,13 +352,12 @@ impl PbrPipelineData {
             let remaining = required_images - number_of_images;
             for _ in 0..remaining {
                 // FIXME: Write a default texture
-                // image_infos.push(
-                //     vk::DescriptorImageInfo::builder()
-                //         .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                //         .image_view(texture.view.view())
-                //         .sampler(texture.sampler.sampler())
-                //         .build()
-                // );
+                let info = vk::DescriptorImageInfo::builder()
+                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .image_view(textures[0].view.view())
+                    .sampler(textures[0].sampler.sampler())
+                    .build();
+                image_infos.push(info);
             }
         }
 
