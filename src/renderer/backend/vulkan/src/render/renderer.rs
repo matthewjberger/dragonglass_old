@@ -93,17 +93,22 @@ impl Renderer {
             .collect::<Vec<_>>();
 
         let faces = CubemapFaces {
-            left: "examples/assets/skyboxes/bluemountains/left.jpg".to_string(),
-            right: "examples/assets/skyboxes/bluemountains/right.jpg".to_string(),
-            top: "examples/assets/skyboxes/bluemountains/top.jpg".to_string(),
-            bottom: "examples/assets/skyboxes/bluemountains/bottom.jpg".to_string(),
-            front: "examples/assets/skyboxes/bluemountains/front.jpg".to_string(),
-            back: "examples/assets/skyboxes/bluemountains/back.jpg".to_string(),
+            left: "examples/assets/skyboxes/mountains/left.tga".to_string(),
+            right: "examples/assets/skyboxes/mountains/right.tga".to_string(),
+            top: "examples/assets/skyboxes/mountains/top.tga".to_string(),
+            bottom: "examples/assets/skyboxes/mountains/bottom.tga".to_string(),
+            front: "examples/assets/skyboxes/mountains/front.tga".to_string(),
+            back: "examples/assets/skyboxes/mountains/back.tga".to_string(),
         };
 
         let cubemap = Cubemap::new(self.context.clone(), &self.transient_command_pool, &faces);
 
-        self.pbr_pipeline_data = Some(PbrPipelineData::new(&self, number_of_meshes, &textures));
+        self.pbr_pipeline_data = Some(PbrPipelineData::new(
+            &self,
+            number_of_meshes,
+            &textures,
+            &cubemap,
+        ));
         self.skybox_pipeline_data = Some(SkyboxPipelineData::new(&self, &cubemap));
 
         self.assets = assets;

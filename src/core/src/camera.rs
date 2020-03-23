@@ -3,7 +3,19 @@ use legion::prelude::*;
 use nalgebra_glm as glm;
 use winit::VirtualKeyCode;
 
-pub struct CameraViewMatrix(pub glm::Mat4);
+pub struct CameraState {
+    pub view: glm::Mat4,
+    pub position: glm::Vec3,
+}
+
+impl Default for CameraState {
+    fn default() -> Self {
+        CameraState {
+            view: glm::Mat4::identity(),
+            position: glm::Vec3::identity(),
+        }
+    }
+}
 
 pub enum CameraDirection {
     Forward,
@@ -67,9 +79,13 @@ pub fn fps_camera_key_system() -> Box<dyn Schedulable> {
     SystemBuilder::new("fps_camera_key")
         .read_resource::<Input>()
         .read_resource::<DeltaTime>()
+        .write_resource::<CameraState>()
         .with_query(<Write<Camera>>::query())
-        .build(move |_, mut world, (input, delta_time), query| {
-            for mut camera in query.iter(&mut world) {
+        .build(
+            move |_, mut world, (input, delta_time, camera_state), query| {
+                let cameras = &mut query.iter(&mut world).collect::<Vec<_>>();
+                let camera = &mut cameras[0];
+
                 let velocity = (camera.speed * delta_time.0 as f32) + 0.02;
 
                 let x_delta = camera.right * velocity;
@@ -90,17 +106,19 @@ pub fn fps_camera_key_system() -> Box<dyn Schedulable> {
                 if input.is_key_pressed(VirtualKeyCode::D) {
                     camera.position += x_delta;
                 }
-            }
-        })
+
+                camera_state.position = camera.position;
+            },
+        )
 }
 
 pub fn fps_camera_mouse_system() -> Box<dyn Schedulable> {
     let pitch_threshold = 89.0;
     SystemBuilder::new("fps_camera_mouse")
         .read_resource::<Input>()
-        .write_resource::<CameraViewMatrix>()
+        .write_resource::<CameraState>()
         .with_query(<Write<Camera>>::query())
-        .build(move |_, mut world, (input, camera_view_matrix), query| {
+        .build(move |_, mut world, (input, camera_state), query| {
             // TODO: Support multiple cameras
             let camera = &mut query.iter(&mut world).collect::<Vec<_>>()[0];
 
@@ -121,6 +139,7 @@ pub fn fps_camera_mouse_system() -> Box<dyn Schedulable> {
             camera.calculate_vectors();
 
             let target = camera.position + camera.front;
-            camera_view_matrix.0 = glm::look_at(&camera.position, &target, &camera.up);
+            camera_state.view = glm::look_at(&camera.position, &target, &camera.up);
+            camera_state.position = camera.position;
         })
 }

@@ -9,7 +9,7 @@ use crate::{
 };
 use ash::vk;
 use dragonglass_core::{
-    camera::CameraViewMatrix,
+    camera::CameraState,
     components::{AssetName, Transform},
 };
 use legion::prelude::*;
@@ -33,9 +33,9 @@ pub fn prepare_renderer_system() -> Box<dyn Schedulable> {
 pub fn render_system() -> Box<dyn Runnable> {
     SystemBuilder::new("render")
         .write_resource::<Renderer>()
-        .read_resource::<CameraViewMatrix>()
+        .read_resource::<CameraState>()
         .with_query(<Read<Transform>>::query())
-        .build_thread_local(move |_, mut world, (renderer, camera_view_matrix), query| {
+        .build_thread_local(move |_, mut world, (renderer, camera_state), query| {
             let context = renderer.context.clone();
 
             let current_frame_synchronization = renderer
@@ -82,7 +82,7 @@ pub fn render_system() -> Box<dyn Runnable> {
             if let Some(skybox_data) = &renderer.skybox_pipeline_data.as_ref() {
                 let skybox_ubo = SkyboxUniformBufferObject {
                     model: glm::translate(&glm::Mat4::identity(), &glm::vec3(0.0, 2.0, 0.0)),
-                    view: camera_view_matrix.0,
+                    view: camera_state.view,
                     projection,
                 };
                 let skybox_ubos = [skybox_ubo];
@@ -95,7 +95,8 @@ pub fn render_system() -> Box<dyn Runnable> {
             }
 
             let ubo = UniformBufferObject {
-                view: camera_view_matrix.0,
+                cameraposition: camera_state.position,
+                view: camera_state.view,
                 projection,
             };
             let ubos = [ubo];

@@ -2,7 +2,9 @@ use crate::{
     core::VulkanContext,
     model::gltf::{GltfAsset, GltfTextureData, Primitive},
     render::{GraphicsPipeline, Renderer},
-    resource::{Buffer, DescriptorPool, DescriptorSetLayout, PipelineLayout, Shader},
+    resource::{
+        texture::Cubemap, Buffer, DescriptorPool, DescriptorSetLayout, PipelineLayout, Shader,
+    },
 };
 use ash::{version::DeviceV1_0, vk};
 use dragonglass_core::byte_slice_from;
@@ -192,6 +194,7 @@ const MAX_TEXTURES: u32 = 100;
 pub struct UniformBufferObject {
     pub view: glm::Mat4,
     pub projection: glm::Mat4,
+    pub cameraposition: glm::Vec3,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -212,6 +215,7 @@ impl PbrPipelineData {
         renderer: &Renderer,
         number_of_meshes: usize,
         textures: &[&GltfTextureData],
+        cubemap: &Cubemap,
     ) -> Self {
         let descriptor_set_layout = Self::descriptor_set_layout(renderer.context.clone());
         let descriptor_pool = Self::create_descriptor_pool(renderer.context.clone());
@@ -242,7 +246,13 @@ impl PbrPipelineData {
             dynamic_alignment,
         };
 
-        data.update_descriptor_set(renderer.context.clone(), number_of_meshes, &textures);
+        data.update_descriptor_set(
+            renderer.context.clone(),
+            number_of_meshes,
+            &textures,
+            &cubemap,
+        );
+
         data
     }
 
@@ -278,7 +288,18 @@ impl PbrPipelineData {
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .build();
-        let bindings = [ubo_binding, dynamic_ubo_binding, sampler_binding];
+        let cubemap_binding = vk::DescriptorSetLayoutBinding::builder()
+            .binding(3)
+            .descriptor_count(1)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .build();
+        let bindings = [
+            ubo_binding,
+            dynamic_ubo_binding,
+            sampler_binding,
+            cubemap_binding,
+        ];
 
         let layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
             .bindings(&bindings)
@@ -302,7 +323,17 @@ impl PbrPipelineData {
             descriptor_count: MAX_TEXTURES,
         };
 
-        let pool_sizes = [ubo_pool_size, dynamic_ubo_pool_size, sampler_pool_size];
+        let cubemap_pool_size = vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: 1,
+        };
+
+        let pool_sizes = [
+            ubo_pool_size,
+            dynamic_ubo_pool_size,
+            sampler_pool_size,
+            cubemap_pool_size,
+        ];
 
         let pool_info = vk::DescriptorPoolCreateInfo::builder()
             .pool_sizes(&pool_sizes)
@@ -317,6 +348,7 @@ impl PbrPipelineData {
         context: Arc<VulkanContext>,
         number_of_meshes: usize,
         textures: &[&GltfTextureData],
+        cubemap: &Cubemap,
     ) {
         let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
         let buffer_info = vk::DescriptorBufferInfo::builder()
@@ -362,6 +394,13 @@ impl PbrPipelineData {
             }
         }
 
+        let cubemap_image_info = vk::DescriptorImageInfo::builder()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(cubemap.view.view())
+            .sampler(cubemap.sampler.sampler())
+            .build();
+        let cubemap_image_infos = [cubemap_image_info];
+
         let ubo_descriptor_write = vk::WriteDescriptorSet::builder()
             .dst_set(self.descriptor_set)
             .dst_binding(0)
@@ -386,10 +425,19 @@ impl PbrPipelineData {
             .image_info(&image_infos)
             .build();
 
+        let cubemap_descriptor_write = vk::WriteDescriptorSet::builder()
+            .dst_set(self.descriptor_set)
+            .dst_binding(3)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(&cubemap_image_infos)
+            .build();
+
         let descriptor_writes = vec![
             ubo_descriptor_write,
             dynamic_ubo_descriptor_write,
             sampler_descriptor_write,
+            cubemap_descriptor_write,
         ];
 
         unsafe {

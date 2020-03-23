@@ -3,12 +3,13 @@
 #extension GL_ARB_shading_language_420pack : enable
 
 layout(location = 0) in vec3 vPosition;
-layout(location = 1) in vec3 vColor;
+layout(location = 1) in vec3 vNormal;
 layout(location = 2) in vec2 vCoords;
 
 layout(binding = 0) uniform UboView {
   mat4 view;
   mat4 projection;
+  vec3 cameraposition;
 } uboView;
 
 layout(binding = 1) uniform UboInstance {
@@ -20,20 +21,19 @@ layout(push_constant) uniform Constants {
   int colorTextureSet;
 } constants;
 
-layout(location = 0) out vec3 fragColor;
+layout(location = 0) out vec3 fragNormal;
 layout(location = 1) out vec2 fragCoords;
+layout(location = 2) out vec3 fragPosition;
+layout(location = 3) out vec3 fragCameraPosition;
 
 void main() {
+  vec4 position = uboInstance.model * vec4(vPosition, 1.0);
+  position.y = -position.y;
 
-  fragColor = vColor;
+  fragNormal = mat3(transpose(inverse(uboInstance.model))) * vNormal;
   fragCoords = vCoords;
+  fragPosition = position.xyz;
+  fragCameraPosition = uboView.cameraposition;
 
-  // Flip the y coordinate when displaying gltf models
-  // because Vulkan's coordinate system origin is in the top left
-  // corner with the Y-axis pointing downwards
-  // OpenGL's coordinate system origin is in the lower left with the Y-axis pointing up
-  vec3 position = vPosition;
-  position.y *= -1.0;
-
-  gl_Position = uboView.projection * uboView.view * uboInstance.model * vec4(position, 1.0);
+  gl_Position = uboView.projection * uboView.view * position;
 }

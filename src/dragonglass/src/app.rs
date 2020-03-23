@@ -3,7 +3,7 @@ use dragonglass_backend_vulkan::{
     systems::render::{prepare_renderer_system, render_system},
 };
 use dragonglass_core::{
-    camera::{fps_camera_key_system, fps_camera_mouse_system, Camera, CameraViewMatrix},
+    camera::{fps_camera_key_system, fps_camera_mouse_system, Camera, CameraState},
     components::{AssetName, Transform},
     input::Input,
     DeltaTime,
@@ -81,9 +81,7 @@ impl App {
         let input = Input::default();
         world.resources.insert(input);
 
-        world
-            .resources
-            .insert(CameraViewMatrix(glm::Mat4::identity()));
+        world.resources.insert(CameraState::default());
 
         world.resources.insert(DeltaTime(0 as _));
 
@@ -102,7 +100,7 @@ impl App {
 
         let mut camera = Camera {
             speed: 5.0,
-            position: glm::vec3(3.8, 3.16, -1.59),
+            position: glm::vec3(3.8, -3.16, -1.59),
             ..Default::default()
         };
         camera.look_at(&glm::vec3(0.0, 0.0, 0.0));
