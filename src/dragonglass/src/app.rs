@@ -1,12 +1,12 @@
 use dragonglass_backend_vulkan::{
     render::Renderer,
-    systems::render::{prepare_renderer_system, render_system},
+    systems::render::{animation_system, prepare_renderer_system, render_system},
 };
 use dragonglass_core::{
     camera::{fps_camera_key_system, fps_camera_mouse_system, Camera, CameraState},
     components::{AssetName, Transform},
     input::Input,
-    DeltaTime,
+    AnimationState, DeltaTime,
 };
 use legion::prelude::*;
 use nalgebra_glm as glm;
@@ -93,6 +93,7 @@ impl App {
         let mut schedule = Schedule::builder()
             .add_system(fps_camera_mouse_system())
             .add_system(fps_camera_key_system())
+            .add_system(animation_system())
             .flush()
             // More game simulation systems can go here
             .add_thread_local(render_system())
@@ -108,7 +109,9 @@ impl App {
         world.insert(
             (),
             vec![(
-                AssetName("examples/assets/models/Sponza/Sponza.gltf".to_string()),
+                // AssetName("examples/assets/models/Sponza/Sponza.gltf".to_string()),
+                AssetName("examples/assets/models/BoxAnimated.glb".to_string()),
+                AnimationState { time: 0.0 },
                 Transform::default(),
             )],
         );

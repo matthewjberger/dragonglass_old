@@ -11,6 +11,7 @@ use ash::vk;
 use dragonglass_core::{
     camera::CameraState,
     components::{AssetName, Transform},
+    AnimationState,
 };
 use legion::prelude::*;
 use nalgebra_glm as glm;
@@ -107,8 +108,8 @@ pub fn render_system() -> Box<dyn Runnable> {
                 // TODO: Go through all assets
                 let asset_transform = transform.translate * transform.rotate * transform.scale;
                 let asset_index = 0;
-                let asset = &renderer.assets[asset_index];
 
+                let asset = &renderer.assets[asset_index];
                 asset.walk(|node_index, graph| {
                     let global_transform = GltfAsset::calculate_global_transform(node_index, graph);
                     if let Some(mesh) = graph[node_index].mesh.as_ref() {
@@ -169,5 +170,22 @@ pub fn render_system() -> Box<dyn Runnable> {
 
             renderer.current_frame +=
                 (1 + renderer.current_frame) % SynchronizationSet::MAX_FRAMES_IN_FLIGHT as usize;
+        })
+}
+
+// TODO: Replace this with a system that modifies an animation state component
+pub fn animation_system() -> Box<dyn Schedulable> {
+    SystemBuilder::new("animation_system")
+        .write_resource::<Renderer>()
+        .with_query(<Write<AnimationState>>::query())
+        .build(move |_, mut world, renderer, query| {
+            let animation_states = &mut query.iter(&mut world).collect::<Vec<_>>();
+            if animation_states.is_empty() {
+                return;
+            }
+            for animation in renderer.assets[0].animations.iter_mut() {
+                animation.time += 0.005;
+            }
+            renderer.assets[0].animate();
         })
 }
