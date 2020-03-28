@@ -3,7 +3,8 @@ use crate::{
     model::gltf::{GltfAsset, GltfTextureData, Primitive},
     render::{GraphicsPipeline, Renderer},
     resource::{
-        texture::Cubemap, Buffer, DescriptorPool, DescriptorSetLayout, PipelineLayout, Shader,
+        texture::Cubemap, Buffer, DescriptorPool, DescriptorSetLayout, DummyImage, PipelineLayout,
+        Shader,
     },
 };
 use ash::{version::DeviceV1_0, vk};
@@ -208,6 +209,7 @@ pub struct PbrPipelineData {
     pub dynamic_uniform_buffer: Buffer,
     pub dynamic_alignment: u64,
     pub descriptor_set: vk::DescriptorSet,
+    pub dummy: DummyImage,
 }
 
 impl PbrPipelineData {
@@ -244,6 +246,7 @@ impl PbrPipelineData {
             dynamic_uniform_buffer,
             descriptor_set,
             dynamic_alignment,
+            dummy: DummyImage::new(renderer.context.clone(), &renderer.transient_command_pool),
         };
 
         data.update_descriptor_set(
@@ -367,7 +370,7 @@ impl PbrPipelineData {
             .build();
         let dynamic_buffer_infos = [dynamic_buffer_info];
 
-        let image_infos = textures
+        let mut image_infos = textures
             .iter()
             .map(|texture| {
                 vk::DescriptorImageInfo::builder()
@@ -383,14 +386,13 @@ impl PbrPipelineData {
         if number_of_images < required_images {
             let remaining = required_images - number_of_images;
             for _ in 0..remaining {
-                // FIXME: Write a default texture
-                // image_infos.push(
-                //     vk::DescriptorImageInfo::builder()
-                //         .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                //         .image_view(texture.view.view())
-                //         .sampler(texture.sampler.sampler())
-                //         .build()
-                // );
+                image_infos.push(
+                    vk::DescriptorImageInfo::builder()
+                        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                        .image_view(self.dummy.view().view())
+                        .sampler(self.dummy.sampler().sampler())
+                        .build(),
+                );
             }
         }
 

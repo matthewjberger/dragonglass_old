@@ -184,7 +184,7 @@ pub fn animation_system() -> Box<dyn Schedulable> {
                 return;
             }
             for animation in renderer.assets[0].animations.iter_mut() {
-                animation.time += 0.005;
+                animation.time += 0.0005;
             }
             renderer.assets[0].animate();
         })
