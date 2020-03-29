@@ -50,6 +50,12 @@ impl Transform {
     }
 }
 
+pub struct MorphTargets {
+    positions: Vec<glm::Vec3>,
+    normals: Vec<glm::Vec3>,
+    tangents: Vec<glm::Vec3>,
+}
+
 pub type NodeGraph = Graph<Node, ()>;
 
 pub struct Node {
@@ -66,6 +72,7 @@ pub struct Scene {
 pub struct Mesh {
     pub primitives: Vec<Primitive>,
     pub mesh_id: usize,
+    pub weights: Vec<f32>,
 }
 
 pub struct Primitive {
@@ -259,6 +266,37 @@ impl GltfAsset {
 
                 let number_of_indices = primitive_indices.len() as u32;
 
+                let morph_targets = reader
+                    .read_morph_targets()
+                    .map(
+                        |(position_displacements, normal_displacements, tangent_displacements)| {
+                            let positions = if let Some(displacements) = position_displacements {
+                                displacements.map(glm::Vec3::from).collect::<Vec<_>>()
+                            } else {
+                                Vec::new()
+                            };
+
+                            let normals = if let Some(displacements) = normal_displacements {
+                                displacements.map(glm::Vec3::from).collect::<Vec<_>>()
+                            } else {
+                                Vec::new()
+                            };
+
+                            let tangents = if let Some(displacements) = tangent_displacements {
+                                displacements.map(glm::Vec3::from).collect::<Vec<_>>()
+                            } else {
+                                Vec::new()
+                            };
+
+                            MorphTargets {
+                                positions,
+                                normals,
+                                tangents,
+                            }
+                        },
+                    )
+                    .collect::<Vec<_>>();
+
                 all_mesh_primitives.push(Primitive {
                     first_index,
                     number_of_indices,
@@ -266,7 +304,14 @@ impl GltfAsset {
                 });
             }
 
+            let weights = if let Some(weights) = mesh.weights() {
+                weights.to_vec()
+            } else {
+                Vec::new()
+            };
+
             Some(Mesh {
+                weights,
                 primitives: all_mesh_primitives,
                 mesh_id: 0,
             })
@@ -440,8 +485,11 @@ impl GltfAsset {
                                         graph[node_index].animation_transform.scale =
                                             Some(scale_vec);
                                     }
-                                    TransformationSet::MorphTargetWeights(_weights) => {
-                                        unimplemented!()
+                                    TransformationSet::MorphTargetWeights(weights) => {
+                                        let start = weights[channel.previous_key];
+                                        let end = weights[next_key];
+                                        let weight = glm::lerp_scalar(start, end, normalized_time);
+                                        // TODO: Assign the interpolated weight
                                     }
                                 }
 

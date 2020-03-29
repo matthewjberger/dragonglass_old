@@ -110,7 +110,7 @@ impl App {
             (),
             vec![(
                 // AssetName("examples/assets/models/Sponza/Sponza.gltf".to_string()),
-                AssetName("examples/assets/models/BoxAnimated.glb".to_string()),
+                AssetName("examples/assets/models/morph/SimpleMorph.gltf".to_string()),
                 AnimationState { time: 0.0 },
                 Transform::default(),
             )],
