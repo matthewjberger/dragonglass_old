@@ -14,7 +14,16 @@ use std::{ffi::CString, mem, sync::Arc};
 
 pub struct PushConstantBlockMaterial {
     pub base_color_factor: glm::Vec4,
+    pub emissive_factor: glm::Vec3,
     pub color_texture_set: i32,
+    pub metallic_roughness_texture_set: i32, // B channel - metalness values. G channel - roughness values
+    pub normal_texture_set: i32,
+    pub occlusion_texture_set: i32, // R channel - occlusion values
+    pub emissive_texture_set: i32,
+    pub metallic_factor: f32,
+    pub roughness_factor: f32,
+    pub alpha_mask: i32,
+    pub alpha_mask_cutoff: f32,
 }
 
 pub struct PbrPipeline {
@@ -532,7 +541,16 @@ impl PbrRenderer {
     fn create_material(asset: &GltfAsset, primitive: &Primitive) -> PushConstantBlockMaterial {
         let mut material = PushConstantBlockMaterial {
             base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
+            emissive_factor: glm::Vec3::identity(),
             color_texture_set: -1,
+            metallic_roughness_texture_set: -1,
+            normal_texture_set: -1,
+            occlusion_texture_set: -1,
+            emissive_texture_set: -1,
+            metallic_factor: 0.0,
+            roughness_factor: 0.0,
+            alpha_mask: gltf::material::AlphaMode::Opaque as i32,
+            alpha_mask_cutoff: 0.0,
         };
 
         if let Some(material_index) = primitive.material_index {
@@ -543,13 +561,33 @@ impl PbrRenderer {
                 .expect("Failed to retrieve material!");
             let pbr = primitive_material.pbr_metallic_roughness();
 
+            material.base_color_factor = glm::Vec4::from(pbr.base_color_factor());
+            material.metallic_factor = pbr.metallic_factor();
+            material.roughness_factor = pbr.roughness_factor();
+            material.emissive_factor = glm::Vec3::from(primitive_material.emissive_factor());
+            material.alpha_mask_cutoff = primitive_material.alpha_cutoff();
+            material.alpha_mask = primitive_material.alpha_mode() as i32;
+
             if let Some(base_color_texture) = pbr.base_color_texture() {
                 material.color_texture_set = base_color_texture.texture().index() as i32;
-            } else {
-                material.base_color_factor = glm::Vec4::from(pbr.base_color_factor());
             }
-        } else {
-            material.base_color_factor = glm::vec4(0.0, 0.0, 0.0, 1.0);
+
+            if let Some(metallic_roughness_texture) = pbr.metallic_roughness_texture() {
+                material.metallic_roughness_texture_set =
+                    metallic_roughness_texture.texture().index() as i32;
+            }
+
+            if let Some(normal_texture) = primitive_material.normal_texture() {
+                material.normal_texture_set = normal_texture.texture().index() as i32;
+            }
+
+            if let Some(occlusion_texture) = primitive_material.occlusion_texture() {
+                material.occlusion_texture_set = occlusion_texture.texture().index() as i32;
+            }
+
+            if let Some(emissive_texture) = primitive_material.emissive_texture() {
+                material.emissive_texture_set = emissive_texture.texture().index() as i32;
+            }
         }
 
         material

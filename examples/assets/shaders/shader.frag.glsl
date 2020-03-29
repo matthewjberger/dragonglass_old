@@ -12,7 +12,16 @@ layout(binding = 3) uniform samplerCube cubemap;
 
 layout(push_constant) uniform Material {
   vec4 baseColorFactor;
+  vec3 emissiveFactor;
   int colorTextureSet;
+  int metallicRoughnessTextureSet;
+  int normalTextureSet;
+  int occlusionTextureSet;
+  int emissiveTextureSet;
+  float metallicFactor;
+  float roughnessFactor;
+  float alphaMask;
+  float alphaMaskCutoff;
 } material;
 
 layout(location = 0) out vec4 outColor;
