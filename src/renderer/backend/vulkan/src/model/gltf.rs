@@ -79,6 +79,7 @@ pub struct Primitive {
     pub number_of_indices: u32,
     pub first_index: u32,
     pub material_index: Option<usize>,
+    pub morph_targets: Vec<MorphTargets>,
 }
 
 // TODO: Properly decouple the animation state from the asset as a component to make it reusable.
@@ -297,11 +298,14 @@ impl GltfAsset {
                     )
                     .collect::<Vec<_>>();
 
-                all_mesh_primitives.push(Primitive {
+                let primitive = Primitive {
                     first_index,
                     number_of_indices,
                     material_index: primitive.material().index(),
-                });
+                    morph_targets,
+                };
+
+                all_mesh_primitives.push(primitive);
             }
 
             let weights = if let Some(weights) = mesh.weights() {
