@@ -137,6 +137,8 @@ pub fn render_system() -> Box<dyn Runnable> {
                                 .expect("Failed to flush buffer!");
                         }
                     }
+
+                    // TODO: Handle skins
                 });
             }
 

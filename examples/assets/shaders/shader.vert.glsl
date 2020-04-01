@@ -4,7 +4,10 @@
 
 layout(location = 0) in vec3 vPosition;
 layout(location = 1) in vec3 vNormal;
-layout(location = 2) in vec2 vCoords;
+layout(location = 2) in vec2 vCoords_0;
+layout(location = 3) in vec2 vCoords_1;
+layout(location = 4) in vec4 vJoints_0;
+layout(location = 5) in vec4 vWeights_0;
 
 layout(binding = 0) uniform UboView {
   mat4 view;
@@ -31,7 +34,7 @@ void main() {
   position.y = -position.y;
 
   fragNormal = mat3(transpose(inverse(uboInstance.model))) * vNormal;
-  fragCoords = vCoords;
+  fragCoords = vCoords_0;
   fragPosition = position.xyz;
   fragCameraPosition = uboView.cameraposition;
 

@@ -56,6 +56,7 @@ pub struct Node {
     pub animation_transform: Transform,
     pub local_transform: glm::Mat4,
     pub mesh: Option<Mesh>,
+    pub skin: Option<Skin>,
     pub index: usize,
 }
 
@@ -66,6 +67,15 @@ pub struct Scene {
 pub struct Mesh {
     pub primitives: Vec<Primitive>,
     pub mesh_id: usize,
+}
+
+pub struct Skin {
+    pub joints: Vec<Joint>,
+}
+
+pub struct Joint {
+    pub index: usize,
+    pub inverse_bind_matrix: glm::Mat4,
 }
 
 pub struct Primitive {
@@ -167,6 +177,34 @@ impl GltfAsset {
         (scenes, vertices, indices)
     }
 
+    fn load_skin(node: &gltf::Node, buffers: &[gltf::buffer::Data]) -> Option<Skin> {
+        if let Some(skin) = node.skin() {
+            let reader = skin.reader(|buffer| Some(&buffers[buffer.index()]));
+            let inverse_bind_matrices = reader
+                .read_inverse_bind_matrices()
+                .map_or(Vec::new(), |matrices| {
+                    matrices.map(glm::Mat4::from).collect::<Vec<_>>()
+                });
+
+            let mut joints = Vec::new();
+            for (index, joint_node) in skin.joints().enumerate() {
+                let inverse_bind_matrix = if inverse_bind_matrices.is_empty() {
+                    glm::Mat4::identity()
+                } else {
+                    inverse_bind_matrices[index]
+                };
+                joints.push(Joint {
+                    inverse_bind_matrix,
+                    index: joint_node.index(),
+                });
+            }
+
+            Some(Skin { joints })
+        } else {
+            None
+        }
+    }
+
     fn visit_children(
         node: &gltf::Node,
         buffers: &[gltf::buffer::Data],
@@ -177,10 +215,12 @@ impl GltfAsset {
         indices: &mut Vec<u32>,
     ) {
         let mesh = Self::load_mesh(node, buffers, vertices, indices);
+        let skin = Self::load_skin(node, buffers);
         let node_info = Node {
             animation_transform: Transform::default(),
             local_transform: Self::determine_transform(node),
             mesh,
+            skin,
             index: node.index(),
         };
 
@@ -205,8 +245,21 @@ impl GltfAsset {
         if let Some(mesh) = node.mesh() {
             let mut all_mesh_primitives = Vec::new();
             for primitive in mesh.primitives() {
-                // Position (3), Normal (3), TexCoords_0 (2)
-                let stride = 8 * std::mem::size_of::<f32>();
+                let position_length = 3;
+                let normal_length = 3;
+                let tex_coords_0_length = 2;
+                let tex_coords_1_length = 2;
+                let joints_0_length = 4;
+                let weights_0_length = 4;
+
+                let stride = (position_length
+                    + normal_length
+                    + tex_coords_0_length
+                    + tex_coords_1_length
+                    + joints_0_length
+                    + weights_0_length)
+                    * std::mem::size_of::<f32>();
+
                 let vertex_list_size = vertices.len() * std::mem::size_of::<u32>();
                 let vertex_count = (vertex_list_size / stride) as u32;
 
@@ -229,19 +282,46 @@ impl GltfAsset {
                     |coords: gltf::mesh::util::ReadTexCoords<'_>| -> Vec<glm::Vec2> {
                         coords.into_f32().map(glm::Vec2::from).collect::<Vec<_>>()
                     };
+
                 let tex_coords_0 = reader
                     .read_tex_coords(0)
                     .map_or(vec![glm::vec2(0.0, 0.0); positions.len()], convert_coords);
 
-                // TODO: Add checks to see if normals and tex_coords are even available
-                for ((position, normal), tex_coord_0) in positions
-                    .iter()
-                    .zip(normals.iter())
-                    .zip(tex_coords_0.iter())
-                {
-                    vertices.extend_from_slice(position.as_slice());
-                    vertices.extend_from_slice(normal.as_slice());
-                    vertices.extend_from_slice(tex_coord_0.as_slice());
+                let tex_coords_1 = reader
+                    .read_tex_coords(1)
+                    .map_or(vec![glm::vec2(0.0, 0.0); positions.len()], convert_coords);
+
+                let convert_joints = |coords: gltf::mesh::util::ReadJoints<'_>| -> Vec<glm::Vec4> {
+                    coords
+                        .into_u16()
+                        .map(|joint| {
+                            glm::vec4(joint[0] as _, joint[1] as _, joint[2] as _, joint[3] as _)
+                        })
+                        .collect::<Vec<_>>()
+                };
+
+                let joints_0 = reader.read_joints(0).map_or(
+                    vec![glm::vec4(0.0, 0.0, 0.0, 0.0); positions.len()],
+                    convert_joints,
+                );
+
+                let convert_weights =
+                    |coords: gltf::mesh::util::ReadWeights<'_>| -> Vec<glm::Vec4> {
+                        coords.into_f32().map(glm::Vec4::from).collect::<Vec<_>>()
+                    };
+
+                let weights_0 = reader.read_weights(0).map_or(
+                    vec![glm::vec4(0.0, 0.0, 0.0, 0.0); positions.len()],
+                    convert_weights,
+                );
+
+                for index in 0..positions.len() {
+                    vertices.extend_from_slice(positions[index].as_slice());
+                    vertices.extend_from_slice(normals[index].as_slice());
+                    vertices.extend_from_slice(tex_coords_0[index].as_slice());
+                    vertices.extend_from_slice(tex_coords_1[index].as_slice());
+                    vertices.extend_from_slice(joints_0[index].as_slice());
+                    vertices.extend_from_slice(weights_0[index].as_slice());
                 }
 
                 let first_index = indices.len() as u32;
@@ -518,7 +598,8 @@ impl GltfAsset {
         }
     }
 
-    pub fn create_vertex_attributes() -> [vk::VertexInputAttributeDescription; 3] {
+    pub fn create_vertex_attributes() -> [vk::VertexInputAttributeDescription; 6] {
+        let float_size = std::mem::size_of::<f32>();
         let position_description = vk::VertexInputAttributeDescription::builder()
             .binding(0)
             .location(0)
@@ -530,27 +611,51 @@ impl GltfAsset {
             .binding(0)
             .location(1)
             .format(vk::Format::R32G32B32_SFLOAT)
-            .offset((3 * std::mem::size_of::<f32>()) as _)
+            .offset((3 * float_size) as _)
             .build();
 
-        let tex_coord_description = vk::VertexInputAttributeDescription::builder()
+        let tex_coord_0_description = vk::VertexInputAttributeDescription::builder()
             .binding(0)
             .location(2)
             .format(vk::Format::R32G32_SFLOAT)
-            .offset((6 * std::mem::size_of::<f32>()) as _)
+            .offset((6 * float_size) as _)
+            .build();
+
+        let tex_coord_1_description = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(3)
+            .format(vk::Format::R32G32_SFLOAT)
+            .offset((8 * float_size) as _)
+            .build();
+
+        let joint_0_description = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(4)
+            .format(vk::Format::R32G32_SFLOAT)
+            .offset((10 * float_size) as _)
+            .build();
+
+        let weight_0_description = vk::VertexInputAttributeDescription::builder()
+            .binding(0)
+            .location(5)
+            .format(vk::Format::R32G32_SFLOAT)
+            .offset((14 * float_size) as _)
             .build();
 
         [
             position_description,
             normal_description,
-            tex_coord_description,
+            tex_coord_0_description,
+            tex_coord_1_description,
+            joint_0_description,
+            weight_0_description,
         ]
     }
 
     pub fn create_vertex_input_descriptions() -> [vk::VertexInputBindingDescription; 1] {
         let vertex_input_binding_description = vk::VertexInputBindingDescription::builder()
             .binding(0)
-            .stride((8 * std::mem::size_of::<f32>()) as _)
+            .stride((18 * std::mem::size_of::<f32>()) as _)
             .input_rate(vk::VertexInputRate::VERTEX)
             .build();
         [vertex_input_binding_description]
