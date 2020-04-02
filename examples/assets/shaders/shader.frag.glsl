@@ -117,7 +117,7 @@ void main()
     {
       vec4 physicalDescriptor = texture(textures[material.metallicRoughnessTextureSet], fragCoords_0);
       metallic = physicalDescriptor.b * material.metallicFactor;
-      roughness = physicalDescriptor.g;
+      roughness = physicalDescriptor.g * material.roughnessFactor;
     }
 
   float ao = 1.0;
