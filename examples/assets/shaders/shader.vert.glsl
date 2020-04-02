@@ -25,7 +25,7 @@ layout(push_constant) uniform Constants {
 } constants;
 
 layout(location = 0) out vec3 fragNormal;
-layout(location = 1) out vec2 fragCoords;
+layout(location = 1) out vec2 fragCoords_0;
 layout(location = 2) out vec3 fragPosition;
 layout(location = 3) out vec3 fragCameraPosition;
 
@@ -34,7 +34,7 @@ void main() {
   position.y = -position.y;
 
   fragNormal = mat3(transpose(inverse(uboInstance.model))) * vNormal;
-  fragCoords = vCoords_0;
+  fragCoords_0 = vCoords_0;
   fragPosition = position.xyz;
   fragCameraPosition = uboView.cameraposition;
 
