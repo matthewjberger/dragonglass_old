@@ -1,5 +1,6 @@
-use crate::core::{Instance, LogicalDevice, PhysicalDevice, Surface};
+use crate::core::{DebugLayer, Instance, LogicalDevice, PhysicalDevice, Surface};
 use ash::{
+    extensions::khr::Swapchain,
     version::{DeviceV1_0, InstanceV1_0},
     vk,
 };
@@ -14,6 +15,11 @@ pub enum Error {
     #[snafu(display("Failed to create instance for context: {}", source))]
     InstanceCreation {
         source: crate::core::instance::Error,
+    },
+
+    #[snafu(display("Failed to create physical device for context: {}", source))]
+    PhysicalDeviceCreation {
+        source: crate::core::physical_device::Error,
     },
 
     #[snafu(display("Failed to create logical device for context: {}", source))]
@@ -42,9 +48,9 @@ impl VulkanContext {
         let instance = Instance::new().context(InstanceCreation)?;
         let surface = Surface::new(&instance, window);
         let physical_device =
-            PhysicalDevice::new(&instance, &surface).expect("Failed to get physical device!");
-        let logical_device =
-            LogicalDevice::new(&instance, &physical_device).context(LogicalDeviceCreation)?;
+            PhysicalDevice::new(&instance, &surface).context(PhysicalDeviceCreation)?;
+
+        let logical_device = Self::create_logical_device(&instance, &physical_device)?;
 
         let allocator_create_info = AllocatorCreateInfo {
             device: (*logical_device.logical_device()).clone(),
@@ -62,6 +68,37 @@ impl VulkanContext {
             logical_device,
             surface,
         })
+    }
+
+    fn create_logical_device(
+        instance: &Instance,
+        physical_device: &PhysicalDevice,
+    ) -> Result<LogicalDevice> {
+        let device_extensions = [Swapchain::name().as_ptr()];
+        let queue_creation_info_list = physical_device.build_queue_creation_info_list();
+        let device_features = vk::PhysicalDeviceFeatures::builder()
+            //.robust_buffer_access(true) // FIXME: Disable this in release builds
+            .sample_rate_shading(true)
+            .sampler_anisotropy(true)
+            .build();
+        let mut device_create_info_builder = vk::DeviceCreateInfo::builder()
+            .queue_create_infos(&queue_creation_info_list)
+            .enabled_extension_names(&device_extensions)
+            .enabled_features(&device_features);
+
+        let layer_name_vec = Instance::required_layers();
+        let layer_name_pointers = layer_name_vec.layer_name_pointers();
+        if DebugLayer::validation_layers_enabled() {
+            device_create_info_builder =
+                device_create_info_builder.enabled_layer_names(&layer_name_pointers)
+        }
+
+        LogicalDevice::new(
+            &instance,
+            &physical_device,
+            device_create_info_builder.build(),
+        )
+        .context(LogicalDeviceCreation)
     }
 
     pub fn max_usable_samples(&self) -> vk::SampleCountFlags {

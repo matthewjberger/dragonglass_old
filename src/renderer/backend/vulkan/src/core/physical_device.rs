@@ -120,4 +120,19 @@ impl PhysicalDevice {
             && features.sampler_anisotropy == vk::TRUE
         //FIXME: && features.robust_buffer_access == vk::TRUE
     }
+
+    pub fn build_queue_creation_info_list(&self) -> Vec<vk::DeviceQueueCreateInfo> {
+        // Build an array of DeviceQueueCreateInfo,
+        // one for each different family index
+        self.queue_family_index_set()
+            .indices()
+            .iter()
+            .map(|index| {
+                vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(*index)
+                    .queue_priorities(&[1.0f32])
+                    .build()
+            })
+            .collect::<Vec<_>>()
+    }
 }
