@@ -62,6 +62,6 @@ fn display_result(result: std::io::Result<Output>) {
             "Failed to find the shader compiler program: '{}'",
             SHADER_COMPILER_NAME,
         ),
-        Err(error) => panic!("Failed to compile shader: {}", error.description()),
+        Err(error) => panic!("Failed to compile shader: {}", error),
     }
 }
