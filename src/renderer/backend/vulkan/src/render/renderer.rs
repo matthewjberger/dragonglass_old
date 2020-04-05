@@ -442,11 +442,12 @@ impl Renderer {
             .color_write_mask(vk::ColorComponentFlags::all())
             .blend_enable(false)
             .build();
+        let color_blend_attachments = [color_blend_attachment];
 
         let color_blend_state_info = vk::PipelineColorBlendStateCreateInfo::builder()
             .logic_op_enable(false)
             .logic_op(vk::LogicOp::COPY)
-            .attachments(&[color_blend_attachment])
+            .attachments(&color_blend_attachments)
             .blend_constants([0.0, 0.0, 0.0, 0.0])
             .build();
 
