@@ -1,5 +1,5 @@
 // TODO: Make a type alias for the current device version (DeviceV1_0)
-use crate::{core::VulkanContext, resource::Buffer, sync::CurrentFrameSynchronization};
+use crate::{core::VulkanContext, resource::Buffer, sync::{Fence, CurrentFrameSynchronization}};
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -229,11 +229,18 @@ impl CommandPool {
             .build();
         let submit_info_arr = [submit_info];
 
+        // Create a fence to ensure that the command buffer has finished executing
+        let fence = Fence::new(self.context.clone(), vk::FenceCreateFlags::empty()).expect("Failed to create one-time fence!");
+
         unsafe {
             // Submit the command buffer
             logical_device
-                .queue_submit(queue, &submit_info_arr, vk::Fence::null())
+                .queue_submit(queue, &submit_info_arr, fence.fence())
                 .expect("Failed to submit command buffer to queue!");
+
+            logical_device
+                .wait_for_fences(&[fence.fence()], true, 100_000_000_000)
+                .expect("Failed to wait for one-time fence!");
 
             // Wait for the command buffer to be executed
             logical_device
