@@ -259,6 +259,7 @@ impl PbrPipelineData {
         };
 
         data.update_descriptor_set(
+            &renderer,
             renderer.context.clone(),
             number_of_meshes,
             &textures,
@@ -306,11 +307,33 @@ impl PbrPipelineData {
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .build();
+        let irradiance_cubemap_binding = vk::DescriptorSetLayoutBinding::builder()
+            .binding(4)
+            .descriptor_count(1)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .build();
+        let prefilter_cubemap_binding = vk::DescriptorSetLayoutBinding::builder()
+            .binding(5)
+            .descriptor_count(1)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .build();
+        let brdflut_binding = vk::DescriptorSetLayoutBinding::builder()
+            .binding(6)
+            .descriptor_count(1)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+            .build();
+
         let bindings = [
             ubo_binding,
             dynamic_ubo_binding,
             sampler_binding,
             cubemap_binding,
+            irradiance_cubemap_binding,
+            prefilter_cubemap_binding,
+            brdflut_binding,
         ];
 
         let layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
@@ -340,11 +363,29 @@ impl PbrPipelineData {
             descriptor_count: 1,
         };
 
+        let irradiance_cubemap_pool_size = vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: 1,
+        };
+
+        let prefilter_cubemap_pool_size = vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: 1,
+        };
+
+        let brdflut_pool_size = vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: 1,
+        };
+
         let pool_sizes = [
             ubo_pool_size,
             dynamic_ubo_pool_size,
             sampler_pool_size,
             cubemap_pool_size,
+            irradiance_cubemap_pool_size,
+            prefilter_cubemap_pool_size,
+            brdflut_pool_size,
         ];
 
         let pool_info = vk::DescriptorPoolCreateInfo::builder()
@@ -357,6 +398,7 @@ impl PbrPipelineData {
 
     fn update_descriptor_set(
         &self,
+        renderer: &Renderer,
         context: Arc<VulkanContext>,
         number_of_meshes: usize,
         textures: &[&GltfTextureData],
@@ -412,6 +454,27 @@ impl PbrPipelineData {
             .build();
         let cubemap_image_infos = [cubemap_image_info];
 
+        let irradiance_cubemap_image_info = vk::DescriptorImageInfo::builder()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(renderer.irradiance_view.as_ref().unwrap().view())
+            .sampler(renderer.irradiance_sampler.as_ref().unwrap().sampler())
+            .build();
+        let irradiance_cubemap_image_infos = [irradiance_cubemap_image_info];
+
+        let prefilter_cubemap_image_info = vk::DescriptorImageInfo::builder()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(renderer.prefilter_view.as_ref().unwrap().view())
+            .sampler(renderer.prefilter_sampler.as_ref().unwrap().sampler())
+            .build();
+        let prefilter_cubemap_image_infos = [prefilter_cubemap_image_info];
+
+        let brdflut_image_info = vk::DescriptorImageInfo::builder()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(renderer.brdflut_view.as_ref().unwrap().view())
+            .sampler(renderer.brdflut_sampler.as_ref().unwrap().sampler())
+            .build();
+        let brdflut_image_infos = [brdflut_image_info];
+
         let ubo_descriptor_write = vk::WriteDescriptorSet::builder()
             .dst_set(self.descriptor_set)
             .dst_binding(0)
@@ -444,11 +507,38 @@ impl PbrPipelineData {
             .image_info(&cubemap_image_infos)
             .build();
 
+        let irradiance_cubemap_descriptor_write = vk::WriteDescriptorSet::builder()
+            .dst_set(self.descriptor_set)
+            .dst_binding(4)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(&irradiance_cubemap_image_infos)
+            .build();
+
+        let prefilter_cubemap_descriptor_write = vk::WriteDescriptorSet::builder()
+            .dst_set(self.descriptor_set)
+            .dst_binding(5)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(&prefilter_cubemap_image_infos)
+            .build();
+
+        let brdflut_descriptor_write = vk::WriteDescriptorSet::builder()
+            .dst_set(self.descriptor_set)
+            .dst_binding(6)
+            .dst_array_element(0)
+            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+            .image_info(&brdflut_image_infos)
+            .build();
+
         let descriptor_writes = vec![
             ubo_descriptor_write,
             dynamic_ubo_descriptor_write,
             sampler_descriptor_write,
             cubemap_descriptor_write,
+            irradiance_cubemap_descriptor_write,
+            prefilter_cubemap_descriptor_write,
+            brdflut_descriptor_write,
         ];
 
         unsafe {

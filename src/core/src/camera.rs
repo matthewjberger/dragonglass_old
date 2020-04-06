@@ -86,7 +86,7 @@ pub fn fps_camera_key_system() -> Box<dyn Schedulable> {
                 let cameras = &mut query.iter(&mut world).collect::<Vec<_>>();
                 let camera = &mut cameras[0];
 
-                let velocity = (camera.speed * delta_time.0 as f32) + 0.02;
+                let velocity = (camera.speed * delta_time.0 as f32) + 0.002;
 
                 let x_delta = camera.right * velocity;
                 let y_delta = camera.front * velocity;

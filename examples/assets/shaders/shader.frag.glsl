@@ -9,6 +9,9 @@ layout(location = 3) in vec3 fragCameraPosition;
 
 layout(binding = 2) uniform sampler2D textures[100];
 layout(binding = 3) uniform samplerCube cubemap;
+layout(binding = 4) uniform samplerCube irradiance_cubemap;
+layout(binding = 5) uniform samplerCube prefilter_cubemap;
+layout(binding = 6) uniform sampler2D brdflut;
 
 layout(push_constant) uniform Material {
   vec4 baseColorFactor;
@@ -28,28 +31,7 @@ layout(location = 0) out vec4 outColor;
 
 const float PI = 3.14159265359;
 
-vec3 getNormalFromMap()
-{
-  if (material.normalTextureSet <= -1)
-    {
-      return fragNormal;
-    }
-
-  vec3 tangentNormal = texture(textures[material.normalTextureSet], fragCoords_0).xyz * 2.0 - 1.0;
-
-  vec3 Q1  = dFdx(fragPosition);
-  vec3 Q2  = dFdy(fragPosition);
-  vec2 st1 = dFdx(fragCoords_0);
-  vec2 st2 = dFdy(fragCoords_0);
-
-  vec3 N   = normalize(fragNormal);
-  vec3 T  = normalize(Q1*st2.t - Q2*st1.t);
-  vec3 B  = -normalize(cross(N, T));
-  mat3 TBN = mat3(T, B, N);
-
-  return normalize(TBN * tangentNormal);
-}
-
+// ----------------------------------------------------------------------------
 float DistributionGGX(vec3 N, vec3 H, float roughness)
 {
     float a = roughness*roughness;
@@ -63,7 +45,7 @@ float DistributionGGX(vec3 N, vec3 H, float roughness)
 
     return nom / denom;
 }
-
+// ----------------------------------------------------------------------------
 float GeometrySchlickGGX(float NdotV, float roughness)
 {
     float r = (roughness + 1.0);
@@ -74,7 +56,7 @@ float GeometrySchlickGGX(float NdotV, float roughness)
 
     return nom / denom;
 }
-
+// ----------------------------------------------------------------------------
 float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 {
     float NdotV = max(dot(N, V), 0.0);
@@ -84,12 +66,17 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness)
 
     return ggx1 * ggx2;
 }
-
+// ----------------------------------------------------------------------------
 vec3 fresnelSchlick(float cosTheta, vec3 F0)
 {
     return F0 + (1.0 - F0) * pow(1.0 - cosTheta, 5.0);
 }
-
+// ----------------------------------------------------------------------------
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
+{
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(1.0 - cosTheta, 5.0);
+}
+// ----------------------------------------------------------------------------
 void main()
 {
   vec3 lightPositions[2] = vec3[2](vec3(1.0, -1.0, 1.0),
@@ -127,8 +114,9 @@ void main()
       ao = occlusionTexture.r;
     }
 
-  vec3 N = getNormalFromMap();
+  vec3 N = fragNormal;
   vec3 V = normalize(fragCameraPosition - fragPosition);
+  vec3 R = reflect(-V, N);
 
   // calculate reflectance at normal incidence; if dia-electric (like plastic) use F0
   // of 0.04 and if it's a metal, use the albedo color as F0 (metallic workflow)
@@ -137,7 +125,7 @@ void main()
 
   // reflectance equation
   vec3 Lo = vec3(0.0);
-  for(int i = 0; i < 2; ++i)
+  for(int i = 0; i < 4; ++i)
     {
       // calculate per-light radiance
       vec3 L = normalize(lightPositions[i] - fragPosition);
@@ -170,23 +158,37 @@ void main()
       float NdotL = max(dot(N, L), 0.0);
 
       // add to outgoing radiance Lo
-      Lo += (kD * albedo / PI + specular) * radiance * NdotL;  // note that we already multiplied the BRDF by the Fresnel (kS) so we won't multiply by kS again
+      Lo += (kD * albedo / PI + specular) * radiance * NdotL; // note that we already multiplied the BRDF by the Fresnel (kS) so we won't multiply by kS again
     }
 
-  // TODO: Replace this ambient lighting with IBL, using an irradiance map
-  vec3 ambient = vec3(0.03) * albedo * ao;
+  // ambient lighting (we now use IBL as the ambient term)
+  vec3 F = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
+
+  vec3 kS = F;
+  vec3 kD = 1.0 - kS;
+  kD *= 1.0 - metallic;
+
+  vec3 irradiance = pow(texture(irradiance_cubemap, N).rgb, vec3(2.2));
+  vec3 diffuse      = irradiance * albedo;
+
+  // sample both the pre-filter map and the BRDF lut and combine them together as per the Split-Sum approximation to get the IBL specular part.
+  const float MAX_REFLECTION_LOD = 4.0;
+  vec3 prefilteredColor = pow(textureLod(prefilter_cubemap, R,  roughness * MAX_REFLECTION_LOD).rgb, vec3(2.2));
+  vec2 brdf  = texture(brdflut, vec2(max(dot(N, V), 0.0), roughness)).rg;
+  vec3 specular = prefilteredColor * (F * brdf.x + brdf.y);
+
+  vec3 ambient = (kD * diffuse + specular) * ao;
 
   vec3 color = ambient + Lo;
 
   // HDR tonemapping
   color = color / (color + vec3(1.0));
-
   // gamma correct
   color = pow(color, vec3(1.0/2.2));
 
   if (material.emissiveTextureSet > -1) {
-      vec4 emissiveMap = texture(textures[material.emissiveTextureSet], fragCoords_0);
-      color += pow(emissiveMap.rgb, vec3(2.2)) * material.emissiveFactor;
+    vec4 emissiveMap = texture(textures[material.emissiveTextureSet], fragCoords_0);
+    color += pow(emissiveMap.rgb, vec3(2.2)) * material.emissiveFactor;
   }
 
   outColor = vec4(color, baseColorAlpha);
