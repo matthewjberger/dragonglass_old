@@ -179,7 +179,7 @@ impl PbrPipeline {
         let push_constant_ranges = [push_constant_range];
 
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(&descriptor_set_layouts) // needed for uniforms in shaders
+            .set_layouts(&descriptor_set_layouts)
             .push_constant_ranges(&push_constant_ranges)
             .build();
 

@@ -10,7 +10,6 @@ pub struct Framebuffer {
 }
 
 impl Framebuffer {
-    // TODO: Refactor this to use less parameters
     pub fn new(context: Arc<VulkanContext>, create_info: vk::FramebufferCreateInfo) -> Self {
         let framebuffer = unsafe {
             context

@@ -1,5 +1,9 @@
 // TODO: Make a type alias for the current device version (DeviceV1_0)
-use crate::{core::VulkanContext, resource::Buffer, sync::{Fence, CurrentFrameSynchronization}};
+use crate::{
+    core::VulkanContext,
+    resource::Buffer,
+    sync::{CurrentFrameSynchronization, Fence},
+};
 use ash::{version::DeviceV1_0, vk};
 use std::sync::Arc;
 
@@ -139,6 +143,32 @@ impl CommandPool {
         }
     }
 
+    pub fn copy_image_to_image(
+        &self,
+        source: vk::Image,
+        destination: vk::Image,
+        source_layout: vk::ImageLayout,
+        destination_layout: vk::ImageLayout,
+        regions: &[vk::ImageCopy],
+    ) {
+        self.execute_command_once(self.context.graphics_queue(), |command_buffer| {
+            unsafe {
+                self.context
+                    .logical_device()
+                    .logical_device()
+                    .cmd_copy_image(
+                        command_buffer,
+                        source,
+                        source_layout,
+                        destination,
+                        destination_layout,
+                        &regions,
+                    )
+            };
+        });
+    }
+
+    // TODO: Remove transfer queue param, get graphics queue from context
     pub fn copy_buffer_to_buffer(
         &self,
         transfer_queue: vk::Queue,
@@ -156,6 +186,7 @@ impl CommandPool {
         });
     }
 
+    // TODO: Remove transition queue param, get graphics queue from context
     pub fn copy_buffer_to_image(
         &self,
         transition_queue: vk::Queue,
@@ -230,7 +261,8 @@ impl CommandPool {
         let submit_info_arr = [submit_info];
 
         // Create a fence to ensure that the command buffer has finished executing
-        let fence = Fence::new(self.context.clone(), vk::FenceCreateFlags::empty()).expect("Failed to create one-time fence!");
+        let fence = Fence::new(self.context.clone(), vk::FenceCreateFlags::empty())
+            .expect("Failed to create one-time fence!");
 
         unsafe {
             // Submit the command buffer

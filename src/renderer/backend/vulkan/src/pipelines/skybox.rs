@@ -12,7 +12,7 @@ use std::{ffi::CString, mem, sync::Arc};
 
 // TODO: Make common primitive geometry file (with indices)
 #[rustfmt::skip]
-const VERTICES: &[f32; 108] =
+pub const VERTICES: &[f32; 108] =
     &[
        -1.0,  1.0, -1.0,
        -1.0, -1.0, -1.0,
@@ -133,7 +133,7 @@ impl SkyboxPipeline {
         let descriptor_set_layouts = [descriptor_set_layout.layout()];
 
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(&descriptor_set_layouts) // needed for uniforms in shaders
+            .set_layouts(&descriptor_set_layouts)
             .build();
 
         let pipeline_layout =

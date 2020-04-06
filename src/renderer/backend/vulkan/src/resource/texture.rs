@@ -49,7 +49,7 @@ impl TextureDescription {
         }
     }
 
-    fn calculate_mip_levels(width: u32, height: u32) -> u32 {
+    pub fn calculate_mip_levels(width: u32, height: u32) -> u32 {
         ((width.min(height) as f32).log2().floor() + 1.0) as u32
     }
 
