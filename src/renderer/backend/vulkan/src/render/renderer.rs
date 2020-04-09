@@ -14,7 +14,14 @@ use crate::{
     sync::SynchronizationSet,
 };
 use ash::{version::DeviceV1_0, vk};
+use glob::glob;
 use nalgebra_glm as glm;
+use std::{
+    error::Error,
+    io,
+    path::Path,
+    process::{Command, Output},
+};
 use std::{ffi::CString, sync::Arc};
 
 pub struct Renderer {
@@ -39,6 +46,7 @@ pub struct Renderer {
     pub brdflut_texture: Option<Texture>,
     pub brdflut_view: Option<ImageView>,
     pub brdflut_sampler: Option<Sampler>,
+    pub can_reload: bool,
 }
 
 impl Renderer {
@@ -83,11 +91,51 @@ impl Renderer {
             brdflut_texture: None,
             brdflut_view: None,
             brdflut_sampler: None,
+            can_reload: false,
         };
 
         renderer.pbr_pipeline = Some(PbrPipeline::new(&mut renderer));
         renderer.skybox_pipeline = Some(SkyboxPipeline::new(&mut renderer));
         renderer
+    }
+
+    pub fn recompile_shaders(&mut self) {}
+
+    pub fn reload_pbr_pipeline(&mut self) {
+        match compile_shaders() {
+            Err(_) => {
+                println!("Failed to recompile shaders!");
+                return;
+            }
+            _ => {}
+        };
+
+        self.pbr_pipeline = None;
+        self.pbr_pipeline_data = None;
+
+        let pbr_pipeline = PbrPipeline::new(self);
+
+        let textures = self
+            .assets
+            .iter()
+            .flat_map(|asset| &asset.textures)
+            .collect::<Vec<_>>();
+
+        let number_of_meshes = self.assets.iter().fold(0, |total_meshes, asset| {
+            total_meshes + asset.number_of_meshes
+        });
+
+        let pbr_pipeline_data = PbrPipelineData::new(
+            &self,
+            number_of_meshes,
+            &textures,
+            &self.cubemap.as_ref().expect("Failed to get cubemap!"),
+        );
+        self.pbr_pipeline = Some(pbr_pipeline);
+        self.pbr_pipeline_data = Some(pbr_pipeline_data);
+
+        self.record_command_buffers();
+        println!("updated shaders");
     }
 
     #[allow(dead_code)]
@@ -1982,4 +2030,64 @@ struct PushBlockPrefilterEnv {
     mvp: glm::Mat4,
     roughness: f32,
     num_samples: u32,
+}
+
+type Result<T, E = Box<dyn Error>> = std::result::Result<T, E>;
+
+const SHADER_COMPILER_NAME: &str = "glslangValidator";
+
+fn compile_shaders() -> Result<()> {
+    let shader_directory = "examples/assets/shaders";
+    let shader_glob = shader_directory.to_owned() + "/**/*.glsl";
+    for entry in glob(&shader_glob)? {
+        if let Ok(shader_path) = entry {
+            compile_shader(&shader_path)?;
+        }
+    }
+    Ok(())
+}
+
+fn compile_shader(shader_path: &Path) -> Result<()> {
+    let parent_name = shader_path
+        .parent()
+        .ok_or("Failed to get shader parent directory name")?;
+
+    let file_name = shader_path.file_name().ok_or("Failed to get file_name")?;
+
+    let output_name = file_name
+        .to_str()
+        .ok_or("Failed to convert file_name os_str to string")?
+        .replace("glsl", "spv");
+
+    println!("Compiling {:?} -> {:?}", file_name, output_name);
+    let result = Command::new(SHADER_COMPILER_NAME)
+        .current_dir(&parent_name)
+        .arg("-V")
+        .arg(&file_name)
+        .arg("-o")
+        .arg(output_name)
+        .output();
+
+    display_result(result);
+
+    Ok(())
+}
+
+fn display_result(result: std::io::Result<Output>) {
+    match result {
+        Ok(output) if !output.status.success() => {
+            eprint!(
+                "Shader compilation output: {}",
+                String::from_utf8(output.stdout)
+                    .unwrap_or("Failed to convert stdout bytes to UTF-8 string".to_string())
+            );
+            eprintln!("Failed to compile shader: {}", output.status)
+        }
+        Ok(_) => println!("Shader compilation succeeded"),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => panic!(
+            "Failed to find the shader compiler program: '{}'",
+            SHADER_COMPILER_NAME,
+        ),
+        Err(error) => eprintln!("Failed to compile shader: {}", error),
+    }
 }

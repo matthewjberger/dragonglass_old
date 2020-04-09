@@ -1,6 +1,6 @@
 use dragonglass_backend_vulkan::{
     render::Renderer,
-    systems::render::{animation_system, prepare_renderer_system, render_system},
+    systems::render::{animation_system, prepare_renderer_system, reload_system, render_system},
 };
 use dragonglass_core::{
     camera::{fps_camera_key_system, fps_camera_mouse_system, Camera, CameraState},
@@ -94,6 +94,7 @@ impl App {
             .add_system(fps_camera_mouse_system())
             .add_system(fps_camera_key_system())
             .add_system(animation_system())
+            .add_system(reload_system())
             .flush()
             // More game simulation systems can go here
             .add_thread_local(render_system())

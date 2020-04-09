@@ -11,10 +11,12 @@ use ash::vk;
 use dragonglass_core::{
     camera::CameraState,
     components::{AssetName, Transform},
+    input::Input,
     AnimationState,
 };
 use legion::prelude::*;
 use nalgebra_glm as glm;
+use winit::VirtualKeyCode;
 
 pub fn prepare_renderer_system() -> Box<dyn Schedulable> {
     SystemBuilder::new("prepare_renderer")
@@ -28,6 +30,22 @@ pub fn prepare_renderer_system() -> Box<dyn Schedulable> {
             renderer.load_assets(&asset_names);
             renderer.allocate_command_buffers();
             renderer.record_command_buffers();
+        })
+}
+
+pub fn reload_system() -> Box<dyn Schedulable> {
+    SystemBuilder::new("hot_reload")
+        .write_resource::<Renderer>()
+        .read_resource::<Input>()
+        .build(move |_, _, (renderer, input), _| {
+            if input.is_key_pressed(VirtualKeyCode::F5) && renderer.can_reload {
+                renderer.can_reload = false;
+                renderer.reload_pbr_pipeline();
+            }
+
+            if !input.is_key_pressed(VirtualKeyCode::F5) {
+                renderer.can_reload = true;
+            }
         })
 }
 
