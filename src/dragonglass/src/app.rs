@@ -9,14 +9,15 @@ use dragonglass_core::{
     },
     components::{AssetName, Transform},
     input::Input,
-    AnimationState, DeltaTime,
+    AnimationState, AppState, DeltaTime,
 };
 use legion::prelude::*;
 use nalgebra_glm as glm;
 use std::time::Instant;
 use winit::{
     dpi::{LogicalPosition, LogicalSize},
-    ElementState, Event, EventsLoop, MouseButton, VirtualKeyCode, Window, WindowEvent,
+    ElementState, Event, EventsLoop, MouseButton, MouseScrollDelta, VirtualKeyCode, Window,
+    WindowEvent,
 };
 
 #[derive(Default)]
@@ -88,6 +89,8 @@ impl App {
 
         world.resources.insert(DeltaTime(0 as _));
 
+        world.resources.insert(AppState::default());
+
         // Register the render preparation system and its components
         let mut prepare_schedule = Schedule::builder()
             .add_system(prepare_renderer_system())
@@ -156,12 +159,18 @@ impl App {
             .resources
             .get_mut::<Input>()
             .expect("Failed to get input resource!");
+        let mut app_state = world
+            .resources
+            .get_mut::<AppState>()
+            .expect("Failed to get input resource!");
         let mut should_exit = false;
         let window_size = self
             .window
             .get_inner_size()
             .expect("Failed to get window inner size!");
         let mut cursor_moved = false;
+        input.mouse.wheel_delta = 0.0;
+
         self.event_loop.poll_events(|event| {
             if let Event::WindowEvent { event, .. } = event {
                 match event {
@@ -179,11 +188,9 @@ impl App {
                         }
                         *input.keystates.entry(keycode).or_insert(state) = state;
                     }
-                    WindowEvent::Resized(LogicalSize {
-                        width: _width,
-                        height: _height,
-                    }) => {
-                        // TODO: Handle resizing
+                    WindowEvent::Resized(LogicalSize { width, height }) => {
+                        app_state.window.width = width as u32;
+                        app_state.window.height = height as u32;
                     }
                     WindowEvent::MouseInput { button, state, .. } => {
                         let clicked = state == ElementState::Pressed;
@@ -203,6 +210,12 @@ impl App {
                             ((window_size.height / 2.0) - position.y) as _,
                         );
                         cursor_moved = true;
+                    }
+                    WindowEvent::MouseWheel {
+                        delta: MouseScrollDelta::LineDelta(_, v_lines),
+                        ..
+                    } => {
+                        input.mouse.wheel_delta = v_lines;
                     }
                     _ => {}
                 }

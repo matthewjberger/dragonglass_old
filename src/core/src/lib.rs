@@ -2,6 +2,17 @@ pub mod camera;
 pub mod components;
 pub mod input;
 
+#[derive(Default)]
+pub struct AppState {
+    pub window: Window,
+}
+
+#[derive(Default)]
+pub struct Window {
+    pub width: u32,
+    pub height: u32,
+}
+
 pub struct DeltaTime(pub f64);
 
 pub struct AnimationState {

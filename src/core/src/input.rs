@@ -16,6 +16,7 @@ pub struct Mouse {
     pub position: glm::Vec2,
     pub position_delta: glm::Vec2,
     pub offset_from_center: glm::Vec2,
+    pub wheel_delta: f32,
 }
 
 impl Default for Mouse {
@@ -26,6 +27,7 @@ impl Default for Mouse {
             position: glm::vec2(0.0, 0.0),
             position_delta: glm::vec2(0.0, 0.0),
             offset_from_center: glm::vec2(0.0, 0.0),
+            wheel_delta: 0.0,
         }
     }
 }
