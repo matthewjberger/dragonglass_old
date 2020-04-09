@@ -34,6 +34,9 @@ pub struct Camera {
     pub sensitivity: f32,
     pub yaw_degrees: f32,
     pub pitch_degrees: f32,
+    pub theta: f32,
+    pub phi: f32,
+    pub r: f32,
 }
 
 impl Default for Camera {
@@ -45,9 +48,12 @@ impl Default for Camera {
             up: glm::vec3(0.0, 0.0, 0.0),
             world_up: glm::vec3(0.0, 1.0, 0.0),
             speed: 20.0,
-            sensitivity: 0.05,
             yaw_degrees: -90.0,
             pitch_degrees: 0.0,
+            theta: 0.0_f32.to_radians(),
+            phi: 45.0_f32.to_radians(),
+            r: 5.0,
+            sensitivity: 2.0,
         }
     }
 }
@@ -74,7 +80,17 @@ impl Camera {
         self.right = self.front.cross(&self.world_up).normalize();
         self.up = self.right.cross(&self.front).normalize();
     }
+
+    // TODO: separate this out and use a trait for common camera functionality
+    pub fn calculate_vectors_orbital(&mut self) {
+        self.position = glm::vec3(
+            self.r * self.phi.sin() * self.theta.sin(),
+            self.r * self.phi.cos(),
+            self.r * self.phi.sin() * self.theta.cos(),
+        );
+    }
 }
+
 pub fn fps_camera_key_system() -> Box<dyn Schedulable> {
     SystemBuilder::new("fps_camera_key")
         .read_resource::<Input>()
@@ -140,6 +156,41 @@ pub fn fps_camera_mouse_system() -> Box<dyn Schedulable> {
 
             let target = camera.position + camera.front;
             camera_state.view = glm::look_at(&camera.position, &target, &camera.up);
+            camera_state.position = camera.position;
+        })
+}
+
+pub fn orbital_camera_mouse_system() -> Box<dyn Schedulable> {
+    SystemBuilder::new("orbital_camera_mouse")
+        .read_resource::<Input>()
+        .write_resource::<CameraState>()
+        .with_query(<Write<Camera>>::query())
+        .build(move |_, mut world, (input, camera_state), query| {
+            // TODO: Support multiple cameras
+            let camera = &mut query.iter(&mut world).collect::<Vec<_>>()[0];
+
+            // TODO: Move this to an app state resource
+            let width = 800;
+            let height = 600;
+
+            if input.mouse.is_left_clicked {
+                let delta = input.mouse.position_delta;
+                let x_ratio = (delta.x as f32 / width as f32) * camera.sensitivity;
+                let y_ratio = (delta.y as f32 / height as f32) * camera.sensitivity;
+                let theta = x_ratio * 180.0_f32.to_radians();
+                let phi = y_ratio * 90.0_f32.to_radians();
+                camera.theta -= theta;
+                camera.phi += phi;
+                camera.phi =
+                    glm::clamp_scalar(camera.phi, 10.0_f32.to_radians(), 170.0_f32.to_radians());
+            }
+
+            camera.calculate_vectors_orbital();
+            camera_state.view = glm::look_at(
+                &camera.position,
+                &glm::vec3(0.0, 0.0, 0.0),
+                &camera.world_up,
+            );
             camera_state.position = camera.position;
         })
 }

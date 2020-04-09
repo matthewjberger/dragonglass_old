@@ -14,6 +14,7 @@ pub struct Mouse {
     pub is_left_clicked: bool,
     pub is_right_clicked: bool,
     pub position: glm::Vec2,
+    pub position_delta: glm::Vec2,
     pub offset_from_center: glm::Vec2,
 }
 
@@ -23,6 +24,7 @@ impl Default for Mouse {
             is_left_clicked: false,
             is_right_clicked: false,
             position: glm::vec2(0.0, 0.0),
+            position_delta: glm::vec2(0.0, 0.0),
             offset_from_center: glm::vec2(0.0, 0.0),
         }
     }

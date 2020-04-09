@@ -3,7 +3,10 @@ use dragonglass_backend_vulkan::{
     systems::render::{animation_system, prepare_renderer_system, reload_system, render_system},
 };
 use dragonglass_core::{
-    camera::{fps_camera_key_system, fps_camera_mouse_system, Camera, CameraState},
+    camera::{
+        fps_camera_key_system, fps_camera_mouse_system, orbital_camera_mouse_system, Camera,
+        CameraState,
+    },
     components::{AssetName, Transform},
     input::Input,
     AnimationState, DeltaTime,
@@ -71,7 +74,7 @@ impl App {
     pub fn run(&mut self) {
         log::debug!("Running application.");
 
-        self.stow_cursor();
+        // self.stow_cursor();
 
         let mut world = World::new();
 
@@ -91,8 +94,9 @@ impl App {
             .build();
 
         let mut schedule = Schedule::builder()
-            .add_system(fps_camera_mouse_system())
-            .add_system(fps_camera_key_system())
+            .add_system(orbital_camera_mouse_system())
+            // .add_system(fps_camera_mouse_system())
+            // .add_system(fps_camera_key_system())
             .add_system(animation_system())
             .add_system(reload_system())
             .flush()
@@ -102,10 +106,8 @@ impl App {
 
         let mut camera = Camera {
             speed: 5.0,
-            position: glm::vec3(3.8, -3.16, -1.59),
             ..Default::default()
         };
-        camera.look_at(&glm::vec3(0.0, 0.0, 0.0));
         world.insert((), vec![(camera,)]);
         world.insert(
             (),
@@ -128,7 +130,7 @@ impl App {
                 break;
             }
 
-            self.center_cursor();
+            // self.center_cursor();
 
             schedule.execute(&mut world);
 
@@ -159,6 +161,7 @@ impl App {
             .window
             .get_inner_size()
             .expect("Failed to get window inner size!");
+        let mut cursor_moved = false;
         self.event_loop.poll_events(|event| {
             if let Event::WindowEvent { event, .. } = event {
                 match event {
@@ -191,16 +194,23 @@ impl App {
                         }
                     }
                     WindowEvent::CursorMoved { position, .. } => {
-                        input.mouse.position = glm::vec2(position.x as _, position.y as _);
+                        let last_position = input.mouse.position;
+                        let current_position = glm::vec2(position.x as _, position.y as _);
+                        input.mouse.position = current_position;
+                        input.mouse.position_delta = current_position - last_position;
                         input.mouse.offset_from_center = glm::vec2(
                             ((window_size.width / 2.0) - position.x) as _,
                             ((window_size.height / 2.0) - position.y) as _,
                         );
+                        cursor_moved = true;
                     }
                     _ => {}
                 }
             }
         });
         self.should_exit = should_exit;
+        if !cursor_moved {
+            input.mouse.position_delta = glm::vec2(0.0, 0.0);
+        }
     }
 }
