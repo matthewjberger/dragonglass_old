@@ -217,6 +217,9 @@ impl App {
                     } => {
                         input.mouse.wheel_delta = v_lines;
                     }
+                    WindowEvent::DroppedFile(file_pathbuf) => {
+                        println!("Received file: {:?}", file_pathbuf);
+                    }
                     _ => {}
                 }
             }
