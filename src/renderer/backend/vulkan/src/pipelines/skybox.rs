@@ -160,7 +160,7 @@ impl SkyboxPipeline {
             .viewport_state(&viewport_create_info)
             .dynamic_state(&dynamic_state_create_info)
             .layout(pipeline_layout.layout())
-            .render_pass(renderer.vulkan_swapchain.render_pass.render_pass())
+            .render_pass(renderer.vulkan_swapchain().render_pass.render_pass())
             .subpass(0)
             .build();
 

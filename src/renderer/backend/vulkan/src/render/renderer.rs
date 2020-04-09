@@ -22,7 +22,7 @@ use std::{ffi::CString, sync::Arc};
 
 pub struct Renderer {
     pub context: Arc<VulkanContext>,
-    pub vulkan_swapchain: VulkanSwapchain,
+    vulkan_swapchain: Option<VulkanSwapchain>,
     pub synchronization_set: SynchronizationSet,
     pub current_frame: usize,
     pub command_pool: CommandPool,
@@ -63,7 +63,11 @@ impl Renderer {
             .expect("Failed to get the window's inner size!");
         let dimensions = [logical_size.width as u32, logical_size.height as u32];
 
-        let vulkan_swapchain = VulkanSwapchain::new(context.clone(), dimensions, &command_pool);
+        let vulkan_swapchain = Some(VulkanSwapchain::new(
+            context.clone(),
+            dimensions,
+            &command_pool,
+        ));
 
         let mut renderer = Renderer {
             context,
@@ -93,6 +97,12 @@ impl Renderer {
         renderer.pbr_pipeline = Some(PbrPipeline::new(&mut renderer));
         renderer.skybox_pipeline = Some(SkyboxPipeline::new(&mut renderer));
         renderer
+    }
+
+    pub fn vulkan_swapchain(&self) -> &VulkanSwapchain {
+        self.vulkan_swapchain
+            .as_ref()
+            .expect("Failed to get vulkan swapchain!")
     }
 
     pub fn recompile_shaders(&mut self) {}
@@ -137,10 +147,28 @@ impl Renderer {
     }
 
     #[allow(dead_code)]
-    pub fn recreate_swapchain(&mut self, _: Option<[u32; 2]>) {
-        log::debug!("Recreating swapchain");
+    pub fn recreate_swapchain(&mut self, dimensions: &glm::Vec2) {
+        println!("Recreating swapchain");
         self.context.logical_device().wait_idle();
-        // TODO: Implement swapchain recreation
+
+        self.vulkan_swapchain = None;
+        let new_swapchain = VulkanSwapchain::new(
+            self.context.clone(),
+            [dimensions.x as _, dimensions.y as _],
+            &self.command_pool,
+        );
+        self.vulkan_swapchain = Some(new_swapchain);
+
+        let pbr_pipeline = PbrPipeline::new(self);
+        let skybox_pipeline = SkyboxPipeline::new(self);
+
+        self.pbr_pipeline = None;
+        self.skybox_pipeline = None;
+
+        self.pbr_pipeline = Some(pbr_pipeline);
+        self.skybox_pipeline = Some(skybox_pipeline);
+
+        self.record_command_buffers();
     }
 
     pub fn load_assets(&mut self, asset_names: &[String]) {
@@ -214,7 +242,7 @@ impl Renderer {
 
     pub fn allocate_command_buffers(&mut self) {
         // Allocate one command buffer per swapchain image
-        let number_of_framebuffers = self.vulkan_swapchain.framebuffers.len();
+        let number_of_framebuffers = self.vulkan_swapchain().framebuffers.len();
         self.command_pool
             .allocate_command_buffers(number_of_framebuffers as _);
     }
@@ -227,7 +255,7 @@ impl Renderer {
             .enumerate()
             .for_each(|(index, buffer)| {
                 let command_buffer = *buffer;
-                let framebuffer = self.vulkan_swapchain.framebuffers[index].framebuffer();
+                let framebuffer = self.vulkan_swapchain().framebuffers[index].framebuffer();
                 self.draw(framebuffer, command_buffer);
             });
     }
@@ -259,11 +287,11 @@ impl Renderer {
         ];
 
         let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
-            .render_pass(self.vulkan_swapchain.render_pass.render_pass())
+            .render_pass(self.vulkan_swapchain().render_pass.render_pass())
             .framebuffer(framebuffer)
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
-                extent: self.vulkan_swapchain.swapchain.properties().extent,
+                extent: self.vulkan_swapchain().swapchain.properties().extent,
             })
             .clear_values(&clear_values)
             .build();
@@ -345,7 +373,7 @@ impl Renderer {
 
     pub fn update_viewport(&self, command_buffer: vk::CommandBuffer) {
         let device = self.context.logical_device().logical_device();
-        let extent = self.vulkan_swapchain.swapchain.properties().extent;
+        let extent = self.vulkan_swapchain().swapchain.properties().extent;
 
         let viewport = vk::Viewport {
             x: 0.0,
