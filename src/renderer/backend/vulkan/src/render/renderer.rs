@@ -5,7 +5,10 @@ use crate::{
         pbr::{PbrPipeline, PbrPipelineData, PbrRenderer},
         skybox::{SkyboxPipeline, SkyboxPipelineData, SkyboxRenderer, VERTICES},
     },
-    render::{Framebuffer, GraphicsPipeline, RenderPass, VulkanSwapchain},
+    render::{
+        shader_compilation::compile_shaders, Framebuffer, GraphicsPipeline, RenderPass,
+        VulkanSwapchain,
+    },
     resource::{
         texture::{Cubemap, CubemapFaces, Texture, TextureDescription},
         CommandPool, DescriptorPool, DescriptorSetLayout, ImageView, PipelineLayout, Sampler,
@@ -16,8 +19,6 @@ use crate::{
 use ash::{version::DeviceV1_0, vk};
 use nalgebra_glm as glm;
 use std::{ffi::CString, sync::Arc};
-use support::shader_compilation::compile_shaders;
-use winit::window::Window;
 
 pub struct Renderer {
     pub context: Arc<VulkanContext>,
@@ -45,7 +46,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(window: &Window) -> Self {
+    pub fn new(window: &winit::Window) -> Self {
         let context =
             Arc::new(VulkanContext::new(&window).expect("Failed to create VulkanContext"));
 
@@ -57,7 +58,9 @@ impl Renderer {
         let transient_command_pool =
             CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::TRANSIENT);
 
-        let logical_size = window.inner_size();
+        let logical_size = window
+            .get_inner_size()
+            .expect("Failed to get the window's inner size!");
         let dimensions = [logical_size.width as u32, logical_size.height as u32];
 
         let vulkan_swapchain = Some(VulkanSwapchain::new(
@@ -107,9 +110,13 @@ impl Renderer {
     pub fn reload_pbr_pipeline(&mut self) {
         let shader_directory = "examples/assets/shaders";
         let shader_glob = shader_directory.to_owned() + "/**/shader*.glsl";
-        if compile_shaders(&shader_glob).is_err() {
-            println!("Failed to recompile shaders!");
-        }
+        match compile_shaders(&shader_glob) {
+            Err(_) => {
+                println!("Failed to recompile shaders!");
+                return;
+            }
+            _ => {}
+        };
 
         self.pbr_pipeline = None;
         self.pbr_pipeline_data = None;
@@ -136,9 +143,12 @@ impl Renderer {
         self.pbr_pipeline_data = Some(pbr_pipeline_data);
 
         self.record_command_buffers();
+        println!("updated shaders");
     }
 
-    pub fn recreate_swapchain(&mut self, dimensions: glm::Vec2) {
+    #[allow(dead_code)]
+    pub fn recreate_swapchain(&mut self, dimensions: &glm::Vec2) {
+        println!("Recreating swapchain");
         self.context.logical_device().wait_idle();
 
         self.vulkan_swapchain = None;
@@ -1184,7 +1194,7 @@ impl Renderer {
         let scissors = [scissor];
 
         for mip_level in 0..mip_levels {
-            for (face, matrix) in matrices.iter().enumerate() {
+            for face in 0..6 {
                 let current_dimension = dimension as f32 * 0.5_f32.powf(mip_level as f32);
                 viewport.width = current_dimension;
                 viewport.height = current_dimension;
@@ -1205,7 +1215,7 @@ impl Renderer {
 
                         let push_block_irradiance = PushBlockIrradiance {
                             mvp: glm::perspective(std::f32::consts::PI / 2.0, 1.0, 0.1, 512.0)
-                                * matrix,
+                                * matrices[face],
                             ..Default::default()
                         };
 
@@ -1848,7 +1858,7 @@ impl Renderer {
         let scissors = [scissor];
 
         for mip_level in 0..mip_levels {
-            for (face, matrix) in matrices.iter().enumerate() {
+            for face in 0..6 {
                 let current_dimension = dimension as f32 * 0.5_f32.powf(mip_level as f32);
                 viewport.width = current_dimension;
                 viewport.height = current_dimension;
@@ -1869,7 +1879,7 @@ impl Renderer {
 
                         let push_block_prefilter = PushBlockPrefilterEnv {
                             mvp: glm::perspective(std::f32::consts::PI / 2.0, 1.0, 0.1, 512.0)
-                                * matrix,
+                                * matrices[face],
                             roughness: mip_level as f32 / (mip_levels - 1) as f32,
                             num_samples: 32,
                         };
@@ -2023,12 +2033,6 @@ impl Renderer {
         );
 
         (texture, image_view, sampler)
-    }
-}
-
-impl Drop for Renderer {
-    fn drop(&mut self) {
-        self.context.logical_device().wait_idle();
     }
 }
 

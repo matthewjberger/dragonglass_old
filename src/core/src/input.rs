@@ -1,6 +1,6 @@
 use nalgebra_glm as glm;
 use std::collections::HashMap;
-use winit::event::{ElementState, VirtualKeyCode};
+use winit::{ElementState, VirtualKeyCode};
 
 pub type KeyMap = HashMap<VirtualKeyCode, ElementState>;
 

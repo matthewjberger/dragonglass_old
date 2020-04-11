@@ -6,7 +6,7 @@ use std::{
     process::{Command, Output},
 };
 
-pub type Result<T, E = Box<dyn Error>> = std::result::Result<T, E>;
+type Result<T, E = Box<dyn Error>> = std::result::Result<T, E>;
 
 const SHADER_COMPILER_NAME: &str = "glslangValidator";
 
@@ -50,9 +50,8 @@ fn display_result(result: std::io::Result<Output>) {
         Ok(output) if !output.status.success() => {
             eprint!(
                 "Shader compilation output: {}",
-                String::from_utf8(output.stdout).unwrap_or_else(|_| {
-                    "Failed to convert stdout bytes to UTF-8 string".to_string()
-                })
+                String::from_utf8(output.stdout)
+                    .unwrap_or("Failed to convert stdout bytes to UTF-8 string".to_string())
             );
             eprintln!("Failed to compile shader: {}", output.status)
         }

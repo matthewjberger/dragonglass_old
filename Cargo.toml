@@ -1,8 +1,8 @@
 [workspace]
 
 members = [
+    "src/dragonglass",
     "src/renderer/backend/vulkan",
-    "src/renderer/backend/vulkan/support",
     "src/core",
     "examples",
 ]
