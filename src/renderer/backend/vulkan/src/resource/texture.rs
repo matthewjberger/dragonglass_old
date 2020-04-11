@@ -18,72 +18,77 @@ pub struct TextureDescription {
 }
 
 impl TextureDescription {
-    pub fn from_file(path: &str, format: vk::Format) -> Self {
+    pub fn from_file(path: &str) -> Self {
         let image = image::open(path).expect("Failed to open image path!");
-        Self::from_image(&image, format)
+        Self::from_image(&image)
     }
 
-    pub fn from_image(image: &DynamicImage, format: vk::Format) -> Self {
-        let image = image.to_rgba();
-        let width = image.width();
-        let height = image.height();
-        Self {
+    pub fn from_image(image: &DynamicImage) -> Self {
+        let (format, (width, height)) = match image {
+            DynamicImage::ImageRgb8(buffer) => (vk::Format::R8G8B8_UNORM, buffer.dimensions()),
+            DynamicImage::ImageRgba8(buffer) => (vk::Format::R8G8B8A8_UNORM, buffer.dimensions()),
+            DynamicImage::ImageBgr8(buffer) => (vk::Format::B8G8R8_UNORM, buffer.dimensions()),
+            DynamicImage::ImageBgra8(buffer) => (vk::Format::B8G8R8A8_UNORM, buffer.dimensions()),
+            DynamicImage::ImageRgb16(buffer) => (vk::Format::R16G16B16_UNORM, buffer.dimensions()),
+            DynamicImage::ImageRgba16(buffer) => {
+                (vk::Format::R16G16B16A16_UNORM, buffer.dimensions())
+            }
+            _ => panic!("Failed to match the provided image format to a vulkan format!"),
+        };
+
+        let mut description = Self {
             format,
             width,
             height,
-            pixels: image.into_raw(),
+            pixels: image.to_bytes(),
             mip_levels: Self::calculate_mip_levels(width, height),
-        }
+        };
+        description.convert_24bit_formats();
+        description
     }
 
     pub fn from_gltf(data: &gltf::image::Data) -> Self {
         let format = Self::convert_to_vulkan_format(data.format);
-        let (pixels, format) = Self::convert_pixels(&data, format);
-        Self {
+        let mut description = Self {
             format,
             width: data.width,
             height: data.height,
-            pixels,
+            pixels: data.pixels.to_vec(),
             mip_levels: Self::calculate_mip_levels(data.width, data.height),
-        }
+        };
+        description.convert_24bit_formats();
+        description
     }
 
     pub fn calculate_mip_levels(width: u32, height: u32) -> u32 {
         ((width.min(height) as f32).log2().floor() + 1.0) as u32
     }
 
-    fn convert_pixels(
-        texture_properties: &gltf::image::Data,
-        mut texture_format: vk::Format,
-    ) -> (Vec<u8>, vk::Format) {
+    fn convert_24bit_formats(&mut self) {
         // 24-bit formats are unsupported, so they
         // need to have an alpha channel added to make them 32-bit
-        let pixels: Vec<u8> = match texture_format {
+        match self.format {
             vk::Format::R8G8B8_UNORM => {
-                texture_format = vk::Format::R8G8B8A8_UNORM;
-                Self::attach_alpha_channel(&texture_properties)
+                self.format = vk::Format::R8G8B8A8_UNORM;
+                self.attach_alpha_channel();
             }
             vk::Format::B8G8R8_UNORM => {
-                texture_format = vk::Format::B8G8R8A8_UNORM;
-                Self::attach_alpha_channel(&texture_properties)
+                self.format = vk::Format::B8G8R8A8_UNORM;
+                self.attach_alpha_channel();
             }
-            _ => texture_properties.pixels.to_vec(),
+            _ => {}
         };
-        (pixels, texture_format)
     }
 
-    fn attach_alpha_channel(texture_properties: &gltf::image::Data) -> Vec<u8> {
-        let image_buffer: RgbImage = ImageBuffer::from_raw(
-            texture_properties.width,
-            texture_properties.height,
-            texture_properties.pixels.to_vec(),
-        )
-        .expect("Failed to create an image buffer");
+    fn attach_alpha_channel(&mut self) {
+        let image_buffer: RgbImage =
+            ImageBuffer::from_raw(self.width, self.height, self.pixels.to_vec())
+                .expect("Failed to create an image buffer");
 
-        image_buffer
+        self.pixels = image_buffer
             .pixels()
             .flat_map(|pixel| pixel.to_rgba().channels().to_vec())
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>();
     }
 
     fn convert_to_vulkan_format(format: Format) -> vk::Format {
@@ -406,19 +411,19 @@ impl Cubemap {
         command_pool: &CommandPool,
         faces: &CubemapFaces,
     ) -> Self {
-        let format = vk::Format::R8G8B8A8_UNORM;
         let face_descriptions = faces
             .ordered_faces()
-            .map(|face| TextureDescription::from_file(&face, format))
+            .map(|face| TextureDescription::from_file(&face))
             .collect::<Vec<_>>();
 
         // TODO: Calculate miplevels and dimension
         let dimension = face_descriptions[0].width;
+        let format = face_descriptions[0].format;
         let cubemap_description = TextureDescription {
             width: dimension,
             height: dimension,
             pixels: Vec::new(),
-            format: vk::Format::R8G8B8A8_UNORM,
+            format,
             mip_levels: 1,
         };
 
