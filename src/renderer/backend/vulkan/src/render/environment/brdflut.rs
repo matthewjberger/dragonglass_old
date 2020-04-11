@@ -19,6 +19,90 @@ impl Brdflut {
     pub fn new(context: Arc<VulkanContext>, command_pool: &CommandPool) -> Self {
         let dimension = 512;
         let format = vk::Format::R16G16_SFLOAT;
+        let texture = Self::create_texture(context.clone(), dimension, format);
+        let view = Self::create_image_view(context.clone(), &texture, format);
+        let sampler = Self::create_sampler(context.clone());
+        let render_pass = Self::create_render_pass(context.clone(), format);
+
+        let attachments = [view.view()];
+        let create_info = vk::FramebufferCreateInfo::builder()
+            .render_pass(render_pass.render_pass())
+            .attachments(&attachments)
+            .width(dimension)
+            .height(dimension)
+            .layers(1)
+            .build();
+        let framebuffer = Framebuffer::new(context.clone(), create_info);
+
+        let clear_values = [vk::ClearValue {
+            color: vk::ClearColorValue {
+                float32: [0.0, 0.0, 0.0, 1.0],
+            },
+        }];
+
+        let extent = vk::Extent2D::builder()
+            .width(dimension)
+            .height(dimension)
+            .build();
+
+        let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+            .render_pass(render_pass.render_pass())
+            .framebuffer(framebuffer.framebuffer())
+            .render_area(vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent,
+            })
+            .clear_values(&clear_values)
+            .build();
+
+        let device = context.logical_device().logical_device();
+
+        let pipeline = Self::create_pipeline(context.clone(), &render_pass);
+
+        command_pool.execute_command_once(context.graphics_queue(), |command_buffer| unsafe {
+            device.cmd_begin_render_pass(
+                command_buffer,
+                &render_pass_begin_info,
+                vk::SubpassContents::INLINE,
+            );
+
+            let viewport = vk::Viewport {
+                x: 0.0,
+                y: 0.0,
+                width: dimension as _,
+                height: dimension as _,
+                min_depth: 0.0,
+                max_depth: 1.0,
+            };
+            let viewports = [viewport];
+
+            let scissor = vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent,
+            };
+            let scissors = [scissor];
+
+            device.cmd_set_viewport(command_buffer, 0, &viewports);
+            device.cmd_set_scissor(command_buffer, 0, &scissors);
+
+            device.cmd_bind_pipeline(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                pipeline.pipeline(),
+            );
+            device.cmd_draw(command_buffer, 3, 1, 0, 0);
+
+            device.cmd_end_render_pass(command_buffer);
+        });
+
+        Self {
+            texture,
+            view,
+            sampler,
+        }
+    }
+
+    fn create_texture(context: Arc<VulkanContext>, dimension: u32, format: vk::Format) -> Texture {
         let image_create_info = vk::ImageCreateInfo::builder()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(vk::Extent3D {
@@ -42,8 +126,14 @@ impl Brdflut {
             ..Default::default()
         };
 
-        let texture = Texture::new(context.clone(), &allocation_create_info, &image_create_info);
+        Texture::new(context, &allocation_create_info, &image_create_info)
+    }
 
+    fn create_image_view(
+        context: Arc<VulkanContext>,
+        texture: &Texture,
+        format: vk::Format,
+    ) -> ImageView {
         let create_info = vk::ImageViewCreateInfo::builder()
             .image(texture.image())
             .view_type(vk::ImageViewType::TYPE_2D)
@@ -62,8 +152,10 @@ impl Brdflut {
                 layer_count: 1,
             })
             .build();
-        let view = ImageView::new(context.clone(), create_info);
+        ImageView::new(context, create_info)
+    }
 
+    fn create_sampler(context: Arc<VulkanContext>) -> Sampler {
         let sampler_info = vk::SamplerCreateInfo::builder()
             .mag_filter(vk::Filter::LINEAR)
             .min_filter(vk::Filter::LINEAR)
@@ -81,10 +173,10 @@ impl Brdflut {
             .min_lod(0.0)
             .max_lod(1.0)
             .build();
-        let sampler = Sampler::new(context.clone(), sampler_info);
+        Sampler::new(context, sampler_info)
+    }
 
-        // Create render pass
-
+    fn create_render_pass(context: Arc<VulkanContext>, format: vk::Format) -> RenderPass {
         let color_attachment_description = vk::AttachmentDescription::builder()
             .format(format)
             .samples(vk::SampleCountFlags::TYPE_1)
@@ -140,32 +232,44 @@ impl Brdflut {
             .dependencies(&subpass_dependencies)
             .build();
 
-        let render_pass = RenderPass::new(context.clone(), &create_info);
+        RenderPass::new(context, &create_info)
+    }
 
-        let attachments = [view.view()];
-        let create_info = vk::FramebufferCreateInfo::builder()
-            .render_pass(render_pass.render_pass())
-            .attachments(&attachments)
-            .width(dimension)
-            .height(dimension)
-            .layers(1)
-            .build();
-        let framebuffer = Framebuffer::new(context.clone(), create_info);
+    fn create_shaders(context: Arc<VulkanContext>) -> (Shader, Shader, CString) {
+        let shader_entry_point_name =
+            CString::new("main").expect("Failed to create CString for shader entry point name!");
 
-        // Create an empty descriptor set layout
+        let vertex_shader = Shader::from_file(
+            context.clone(),
+            "examples/assets/shaders/genbrdflut.vert.spv",
+            vk::ShaderStageFlags::VERTEX,
+            &shader_entry_point_name,
+        )
+        .expect("Failed to create vertex shader!");
+
+        let fragment_shader = Shader::from_file(
+            context,
+            "examples/assets/shaders/genbrdflut.frag.spv",
+            vk::ShaderStageFlags::FRAGMENT,
+            &shader_entry_point_name,
+        )
+        .expect("Failed to create fragment shader!");
+
+        (vertex_shader, fragment_shader, shader_entry_point_name)
+    }
+
+    fn create_pipeline(context: Arc<VulkanContext>, render_pass: &RenderPass) -> GraphicsPipeline {
         let layout_create_info = vk::DescriptorSetLayoutCreateInfo::builder()
             .bindings(&[])
             .build();
         let descriptor_set_layout = DescriptorSetLayout::new(context.clone(), layout_create_info);
 
-        // Pipeline layout
         let descriptor_set_layouts = [descriptor_set_layout.layout()];
         let pipeline_layout_create_info = vk::PipelineLayoutCreateInfo::builder()
             .set_layouts(&descriptor_set_layouts)
             .build();
         let pipeline_layout = PipelineLayout::new(context.clone(), pipeline_layout_create_info);
 
-        // Pipeline
         let input_assembly_create_info = vk::PipelineInputAssemblyStateCreateInfo::builder()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST)
             .build();
@@ -193,6 +297,7 @@ impl Brdflut {
         let back_stencil_op_state = vk::StencilOpState::builder()
             .compare_op(vk::CompareOp::LESS_OR_EQUAL)
             .build();
+
         let depth_stencil_info = vk::PipelineDepthStencilStateCreateInfo::builder()
             .depth_test_enable(false)
             .depth_write_enable(false)
@@ -217,25 +322,8 @@ impl Brdflut {
 
         let vertex_input_create_info = vk::PipelineVertexInputStateCreateInfo::builder().build();
 
-        let shader_entry_point_name =
-            CString::new("main").expect("Failed to create CString for shader entry point name!");
-
-        let vertex_shader = Shader::from_file(
-            context.clone(),
-            "examples/assets/shaders/genbrdflut.vert.spv",
-            vk::ShaderStageFlags::VERTEX,
-            &shader_entry_point_name,
-        )
-        .expect("Failed to create vertex shader!");
-
-        let fragment_shader = Shader::from_file(
-            context.clone(),
-            "examples/assets/shaders/genbrdflut.frag.spv",
-            vk::ShaderStageFlags::FRAGMENT,
-            &shader_entry_point_name,
-        )
-        .expect("Failed to create fragment shader!");
-
+        let (vertex_shader, fragment_shader, _shader_entry_point_name) =
+            Self::create_shaders(context.clone());
         let shader_state_info = [vertex_shader.state_info(), fragment_shader.state_info()];
 
         let pipeline_create_info = vk::GraphicsPipelineCreateInfo::builder()
@@ -253,76 +341,11 @@ impl Brdflut {
             .subpass(0)
             .build();
 
-        let pipeline = GraphicsPipeline::new(
-            context.clone(),
+        GraphicsPipeline::new(
+            context,
             pipeline_create_info,
             pipeline_layout,
             descriptor_set_layout,
-        );
-
-        let clear_values = [vk::ClearValue {
-            color: vk::ClearColorValue {
-                float32: [0.0, 0.0, 0.0, 1.0],
-            },
-        }];
-
-        let extent = vk::Extent2D::builder()
-            .width(dimension)
-            .height(dimension)
-            .build();
-
-        let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
-            .render_pass(render_pass.render_pass())
-            .framebuffer(framebuffer.framebuffer())
-            .render_area(vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent,
-            })
-            .clear_values(&clear_values)
-            .build();
-
-        let device = context.logical_device().logical_device();
-
-        command_pool.execute_command_once(context.graphics_queue(), |command_buffer| unsafe {
-            device.cmd_begin_render_pass(
-                command_buffer,
-                &render_pass_begin_info,
-                vk::SubpassContents::INLINE,
-            );
-
-            let viewport = vk::Viewport {
-                x: 0.0,
-                y: 0.0,
-                width: dimension as _,
-                height: dimension as _,
-                min_depth: 0.0,
-                max_depth: 1.0,
-            };
-            let viewports = [viewport];
-
-            let scissor = vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent,
-            };
-            let scissors = [scissor];
-
-            device.cmd_set_viewport(command_buffer, 0, &viewports);
-            device.cmd_set_scissor(command_buffer, 0, &scissors);
-
-            device.cmd_bind_pipeline(
-                command_buffer,
-                vk::PipelineBindPoint::GRAPHICS,
-                pipeline.pipeline(),
-            );
-            device.cmd_draw(command_buffer, 3, 1, 0, 0);
-
-            device.cmd_end_render_pass(command_buffer);
-        });
-
-        Self {
-            texture,
-            view,
-            sampler,
-        }
+        )
     }
 }
