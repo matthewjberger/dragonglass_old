@@ -2,7 +2,7 @@ use crate::{
     core::VulkanContext,
     model::ModelBuffers,
     render::Renderer,
-    resource::{Buffer, CommandPool, ImageView, Sampler, Texture, TextureDescription},
+    resource::{ImageView, Sampler, Texture, TextureDescription},
 };
 use ash::vk;
 use gltf::animation::{util::ReadOutputs, Interpolation};
@@ -673,13 +673,7 @@ impl GltfTextureData {
         let description = TextureDescription::from_gltf(&image_data);
 
         let texture = Self::create_texture(renderer.context.clone(), &description);
-
-        Self::upload_texture_data(
-            renderer.context.clone(),
-            &renderer.command_pool,
-            &texture,
-            &description,
-        );
+        texture.upload_texture_data(&renderer.command_pool, &description);
 
         let view = Self::create_image_view(renderer.context.clone(), &texture, &description);
 
@@ -690,72 +684,6 @@ impl GltfTextureData {
             view,
             sampler,
         }
-    }
-
-    pub fn upload_texture_data(
-        context: Arc<VulkanContext>,
-        command_pool: &CommandPool,
-        texture: &Texture,
-        description: &TextureDescription,
-    ) {
-        let region = vk::BufferImageCopy::builder()
-            .buffer_offset(0)
-            .buffer_row_length(0)
-            .buffer_image_height(0)
-            .image_subresource(vk::ImageSubresourceLayers {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                mip_level: 0,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
-            .image_extent(vk::Extent3D {
-                width: description.width,
-                height: description.height,
-                depth: 1,
-            })
-            .build();
-        let regions = [region];
-        let buffer = Buffer::new_mapped_basic(
-            context.clone(),
-            texture.allocation_info().get_size() as _,
-            vk::BufferUsageFlags::TRANSFER_SRC,
-            vk_mem::MemoryUsage::CpuToGpu,
-        );
-        buffer.upload_to_buffer(&description.pixels, 0, std::mem::align_of::<u8>() as _);
-
-        let barrier = vk::ImageMemoryBarrier::builder()
-            .old_layout(vk::ImageLayout::UNDEFINED)
-            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .image(texture.image())
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: description.mip_levels,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .src_access_mask(vk::AccessFlags::empty())
-            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .build();
-        let barriers = [barrier];
-
-        command_pool.transition_image_layout(
-            &barriers,
-            vk::PipelineStageFlags::TOP_OF_PIPE,
-            vk::PipelineStageFlags::TRANSFER,
-        );
-
-        command_pool.copy_buffer_to_image(
-            context.graphics_queue(),
-            buffer.buffer(),
-            texture.image(),
-            &regions,
-        );
-
-        texture.generate_mipmaps(&command_pool, &description);
     }
 
     fn create_texture(context: Arc<VulkanContext>, description: &TextureDescription) -> Texture {

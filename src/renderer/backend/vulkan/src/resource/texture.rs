@@ -17,7 +17,6 @@ pub struct TextureDescription {
     pub mip_levels: u32,
 }
 
-#[allow(dead_code)]
 impl TextureDescription {
     pub fn from_file(path: &str, format: vk::Format) -> Self {
         let image = image::open(path).expect("Failed to open image path!");
@@ -125,6 +124,71 @@ impl Texture {
             allocation_info,
             context,
         }
+    }
+
+    pub fn upload_texture_data(
+        &self,
+        command_pool: &CommandPool,
+        description: &TextureDescription,
+    ) {
+        let region = vk::BufferImageCopy::builder()
+            .buffer_offset(0)
+            .buffer_row_length(0)
+            .buffer_image_height(0)
+            .image_subresource(vk::ImageSubresourceLayers {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                mip_level: 0,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+            .image_extent(vk::Extent3D {
+                width: description.width,
+                height: description.height,
+                depth: 1,
+            })
+            .build();
+        let regions = [region];
+        let buffer = Buffer::new_mapped_basic(
+            self.context.clone(),
+            self.allocation_info().get_size() as _,
+            vk::BufferUsageFlags::TRANSFER_SRC,
+            vk_mem::MemoryUsage::CpuToGpu,
+        );
+        buffer.upload_to_buffer(&description.pixels, 0, std::mem::align_of::<u8>() as _);
+
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .image(self.image())
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: description.mip_levels,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .src_access_mask(vk::AccessFlags::empty())
+            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .build();
+        let barriers = [barrier];
+
+        command_pool.transition_image_layout(
+            &barriers,
+            vk::PipelineStageFlags::TOP_OF_PIPE,
+            vk::PipelineStageFlags::TRANSFER,
+        );
+
+        command_pool.copy_buffer_to_image(
+            self.context.graphics_queue(),
+            buffer.buffer(),
+            self.image(),
+            &regions,
+        );
+
+        self.generate_mipmaps(&command_pool, &description);
     }
 
     pub fn generate_mipmaps(
