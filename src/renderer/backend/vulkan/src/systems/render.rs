@@ -80,7 +80,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                 let image_index = match image_index_result {
                     Ok((image_index, _)) => image_index,
                     Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                        renderer.recreate_swapchain(&dimensions);
+                        renderer.recreate_swapchain(dimensions);
                         return;
                     }
                     Err(error) => panic!("Error while acquiring next image. Cause: {}", error),
@@ -186,10 +186,10 @@ pub fn render_system() -> Box<dyn Runnable> {
 
                 match swapchain_presentation_result {
                     Ok(is_suboptimal) if is_suboptimal => {
-                        renderer.recreate_swapchain(&dimensions);
+                        renderer.recreate_swapchain(dimensions);
                     }
                     Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                        renderer.recreate_swapchain(&dimensions);
+                        renderer.recreate_swapchain(dimensions);
                     }
                     Err(error) => panic!("Failed to present queue. Cause: {}", error),
                     _ => {}

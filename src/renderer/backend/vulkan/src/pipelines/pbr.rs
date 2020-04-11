@@ -2,10 +2,7 @@ use crate::{
     core::VulkanContext,
     model::gltf::{GltfAsset, GltfTextureData, Primitive},
     render::{GraphicsPipeline, Renderer},
-    resource::{
-        texture::Cubemap, Buffer, DescriptorPool, DescriptorSetLayout, DummyImage, PipelineLayout,
-        Shader,
-    },
+    resource::{Buffer, DescriptorPool, DescriptorSetLayout, DummyImage, PipelineLayout, Shader},
 };
 use ash::{version::DeviceV1_0, vk};
 use dragonglass_core::byte_slice_from;
@@ -431,24 +428,33 @@ impl PbrPipelineData {
             }
         }
 
+        let irradiance_map = renderer
+            .irradiance_map
+            .as_ref()
+            .expect("Failed to get irradiance map!");
         let irradiance_cubemap_image_info = vk::DescriptorImageInfo::builder()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(renderer.irradiance_view.as_ref().unwrap().view())
-            .sampler(renderer.irradiance_sampler.as_ref().unwrap().sampler())
+            .image_view(irradiance_map.view.view())
+            .sampler(irradiance_map.sampler.sampler())
             .build();
         let irradiance_cubemap_image_infos = [irradiance_cubemap_image_info];
 
+        let prefilter_map = renderer
+            .prefilter_map
+            .as_ref()
+            .expect("Failed to get prefilter map!");
         let prefilter_cubemap_image_info = vk::DescriptorImageInfo::builder()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(renderer.prefilter_view.as_ref().unwrap().view())
-            .sampler(renderer.prefilter_sampler.as_ref().unwrap().sampler())
+            .image_view(prefilter_map.view.view())
+            .sampler(prefilter_map.sampler.sampler())
             .build();
         let prefilter_cubemap_image_infos = [prefilter_cubemap_image_info];
 
+        let brdflut = renderer.brdflut.as_ref().expect("Failed to get brdflut!");
         let brdflut_image_info = vk::DescriptorImageInfo::builder()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(renderer.brdflut_view.as_ref().unwrap().view())
-            .sampler(renderer.brdflut_sampler.as_ref().unwrap().sampler())
+            .image_view(brdflut.view.view())
+            .sampler(brdflut.sampler.sampler())
             .build();
         let brdflut_image_infos = [brdflut_image_info];
 
