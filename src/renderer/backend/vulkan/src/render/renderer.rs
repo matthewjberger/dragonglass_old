@@ -109,13 +109,9 @@ impl Renderer {
     pub fn reload_pbr_pipeline(&mut self) {
         let shader_directory = "examples/assets/shaders";
         let shader_glob = shader_directory.to_owned() + "/**/shader*.glsl";
-        match compile_shaders(&shader_glob) {
-            Err(_) => {
-                println!("Failed to recompile shaders!");
-                return;
-            }
-            _ => {}
-        };
+        if compile_shaders(&shader_glob).is_err() {
+            println!("Failed to recompile shaders!");
+        }
 
         self.pbr_pipeline = None;
         self.pbr_pipeline_data = None;
@@ -144,8 +140,7 @@ impl Renderer {
         self.record_command_buffers();
     }
 
-    #[allow(dead_code)]
-    pub fn recreate_swapchain(&mut self, dimensions: &glm::Vec2) {
+    pub fn recreate_swapchain(&mut self, dimensions: glm::Vec2) {
         self.context.logical_device().wait_idle();
 
         self.vulkan_swapchain = None;
@@ -1191,7 +1186,7 @@ impl Renderer {
         let scissors = [scissor];
 
         for mip_level in 0..mip_levels {
-            for face in 0..6 {
+            for (face, matrix) in matrices.iter().enumerate() {
                 let current_dimension = dimension as f32 * 0.5_f32.powf(mip_level as f32);
                 viewport.width = current_dimension;
                 viewport.height = current_dimension;
@@ -1212,7 +1207,7 @@ impl Renderer {
 
                         let push_block_irradiance = PushBlockIrradiance {
                             mvp: glm::perspective(std::f32::consts::PI / 2.0, 1.0, 0.1, 512.0)
-                                * matrices[face],
+                                * matrix,
                             ..Default::default()
                         };
 
@@ -1855,7 +1850,7 @@ impl Renderer {
         let scissors = [scissor];
 
         for mip_level in 0..mip_levels {
-            for face in 0..6 {
+            for (face, matrix) in matrices.iter().enumerate() {
                 let current_dimension = dimension as f32 * 0.5_f32.powf(mip_level as f32);
                 viewport.width = current_dimension;
                 viewport.height = current_dimension;
@@ -1876,7 +1871,7 @@ impl Renderer {
 
                         let push_block_prefilter = PushBlockPrefilterEnv {
                             mvp: glm::perspective(std::f32::consts::PI / 2.0, 1.0, 0.1, 512.0)
-                                * matrices[face],
+                                * matrix,
                             roughness: mip_level as f32 / (mip_levels - 1) as f32,
                             num_samples: 32,
                         };

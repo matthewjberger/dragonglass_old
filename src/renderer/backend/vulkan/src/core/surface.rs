@@ -5,8 +5,7 @@ use ash::{
     vk,
     vk::SurfaceKHR,
 };
-use raw_window_handle::{HasRawWindowHandle, RawWindowHandle::Windows};
-use winit::{dpi::LogicalSize, window::Window};
+use winit::window::Window;
 
 pub struct Surface {
     surface: AshSurface,
@@ -69,6 +68,7 @@ unsafe fn create_surface<E: EntryV1_0, I: InstanceV1_0>(
     window: &winit::window::Window,
 ) -> Result<vk::SurfaceKHR, vk::Result> {
     use ash::extensions::khr::Win32Surface;
+    use raw_window_handle::{HasRawWindowHandle, RawWindowHandle::Windows};
     use std::{ffi::c_void, ptr};
     use winapi::{shared::windef::HWND, um::libloaderapi::GetModuleHandleW};
 
@@ -93,16 +93,12 @@ unsafe fn create_surface<E: EntryV1_0, I: InstanceV1_0>(
 unsafe fn create_surface<E: EntryV1_0, I: InstanceV1_0>(
     entry: &E,
     instance: &I,
-    window: &winit::Window,
+    window: &Window,
 ) -> Result<vk::SurfaceKHR, vk::Result> {
     use ash::extensions::khr::XlibSurface;
-    use winit::os::unix::WindowExt;
-    let x11_display = window
-        .get_xlib_display()
-        .expect("Failed to get xlib display!");
-    let x11_window = window
-        .get_xlib_window()
-        .expect("Failed to get xlib window!");
+    use winit::platform::unix::WindowExtUnix;
+    let x11_display = window.xlib_display().expect("Failed to get xlib display!");
+    let x11_window = window.xlib_window().expect("Failed to get xlib window!");
     let x11_create_info = vk::XlibSurfaceCreateInfoKHR::builder()
         .window(x11_window)
         .dpy(x11_display as *mut vk::Display);
