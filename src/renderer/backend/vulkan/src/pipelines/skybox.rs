@@ -243,7 +243,6 @@ impl SkyboxPipeline {
 
 #[derive(Debug, Clone, Copy)]
 pub struct UniformBufferObject {
-    pub model: glm::Mat4,
     pub view: glm::Mat4,
     pub projection: glm::Mat4,
 }

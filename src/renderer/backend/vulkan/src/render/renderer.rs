@@ -133,22 +133,16 @@ impl Renderer {
             total_meshes + asset.number_of_meshes
         });
 
-        let pbr_pipeline_data = PbrPipelineData::new(
-            &self,
-            number_of_meshes,
-            &textures,
-            &self.cubemap.as_ref().expect("Failed to get cubemap!"),
-        );
+        let pbr_pipeline_data = PbrPipelineData::new(&self, number_of_meshes, &textures);
         self.pbr_pipeline = Some(pbr_pipeline);
         self.pbr_pipeline_data = Some(pbr_pipeline_data);
 
         self.record_command_buffers();
-        println!("updated shaders");
+        println!("Reloaded pbr shaders.");
     }
 
     #[allow(dead_code)]
     pub fn recreate_swapchain(&mut self, dimensions: &glm::Vec2) {
-        println!("Recreating swapchain");
         self.context.logical_device().wait_idle();
 
         self.vulkan_swapchain = None;
@@ -171,37 +165,12 @@ impl Renderer {
         self.record_command_buffers();
     }
 
-    pub fn load_assets(&mut self, asset_names: &[String]) {
+    pub fn load_environment(&mut self, cubemap: &Cubemap) {
         let (brdflut_texture, brdflut_view, brdflut_sampler) =
             Self::generate_brdf_lut(self.context.clone(), &self.transient_command_pool);
         self.brdflut_texture = Some(brdflut_texture);
         self.brdflut_view = Some(brdflut_view);
         self.brdflut_sampler = Some(brdflut_sampler);
-
-        let mut assets = Vec::new();
-        for asset_name in asset_names.iter() {
-            assets.push(GltfAsset::new(&self, asset_name));
-        }
-
-        let number_of_meshes = assets.iter().fold(0, |total_meshes, asset| {
-            total_meshes + asset.number_of_meshes
-        });
-
-        let textures = assets
-            .iter()
-            .flat_map(|asset| &asset.textures)
-            .collect::<Vec<_>>();
-
-        let faces = CubemapFaces {
-            left: "examples/assets/skyboxes/bluemountains/left.jpg".to_string(),
-            right: "examples/assets/skyboxes/bluemountains/right.jpg".to_string(),
-            top: "examples/assets/skyboxes/bluemountains/top.jpg".to_string(),
-            bottom: "examples/assets/skyboxes/bluemountains/bottom.jpg".to_string(),
-            front: "examples/assets/skyboxes/bluemountains/front.jpg".to_string(),
-            back: "examples/assets/skyboxes/bluemountains/back.jpg".to_string(),
-        };
-
-        let cubemap = Cubemap::new(self.context.clone(), &self.transient_command_pool, &faces);
 
         let cube = ModelBuffers::new(&self.transient_command_pool, VERTICES, None);
 
@@ -226,13 +195,37 @@ impl Renderer {
         self.prefilter_texture = Some(prefilter_texture);
         self.prefilter_view = Some(prefilter_view);
         self.prefilter_sampler = Some(prefilter_sampler);
+    }
 
-        self.pbr_pipeline_data = Some(PbrPipelineData::new(
-            &self,
-            number_of_meshes,
-            &textures,
-            &cubemap,
-        ));
+    pub fn load_assets(&mut self, asset_names: &[String]) {
+        let faces = CubemapFaces {
+            left: "examples/assets/skyboxes/bluemountains/left.jpg".to_string(),
+            right: "examples/assets/skyboxes/bluemountains/right.jpg".to_string(),
+            top: "examples/assets/skyboxes/bluemountains/top.jpg".to_string(),
+            bottom: "examples/assets/skyboxes/bluemountains/bottom.jpg".to_string(),
+            front: "examples/assets/skyboxes/bluemountains/front.jpg".to_string(),
+            back: "examples/assets/skyboxes/bluemountains/back.jpg".to_string(),
+        };
+
+        let cubemap = Cubemap::new(self.context.clone(), &self.transient_command_pool, &faces);
+
+        self.load_environment(&cubemap);
+
+        let mut assets = Vec::new();
+        for asset_name in asset_names.iter() {
+            assets.push(GltfAsset::new(&self, asset_name));
+        }
+
+        let number_of_meshes = assets.iter().fold(0, |total_meshes, asset| {
+            total_meshes + asset.number_of_meshes
+        });
+
+        let textures = assets
+            .iter()
+            .flat_map(|asset| &asset.textures)
+            .collect::<Vec<_>>();
+
+        self.pbr_pipeline_data = Some(PbrPipelineData::new(&self, number_of_meshes, &textures));
 
         let skybox_pipeline_data = SkyboxPipelineData::new(&self, &cubemap);
         self.skybox_pipeline_data = Some(skybox_pipeline_data);

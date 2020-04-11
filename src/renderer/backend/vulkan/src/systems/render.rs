@@ -106,7 +106,6 @@ pub fn render_system() -> Box<dyn Runnable> {
 
                 if let Some(skybox_data) = &renderer.skybox_pipeline_data.as_ref() {
                     let skybox_ubo = SkyboxUniformBufferObject {
-                        model: glm::translate(&glm::Mat4::identity(), &glm::vec3(0.0, 2.0, 0.0)),
                         view: camera_state.view,
                         projection,
                     };

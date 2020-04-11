@@ -8,10 +8,9 @@ layout(location = 2) in vec3 fragPosition;
 layout(location = 3) in vec3 fragCameraPosition;
 
 layout(binding = 2) uniform sampler2D textures[100];
-layout(binding = 3) uniform samplerCube cubemap;
-layout(binding = 4) uniform samplerCube irradiance_cubemap;
-layout(binding = 5) uniform samplerCube prefilter_cubemap;
-layout(binding = 6) uniform sampler2D brdflut;
+layout(binding = 3) uniform samplerCube irradiance_cubemap;
+layout(binding = 4) uniform samplerCube prefilter_cubemap;
+layout(binding = 5) uniform sampler2D brdflut;
 
 layout(push_constant) uniform Material {
   vec4 baseColorFactor;
