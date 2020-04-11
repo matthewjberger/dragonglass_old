@@ -6,6 +6,7 @@ use ash::{
 };
 use snafu::{ResultExt, Snafu};
 use vk_mem::{Allocator, AllocatorCreateInfo};
+use winit::window::Window;
 
 type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -44,7 +45,7 @@ pub struct VulkanContext {
 
 // TODO: Replace constructor return value with a result
 impl VulkanContext {
-    pub fn new(window: &winit::Window) -> Result<Self> {
+    pub fn new(window: &Window) -> Result<Self> {
         let instance = Instance::new().context(InstanceCreation)?;
         let surface = Surface::new(&instance, window);
         let physical_device =

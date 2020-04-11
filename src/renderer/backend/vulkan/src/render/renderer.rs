@@ -19,6 +19,7 @@ use crate::{
 use ash::{version::DeviceV1_0, vk};
 use nalgebra_glm as glm;
 use std::{ffi::CString, sync::Arc};
+use winit::window::Window;
 
 pub struct Renderer {
     pub context: Arc<VulkanContext>,
@@ -46,7 +47,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(window: &winit::Window) -> Self {
+    pub fn new(window: &Window) -> Self {
         let context =
             Arc::new(VulkanContext::new(&window).expect("Failed to create VulkanContext"));
 
@@ -58,9 +59,7 @@ impl Renderer {
         let transient_command_pool =
             CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::TRANSIENT);
 
-        let logical_size = window
-            .get_inner_size()
-            .expect("Failed to get the window's inner size!");
+        let logical_size = window.inner_size();
         let dimensions = [logical_size.width as u32, logical_size.height as u32];
 
         let vulkan_swapchain = Some(VulkanSwapchain::new(
@@ -143,12 +142,10 @@ impl Renderer {
         self.pbr_pipeline_data = Some(pbr_pipeline_data);
 
         self.record_command_buffers();
-        println!("updated shaders");
     }
 
     #[allow(dead_code)]
     pub fn recreate_swapchain(&mut self, dimensions: &glm::Vec2) {
-        println!("Recreating swapchain");
         self.context.logical_device().wait_idle();
 
         self.vulkan_swapchain = None;
@@ -2033,6 +2030,12 @@ impl Renderer {
         );
 
         (texture, image_view, sampler)
+    }
+}
+
+impl Drop for Renderer {
+    fn drop(&mut self) {
+        self.context.logical_device().wait_idle();
     }
 }
 
