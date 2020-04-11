@@ -5,10 +5,7 @@ use crate::{
         pbr::{PbrPipeline, PbrPipelineData, PbrRenderer},
         skybox::{SkyboxPipeline, SkyboxPipelineData, SkyboxRenderer, VERTICES},
     },
-    render::{
-        shader_compilation::compile_shaders, Framebuffer, GraphicsPipeline, RenderPass,
-        VulkanSwapchain,
-    },
+    render::{Framebuffer, GraphicsPipeline, RenderPass, VulkanSwapchain},
     resource::{
         texture::{Cubemap, CubemapFaces, Texture, TextureDescription},
         CommandPool, DescriptorPool, DescriptorSetLayout, ImageView, PipelineLayout, Sampler,
@@ -19,6 +16,7 @@ use crate::{
 use ash::{version::DeviceV1_0, vk};
 use nalgebra_glm as glm;
 use std::{ffi::CString, sync::Arc};
+use support::shader_compilation::compile_shaders;
 use winit::window::Window;
 
 pub struct Renderer {

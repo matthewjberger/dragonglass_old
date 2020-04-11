@@ -6,13 +6,11 @@ use std::{
     process::{Command, Output},
 };
 
-type Result<T, E = Box<dyn Error>> = std::result::Result<T, E>;
+pub type Result<T, E = Box<dyn Error>> = std::result::Result<T, E>;
 
 const SHADER_COMPILER_NAME: &str = "glslangValidator";
 
-fn main() -> Result<()> {
-    let shader_directory = "assets/shaders";
-    let shader_glob = shader_directory.to_owned() + "/**/*.glsl";
+pub fn compile_shaders(shader_glob: &str) -> Result<()> {
     for entry in glob(&shader_glob)? {
         if let Ok(shader_path) = entry {
             compile_shader(&shader_path)?;
@@ -52,16 +50,17 @@ fn display_result(result: std::io::Result<Output>) {
         Ok(output) if !output.status.success() => {
             eprint!(
                 "Shader compilation output: {}",
-                String::from_utf8(output.stdout)
-                    .unwrap_or("Failed to convert stdout bytes to UTF-8 string".to_string())
+                String::from_utf8(output.stdout).unwrap_or_else(|_| {
+                    "Failed to convert stdout bytes to UTF-8 string".to_string()
+                })
             );
-            panic!("Failed to compile shader: {}", output.status)
+            eprintln!("Failed to compile shader: {}", output.status)
         }
         Ok(_) => println!("Shader compilation succeeded"),
         Err(error) if error.kind() == io::ErrorKind::NotFound => panic!(
             "Failed to find the shader compiler program: '{}'",
             SHADER_COMPILER_NAME,
         ),
-        Err(error) => panic!("Failed to compile shader: {}", error),
+        Err(error) => eprintln!("Failed to compile shader: {}", error),
     }
 }

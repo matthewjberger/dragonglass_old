@@ -12,7 +12,7 @@ use legion::prelude::*;
 use nalgebra_glm as glm;
 use std::time::Instant;
 use winit::{
-    dpi::{LogicalPosition, LogicalSize, PhysicalSize},
+    dpi::{LogicalSize, PhysicalSize},
     event::{
         ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode,
         WindowEvent,
@@ -65,7 +65,7 @@ impl System {
             .add_system(prepare_renderer_system())
             .build();
 
-        let mut camera = Camera {
+        let camera = Camera {
             speed: 5.0,
             ..Default::default()
         };
