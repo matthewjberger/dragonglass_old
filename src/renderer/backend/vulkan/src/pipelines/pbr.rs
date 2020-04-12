@@ -434,8 +434,8 @@ impl PbrPipelineData {
             .expect("Failed to get irradiance map!");
         let irradiance_cubemap_image_info = vk::DescriptorImageInfo::builder()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(irradiance_map.view.view())
-            .sampler(irradiance_map.sampler.sampler())
+            .image_view(irradiance_map.cubemap.view.view())
+            .sampler(irradiance_map.cubemap.sampler.sampler())
             .build();
         let irradiance_cubemap_image_infos = [irradiance_cubemap_image_info];
 
