@@ -102,7 +102,6 @@ impl CommandPool {
         );
 
         self.copy_buffer_to_buffer(
-            self.context.graphics_queue(),
             staging_buffer.buffer(),
             device_local_buffer.buffer(),
             &regions,
@@ -168,15 +167,13 @@ impl CommandPool {
         });
     }
 
-    // TODO: Remove transfer queue param, get graphics queue from context
     pub fn copy_buffer_to_buffer(
         &self,
-        transfer_queue: vk::Queue,
         source: vk::Buffer,
         destination: vk::Buffer,
         regions: &[vk::BufferCopy],
     ) {
-        self.execute_command_once(transfer_queue, |command_buffer| {
+        self.execute_command_once(self.context.graphics_queue(), |command_buffer| {
             unsafe {
                 self.context
                     .logical_device()
@@ -186,15 +183,13 @@ impl CommandPool {
         });
     }
 
-    // TODO: Remove transition queue param, get graphics queue from context
     pub fn copy_buffer_to_image(
         &self,
-        transition_queue: vk::Queue,
         buffer: vk::Buffer,
         image: vk::Image,
         regions: &[vk::BufferImageCopy],
     ) {
-        self.execute_command_once(transition_queue, |command_buffer| unsafe {
+        self.execute_command_once(self.context.graphics_queue(), |command_buffer| unsafe {
             self.context
                 .logical_device()
                 .logical_device()

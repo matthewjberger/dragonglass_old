@@ -9,6 +9,15 @@ use std::{iter, sync::Arc};
 
 // TODO: Add snafu errors
 
+pub struct ImageLayoutTransition {
+    pub old_layout: vk::ImageLayout,
+    pub new_layout: vk::ImageLayout,
+    pub src_access_mask: vk::AccessFlags,
+    pub dst_access_mask: vk::AccessFlags,
+    pub src_stage_mask: vk::PipelineStageFlags,
+    pub dst_stage_mask: vk::PipelineStageFlags,
+}
+
 pub struct TextureDescription {
     pub format: vk::Format,
     pub width: u32,
@@ -18,6 +27,16 @@ pub struct TextureDescription {
 }
 
 impl TextureDescription {
+    pub fn empty(width: u32, height: u32, format: vk::Format) -> Self {
+        Self {
+            format,
+            width,
+            height,
+            pixels: Vec::new(),
+            mip_levels: Self::calculate_mip_levels(width, height),
+        }
+    }
+
     pub fn from_file(path: &str) -> Self {
         let image = image::open(path).expect("Failed to open image path!");
         Self::from_image(&image)
@@ -162,36 +181,17 @@ impl Texture {
         );
         buffer.upload_to_buffer(&description.pixels, 0, std::mem::align_of::<u8>() as _);
 
-        let barrier = vk::ImageMemoryBarrier::builder()
-            .old_layout(vk::ImageLayout::UNDEFINED)
-            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .image(self.image())
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: description.mip_levels,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
-            .src_access_mask(vk::AccessFlags::empty())
-            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .build();
-        let barriers = [barrier];
+        let transition = ImageLayoutTransition {
+            old_layout: vk::ImageLayout::UNDEFINED,
+            new_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            src_access_mask: vk::AccessFlags::empty(),
+            dst_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+            src_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
+            dst_stage_mask: vk::PipelineStageFlags::TRANSFER,
+        };
+        self.transition(&command_pool, &transition, description.mip_levels);
 
-        command_pool.transition_image_layout(
-            &barriers,
-            vk::PipelineStageFlags::TOP_OF_PIPE,
-            vk::PipelineStageFlags::TRANSFER,
-        );
-
-        command_pool.copy_buffer_to_image(
-            self.context.graphics_queue(),
-            buffer.buffer(),
-            self.image(),
-            &regions,
-        );
+        command_pool.copy_buffer_to_image(buffer.buffer(), self.image(), &regions);
 
         self.generate_mipmaps(&command_pool, &description);
     }
@@ -357,6 +357,37 @@ impl Texture {
         );
     }
 
+    pub fn transition(
+        &self,
+        command_pool: &CommandPool,
+        transition: &ImageLayoutTransition,
+        mip_levels: u32,
+    ) {
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .old_layout(transition.old_layout)
+            .new_layout(transition.new_layout)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .image(self.image())
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: mip_levels,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .src_access_mask(transition.src_access_mask)
+            .dst_access_mask(transition.dst_access_mask)
+            .build();
+        let barriers = [barrier];
+
+        command_pool.transition_image_layout(
+            &barriers,
+            transition.src_stage_mask,
+            transition.dst_stage_mask,
+        );
+    }
+
     pub fn image(&self) -> vk::Image {
         self.image
     }
@@ -389,7 +420,7 @@ pub struct CubemapFaces {
 }
 
 impl CubemapFaces {
-    fn ordered_faces(&self) -> impl Iterator<Item = String> {
+    pub fn ordered_faces(&self) -> impl Iterator<Item = String> {
         iter::once(self.right.to_string())
             .chain(iter::once(self.left.to_string()))
             .chain(iter::once(self.top.to_string()))
@@ -397,103 +428,69 @@ impl CubemapFaces {
             .chain(iter::once(self.back.to_string()))
             .chain(iter::once(self.front.to_string()))
     }
+
+    pub fn create_descriptions(&self) -> Vec<TextureDescription> {
+        self.ordered_faces()
+            .map(|face| TextureDescription::from_file(&face))
+            .collect::<Vec<_>>()
+    }
 }
 
 pub struct Cubemap {
     pub texture: Texture,
     pub view: ImageView,
     pub sampler: Sampler,
+    pub description: TextureDescription,
+    context: Arc<VulkanContext>,
 }
 
 impl Cubemap {
-    pub fn new(
-        context: Arc<VulkanContext>,
-        command_pool: &CommandPool,
-        faces: &CubemapFaces,
-    ) -> Self {
-        let face_descriptions = faces
-            .ordered_faces()
-            .map(|face| TextureDescription::from_file(&face))
-            .collect::<Vec<_>>();
-
-        // TODO: Calculate miplevels and dimension
-        let dimension = face_descriptions[0].width;
-        let format = face_descriptions[0].format;
-        let cubemap_description = TextureDescription {
-            width: dimension,
-            height: dimension,
-            pixels: Vec::new(),
-            format,
-            mip_levels: 1,
-        };
-
-        let texture = Self::create_texture(context.clone(), &cubemap_description);
-
-        Self::upload_texture_data(
-            context.clone(),
-            &command_pool,
-            &texture,
-            &face_descriptions,
-            &cubemap_description,
-        );
-
-        let view = Self::create_image_view(context.clone(), &texture, &cubemap_description);
-
-        let sampler = Self::create_sampler(context, &cubemap_description);
+    pub fn new(context: Arc<VulkanContext>, dimension: u32, format: vk::Format) -> Self {
+        let mut description = TextureDescription::empty(dimension, dimension, format);
+        description.mip_levels = 1; // TODO: Generate proper cubemap mipmaps
+        let texture = Self::create_texture(context.clone(), &description);
+        let view = Self::create_view(context.clone(), &texture, &description);
+        let sampler = Self::create_sampler(context.clone(), &description);
 
         Self {
             texture,
             view,
             sampler,
+            description,
+            context,
         }
     }
 
     pub fn upload_texture_data(
-        context: Arc<VulkanContext>,
+        &self,
         command_pool: &CommandPool,
-        texture: &Texture,
-        face_descriptions: &[TextureDescription],
-        cubemap_description: &TextureDescription,
+        descriptions: &[TextureDescription],
     ) {
         let mut pixels: Vec<u8> = Vec::new();
-        face_descriptions.iter().for_each(|description| {
+        descriptions.iter().for_each(|description| {
             pixels.extend(&description.pixels);
         });
 
         let buffer = Buffer::new_mapped_basic(
-            context.clone(),
-            texture.allocation_info().get_size() as _,
+            self.context.clone(),
+            self.texture.allocation_info().get_size() as _,
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk_mem::MemoryUsage::CpuToGpu,
         );
         buffer.upload_to_buffer(&pixels, 0, std::mem::align_of::<u8>() as _);
 
-        let barrier = vk::ImageMemoryBarrier::builder()
-            .old_layout(vk::ImageLayout::UNDEFINED)
-            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .image(texture.image())
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 6,
-            })
-            .src_access_mask(vk::AccessFlags::empty())
-            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .build();
-        let barriers = [barrier];
-
-        command_pool.transition_image_layout(
-            &barriers,
-            vk::PipelineStageFlags::TOP_OF_PIPE,
-            vk::PipelineStageFlags::TRANSFER,
-        );
+        let transition = ImageLayoutTransition {
+            old_layout: vk::ImageLayout::UNDEFINED,
+            new_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            src_access_mask: vk::AccessFlags::empty(),
+            dst_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+            src_stage_mask: vk::PipelineStageFlags::TOP_OF_PIPE,
+            dst_stage_mask: vk::PipelineStageFlags::TRANSFER,
+        };
+        self.transition(&command_pool, &transition);
 
         let mut offset = 0;
-        let regions = face_descriptions
+        let regions = descriptions
             .iter()
             .enumerate()
             .map(|(face_index, face)| {
@@ -509,8 +506,8 @@ impl Cubemap {
                     })
                     .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
                     .image_extent(vk::Extent3D {
-                        width: cubemap_description.width,
-                        height: cubemap_description.height,
+                        width: self.description.width,
+                        height: self.description.height,
                         depth: 1,
                     })
                     .build();
@@ -519,36 +516,17 @@ impl Cubemap {
             })
             .collect::<Vec<_>>();
 
-        command_pool.copy_buffer_to_image(
-            context.graphics_queue(),
-            buffer.buffer(),
-            texture.image(),
-            &regions,
-        );
+        command_pool.copy_buffer_to_image(buffer.buffer(), self.texture.image(), &regions);
 
-        let barrier = vk::ImageMemoryBarrier::builder()
-            .image(texture.image())
-            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_array_layer: 0,
-                layer_count: 6,
-                level_count: 1,
-                base_mip_level: cubemap_description.mip_levels - 1,
-            })
-            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .dst_access_mask(vk::AccessFlags::SHADER_READ)
-            .build();
-        let barriers = [barrier];
-
-        command_pool.transition_image_layout(
-            &barriers,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::FRAGMENT_SHADER,
-        );
+        let transition = ImageLayoutTransition {
+            old_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            src_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+            dst_access_mask: vk::AccessFlags::SHADER_READ,
+            src_stage_mask: vk::PipelineStageFlags::TRANSFER,
+            dst_stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER,
+        };
+        self.transition(&command_pool, &transition);
     }
 
     fn create_texture(context: Arc<VulkanContext>, description: &TextureDescription) -> Texture {
@@ -582,7 +560,7 @@ impl Cubemap {
         Texture::new(context, &allocation_create_info, &image_create_info)
     }
 
-    fn create_image_view(
+    fn create_view(
         context: Arc<VulkanContext>,
         texture: &Texture,
         description: &TextureDescription,
@@ -617,7 +595,7 @@ impl Cubemap {
             .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
             .anisotropy_enable(true)
             .max_anisotropy(16.0)
-            .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
+            .border_color(vk::BorderColor::INT_OPAQUE_WHITE)
             .unnormalized_coordinates(false)
             .compare_enable(false)
             .compare_op(vk::CompareOp::ALWAYS)
@@ -627,5 +605,32 @@ impl Cubemap {
             .max_lod(description.mip_levels as _)
             .build();
         Sampler::new(context, sampler_info)
+    }
+
+    // TODO: Merge this with the texture transition
+    pub fn transition(&self, command_pool: &CommandPool, transition: &ImageLayoutTransition) {
+        let barrier = vk::ImageMemoryBarrier::builder()
+            .old_layout(transition.old_layout)
+            .new_layout(transition.new_layout)
+            .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+            .image(self.texture.image())
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: self.description.mip_levels,
+                base_array_layer: 0,
+                layer_count: 6,
+            })
+            .src_access_mask(transition.src_access_mask)
+            .dst_access_mask(transition.dst_access_mask)
+            .build();
+        let barriers = [barrier];
+
+        command_pool.transition_image_layout(
+            &barriers,
+            transition.src_stage_mask,
+            transition.dst_stage_mask,
+        );
     }
 }

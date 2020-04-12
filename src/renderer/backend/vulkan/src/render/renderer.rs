@@ -76,6 +76,7 @@ impl Renderer {
             skybox_pipeline: None,
             skybox_pipeline_data: None,
             cubemap: None,
+            // hdr_cubemap: None,
             irradiance_map: None,
             prefilter_map: None,
             brdflut: None,
@@ -92,8 +93,6 @@ impl Renderer {
             .as_ref()
             .expect("Failed to get vulkan swapchain!")
     }
-
-    pub fn recompile_shaders(&mut self) {}
 
     pub fn reload_pbr_pipeline(&mut self) {
         let shader_directory = "examples/assets/shaders";
@@ -180,8 +179,14 @@ impl Renderer {
             front: "examples/assets/skyboxes/bluemountains/front.jpg".to_string(),
             back: "examples/assets/skyboxes/bluemountains/back.jpg".to_string(),
         };
+        let descriptions = faces.create_descriptions();
 
-        let cubemap = Cubemap::new(self.context.clone(), &self.transient_command_pool, &faces);
+        let cubemap = Cubemap::new(
+            self.context.clone(),
+            descriptions[0].width,
+            descriptions[0].format,
+        );
+        cubemap.upload_texture_data(&self.transient_command_pool, &descriptions);
 
         self.load_environment(&cubemap);
 
