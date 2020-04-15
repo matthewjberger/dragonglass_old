@@ -45,13 +45,17 @@ impl TextureDescription {
         .expect("Failed to create hdr decoder!");
         let metadata = decoder.metadata();
         let decoded = decoder.read_image_hdr().expect("Failed to read hdr image!");
-        let format = vk::Format::R16G16B16A16_SFLOAT;
+        let format = vk::Format::R32G32B32A32_SFLOAT;
         let width = metadata.width as u32;
         let height = metadata.height as u32;
         let mip_levels = Self::calculate_mip_levels(width, height);
-        let data = vec![[1.0, 1.0, 1.0, 1.0]; (width * height) as _];
-        let data = data.iter().flat_map(|x| x).collect::<Vec<_>>();
-        let pixels = unsafe { byte_slice_from(&data).to_vec() };
+        let data = decoded
+            .iter()
+            .flat_map(|pixel| vec![pixel[0], pixel[1], pixel[2], 1.0])
+            .collect::<Vec<_>>();
+        let pixels =
+            unsafe { std::slice::from_raw_parts(data.as_ptr() as *const u8, data.len() * 4) }
+                .to_vec();
 
         Self {
             format,

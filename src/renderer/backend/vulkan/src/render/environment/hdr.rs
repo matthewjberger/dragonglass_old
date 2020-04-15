@@ -28,10 +28,10 @@ impl HdrCubemap {
         cube: &ModelBuffers,
         path: &str,
     ) -> Self {
-        let description = TextureDescription::from_file(path);
+        let description = TextureDescription::from_hdr(path);
         let hdr_texture_bundle = TextureBundle::new(context.clone(), &command_pool, &description);
 
-        let dimension = 512;
+        let dimension = description.width;
         let format = vk::Format::R32G32B32A32_SFLOAT;
         let output_cubemap = Cubemap::new(context.clone(), dimension, format);
 
@@ -104,7 +104,7 @@ impl HdrCubemap {
 
         let device = context.logical_device().logical_device();
 
-        let projection = glm::perspective_zo(1.0, 90_f32.to_radians(), 0.1_f32, 1000_f32);
+        let projection = glm::perspective_zo(1.0, 90_f32.to_radians(), 0.1_f32, 10_f32);
 
         let matrices = vec![
             glm::look_at(
