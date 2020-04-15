@@ -1,8 +1,11 @@
 use crate::{
     core::VulkanContext,
-    model::gltf::{GltfAsset, GltfTextureData, Primitive},
+    model::gltf::{GltfAsset, Primitive},
     render::{GraphicsPipeline, Renderer},
-    resource::{Buffer, DescriptorPool, DescriptorSetLayout, DummyImage, PipelineLayout, Shader},
+    resource::{
+        texture::TextureBundle, Buffer, DescriptorPool, DescriptorSetLayout, DummyImage,
+        PipelineLayout, Shader,
+    },
 };
 use ash::{version::DeviceV1_0, vk};
 use dragonglass_core::byte_slice_from;
@@ -219,11 +222,7 @@ pub struct PbrPipelineData {
 }
 
 impl PbrPipelineData {
-    pub fn new(
-        renderer: &Renderer,
-        number_of_meshes: usize,
-        textures: &[&GltfTextureData],
-    ) -> Self {
+    pub fn new(renderer: &Renderer, number_of_meshes: usize, textures: &[&TextureBundle]) -> Self {
         let descriptor_set_layout = Self::descriptor_set_layout(renderer.context.clone());
         let descriptor_pool = Self::create_descriptor_pool(renderer.context.clone());
         let descriptor_set =
@@ -383,7 +382,7 @@ impl PbrPipelineData {
         renderer: &Renderer,
         context: Arc<VulkanContext>,
         number_of_meshes: usize,
-        textures: &[&GltfTextureData],
+        textures: &[&TextureBundle],
     ) {
         let uniform_buffer_size = mem::size_of::<UniformBufferObject>() as vk::DeviceSize;
         let buffer_info = vk::DescriptorBufferInfo::builder()
@@ -445,8 +444,8 @@ impl PbrPipelineData {
             .expect("Failed to get prefilter map!");
         let prefilter_cubemap_image_info = vk::DescriptorImageInfo::builder()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(prefilter_map.view.view())
-            .sampler(prefilter_map.sampler.sampler())
+            .image_view(prefilter_map.cubemap.view.view())
+            .sampler(prefilter_map.cubemap.sampler.sampler())
             .build();
         let prefilter_cubemap_image_infos = [prefilter_cubemap_image_info];
 

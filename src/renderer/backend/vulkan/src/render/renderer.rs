@@ -6,14 +6,11 @@ use crate::{
         skybox::{SkyboxPipeline, SkyboxPipelineData, SkyboxRenderer, VERTICES},
     },
     render::{
-        environment::{Brdflut, IrradianceMap, PrefilterMap},
+        environment::{Brdflut, HdrCubemap, IrradianceMap},
         shader_compilation::compile_shaders,
         VulkanSwapchain,
     },
-    resource::{
-        texture::{Cubemap, CubemapFaces},
-        CommandPool,
-    },
+    resource::CommandPool,
     sync::SynchronizationSet,
 };
 use ash::{version::DeviceV1_0, vk};
@@ -32,9 +29,9 @@ pub struct Renderer {
     pub pbr_pipeline_data: Option<PbrPipelineData>,
     pub skybox_pipeline: Option<SkyboxPipeline>,
     pub skybox_pipeline_data: Option<SkyboxPipelineData>,
-    pub cubemap: Option<Cubemap>,
+    pub cubemap: Option<HdrCubemap>,
     pub irradiance_map: Option<IrradianceMap>,
-    pub prefilter_map: Option<PrefilterMap>,
+    pub prefilter_map: Option<HdrCubemap>,
     pub brdflut: Option<Brdflut>,
     pub can_reload: bool,
 }
@@ -146,48 +143,50 @@ impl Renderer {
         self.record_command_buffers();
     }
 
-    pub fn load_environment(&mut self, cubemap: &Cubemap) {
+    pub fn load_environment(&mut self) {
+        let cube = ModelBuffers::new(&self.transient_command_pool, VERTICES, None);
+
+        let cubemap_path = "examples/assets/skyboxes/ice_lake/ice_lake.hdr";
+        let hdr_cubemap = HdrCubemap::new(
+            self.context.clone(),
+            &self.command_pool,
+            &cube,
+            &cubemap_path,
+        );
+
         let brdflut = Brdflut::new(self.context.clone(), &self.transient_command_pool);
         self.brdflut = Some(brdflut);
-
-        let cube = ModelBuffers::new(&self.transient_command_pool, VERTICES, None);
 
         let irradiance_map = IrradianceMap::new(
             self.context.clone(),
             &self.transient_command_pool,
-            &cubemap,
+            &hdr_cubemap.cubemap,
             &cube,
         );
         self.irradiance_map = Some(irradiance_map);
 
-        let prefilter_map = PrefilterMap::new(
+        // Manual prefiltering
+        // let prefilter_map = PrefilterMap::new(
+        //     self.context.clone(),
+        //     &self.transient_command_pool,
+        //     &hdr_cubemap.cubemap,
+        //     &cube,
+        // );
+
+        let prefilter_cubemap_path = "examples/assets/skyboxes/ice_lake/ice_lake_env.hdr";
+        let hdr_prefilter_map = HdrCubemap::new(
             self.context.clone(),
-            &self.transient_command_pool,
-            &cubemap,
+            &self.command_pool,
             &cube,
+            &prefilter_cubemap_path,
         );
-        self.prefilter_map = Some(prefilter_map);
+        self.prefilter_map = Some(hdr_prefilter_map);
+
+        self.cubemap = Some(hdr_cubemap);
     }
 
     pub fn load_assets(&mut self, asset_names: &[String]) {
-        let faces = CubemapFaces {
-            left: "examples/assets/skyboxes/bluemountains/left.jpg".to_string(),
-            right: "examples/assets/skyboxes/bluemountains/right.jpg".to_string(),
-            top: "examples/assets/skyboxes/bluemountains/top.jpg".to_string(),
-            bottom: "examples/assets/skyboxes/bluemountains/bottom.jpg".to_string(),
-            front: "examples/assets/skyboxes/bluemountains/front.jpg".to_string(),
-            back: "examples/assets/skyboxes/bluemountains/back.jpg".to_string(),
-        };
-        let descriptions = faces.create_descriptions();
-
-        let cubemap = Cubemap::new(
-            self.context.clone(),
-            descriptions[0].width,
-            descriptions[0].format,
-        );
-        cubemap.upload_texture_data(&self.transient_command_pool, &descriptions);
-
-        self.load_environment(&cubemap);
+        self.load_environment();
 
         let mut assets = Vec::new();
         for asset_name in asset_names.iter() {
@@ -205,10 +204,16 @@ impl Renderer {
 
         self.pbr_pipeline_data = Some(PbrPipelineData::new(&self, number_of_meshes, &textures));
 
-        let skybox_pipeline_data = SkyboxPipelineData::new(&self, &cubemap);
+        let skybox_pipeline_data = SkyboxPipelineData::new(
+            &self,
+            &self
+                .cubemap
+                .as_ref()
+                .expect("Failed to get cubemap!")
+                .cubemap,
+        );
         self.skybox_pipeline_data = Some(skybox_pipeline_data);
         self.assets = assets;
-        self.cubemap = Some(cubemap);
     }
 
     pub fn allocate_command_buffers(&mut self) {

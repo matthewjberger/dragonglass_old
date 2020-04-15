@@ -18,6 +18,7 @@ legion = "0.2.1"
 gltf = "0.14.0"
 vk-mem = "0.2.0"
 glob = "0.3.0"
+stb_image = "0.2.2"
 dragonglass-core = { path = "../../../core", version = "0.1.0" }
 
 [target.'cfg(target_os = "windows")'.dependencies]

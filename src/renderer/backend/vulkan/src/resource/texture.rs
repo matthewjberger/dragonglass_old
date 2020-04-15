@@ -3,6 +3,7 @@ use crate::{
     resource::{Buffer, CommandPool, ImageView, Sampler},
 };
 use ash::{version::DeviceV1_0, vk};
+use dragonglass_core::byte_slice_from;
 use gltf::image::Format;
 use image::{DynamicImage, ImageBuffer, Pixel, RgbImage};
 use std::{iter, sync::Arc};
@@ -34,6 +35,30 @@ impl TextureDescription {
             height,
             pixels: Vec::new(),
             mip_levels: Self::calculate_mip_levels(width, height),
+        }
+    }
+
+    pub fn from_hdr(path: &str) -> Self {
+        let decoder = image::hdr::HdrDecoder::new(std::io::BufReader::new(
+            std::fs::File::open(&path).expect("Failed to open file!"),
+        ))
+        .expect("Failed to create hdr decoder!");
+        let metadata = decoder.metadata();
+        let decoded = decoder.read_image_hdr().expect("Failed to read hdr image!");
+        let format = vk::Format::R16G16B16A16_SFLOAT;
+        let width = metadata.width as u32;
+        let height = metadata.height as u32;
+        let mip_levels = Self::calculate_mip_levels(width, height);
+        let data = vec![[1.0, 1.0, 1.0, 1.0]; (width * height) as _];
+        let data = data.iter().flat_map(|x| x).collect::<Vec<_>>();
+        let pixels = unsafe { byte_slice_from(&data).to_vec() };
+
+        Self {
+            format,
+            width,
+            height,
+            pixels,
+            mip_levels,
         }
     }
 
@@ -632,5 +657,111 @@ impl Cubemap {
             transition.src_stage_mask,
             transition.dst_stage_mask,
         );
+    }
+}
+
+pub struct TextureBundle {
+    pub texture: Texture,
+    pub view: ImageView,
+    pub sampler: Sampler,
+}
+
+impl TextureBundle {
+    pub fn new(
+        context: Arc<VulkanContext>,
+        command_pool: &CommandPool,
+        description: &TextureDescription,
+    ) -> Self {
+        let texture = Self::create_texture(context.clone(), &description);
+
+        texture.upload_texture_data(&command_pool, &description);
+
+        let view = Self::create_image_view(context.clone(), &texture, &description);
+
+        let sampler = Self::create_sampler(context, description.mip_levels);
+
+        Self {
+            texture,
+            view,
+            sampler,
+        }
+    }
+
+    fn create_texture(context: Arc<VulkanContext>, description: &TextureDescription) -> Texture {
+        let image_create_info = vk::ImageCreateInfo::builder()
+            .image_type(vk::ImageType::TYPE_2D)
+            .extent(vk::Extent3D {
+                width: description.width,
+                height: description.height,
+                depth: 1,
+            })
+            .mip_levels(description.mip_levels)
+            .array_layers(1)
+            .format(description.format)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .usage(
+                vk::ImageUsageFlags::TRANSFER_SRC
+                    | vk::ImageUsageFlags::TRANSFER_DST
+                    | vk::ImageUsageFlags::SAMPLED,
+            )
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .flags(vk::ImageCreateFlags::empty())
+            .build();
+
+        let allocation_create_info = vk_mem::AllocationCreateInfo {
+            usage: vk_mem::MemoryUsage::GpuOnly,
+            ..Default::default()
+        };
+
+        Texture::new(context, &allocation_create_info, &image_create_info)
+    }
+
+    fn create_image_view(
+        context: Arc<VulkanContext>,
+        texture: &Texture,
+        description: &TextureDescription,
+    ) -> ImageView {
+        let create_info = vk::ImageViewCreateInfo::builder()
+            .image(texture.image())
+            .view_type(vk::ImageViewType::TYPE_2D)
+            .format(description.format)
+            .components(vk::ComponentMapping {
+                r: vk::ComponentSwizzle::IDENTITY,
+                g: vk::ComponentSwizzle::IDENTITY,
+                b: vk::ComponentSwizzle::IDENTITY,
+                a: vk::ComponentSwizzle::IDENTITY,
+            })
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: description.mip_levels,
+                base_array_layer: 0,
+                layer_count: 1,
+            })
+            .build();
+        ImageView::new(context, create_info)
+    }
+
+    fn create_sampler(context: Arc<VulkanContext>, mip_levels: u32) -> Sampler {
+        let sampler_info = vk::SamplerCreateInfo::builder()
+            .mag_filter(vk::Filter::LINEAR)
+            .min_filter(vk::Filter::LINEAR)
+            .address_mode_u(vk::SamplerAddressMode::REPEAT)
+            .address_mode_v(vk::SamplerAddressMode::REPEAT)
+            .address_mode_w(vk::SamplerAddressMode::REPEAT)
+            .anisotropy_enable(true)
+            .max_anisotropy(16.0)
+            .border_color(vk::BorderColor::INT_OPAQUE_BLACK)
+            .unnormalized_coordinates(false)
+            .compare_enable(false)
+            .compare_op(vk::CompareOp::ALWAYS)
+            .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
+            .mip_lod_bias(0.0)
+            .min_lod(0.0)
+            .max_lod(mip_levels as _)
+            .build();
+        Sampler::new(context, sampler_info)
     }
 }
