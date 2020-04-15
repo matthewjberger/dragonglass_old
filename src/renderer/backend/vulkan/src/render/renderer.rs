@@ -146,7 +146,7 @@ impl Renderer {
     pub fn load_environment(&mut self) {
         let cube = ModelBuffers::new(&self.transient_command_pool, VERTICES, None);
 
-        let cubemap_path = "examples/assets/skyboxes/ice_lake/ice_lake.hdr";
+        let cubemap_path = "examples/assets/skyboxes/apartment/apartment.hdr";
         let hdr_cubemap = HdrCubemap::new(
             self.context.clone(),
             &self.command_pool,
@@ -173,7 +173,7 @@ impl Renderer {
         //     &cube,
         // );
 
-        let prefilter_cubemap_path = "examples/assets/skyboxes/ice_lake/ice_lake_env.hdr";
+        let prefilter_cubemap_path = "examples/assets/skyboxes/apartment/apartment_env.hdr";
         let hdr_prefilter_map = HdrCubemap::new(
             self.context.clone(),
             &self.command_pool,
