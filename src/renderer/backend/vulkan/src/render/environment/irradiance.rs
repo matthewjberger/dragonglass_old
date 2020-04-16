@@ -585,7 +585,7 @@ impl Offscreen {
                 height: description.height,
                 depth: 1,
             })
-            .mip_levels(1)
+            .mip_levels(description.mip_levels)
             .array_layers(1)
             .format(description.format)
             .tiling(vk::ImageTiling::OPTIMAL)

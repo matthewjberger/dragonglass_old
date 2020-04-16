@@ -3,10 +3,7 @@ use dragonglass_backend_vulkan::{
     systems::render::{animation_system, prepare_renderer_system, reload_system, render_system},
 };
 use dragonglass_core::{
-    camera::{
-        fps_camera_key_system, fps_camera_mouse_system, orbital_camera_mouse_system, Camera,
-        CameraState,
-    },
+    camera::{orbital_camera_mouse_system, Camera, CameraState},
     components::{AssetName, Transform},
     input::Input,
     AnimationState, AppState, DeltaTime,
@@ -46,6 +43,7 @@ impl App {
         }
     }
 
+    #[allow(dead_code)]
     fn stow_cursor(&self) {
         self.window
             .grab_cursor(true)
@@ -59,6 +57,7 @@ impl App {
         self.window.set_fullscreen(Some(monitor_id));
     }
 
+    #[allow(dead_code)]
     fn center_cursor(&mut self) {
         let window_size = self
             .window
@@ -98,8 +97,6 @@ impl App {
 
         let mut schedule = Schedule::builder()
             .add_system(orbital_camera_mouse_system())
-            // .add_system(fps_camera_mouse_system())
-            // .add_system(fps_camera_key_system())
             .add_system(animation_system())
             .add_system(reload_system())
             .flush()
@@ -117,7 +114,8 @@ impl App {
             vec![(
                 // AssetName("examples/assets/models/Sponza/Sponza.gltf".to_string()),
                 // AssetName("examples/assets/models/BoxAnimated.glb".to_string()),
-                AssetName("examples/assets/models/DamagedHelmet.glb".to_string()),
+                // AssetName("examples/assets/models/DamagedHelmet.glb".to_string()),
+                AssetName("examples/assets/models/MetalRoughSpheres.glb".to_string()),
                 AnimationState { time: 0.0 },
                 Transform::default(),
             )],
@@ -132,8 +130,6 @@ impl App {
             if self.should_exit {
                 break;
             }
-
-            // self.center_cursor();
 
             schedule.execute(&mut world);
 

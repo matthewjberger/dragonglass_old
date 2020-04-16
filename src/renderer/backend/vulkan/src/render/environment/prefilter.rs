@@ -166,7 +166,7 @@ impl PrefilterMap {
                 height: dimension,
                 depth: 1,
             })
-            .mip_levels(1)
+            .mip_levels(mip_levels)
             .array_layers(1)
             .format(format)
             .tiling(vk::ImageTiling::OPTIMAL)

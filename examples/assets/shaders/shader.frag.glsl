@@ -109,6 +109,10 @@ void main()
     baseColor = material.baseColorFactor;
   }
 
+  if (baseColor.a < material.alphaMaskCutoff) {
+    discard;
+  }
+
   float minRoughness = 1.0;
   perceptualRoughness = material.roughnessFactor;
   metallic = material.metallicFactor;

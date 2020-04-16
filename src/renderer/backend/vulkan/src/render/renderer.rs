@@ -44,7 +44,10 @@ impl Renderer {
         let synchronization_set =
             SynchronizationSet::new(context.clone()).expect("Failed to create sync objects");
 
-        let command_pool = CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::empty());
+        let command_pool = CommandPool::new(
+            context.clone(),
+            vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
+        );
 
         let transient_command_pool =
             CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::TRANSIENT);
