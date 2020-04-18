@@ -330,21 +330,6 @@ version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
-name = "dragonglass"
-version = "0.1.0"
-dependencies = [
- "dragonglass-backend-vulkan 0.1.0",
- "dragonglass-core 0.1.0",
- "env_logger 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "legion 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "nalgebra-glm 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "snafu 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "winapi 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "winit 0.19.5 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "dragonglass-backend-vulkan"
 version = "0.1.0"
 dependencies = [
@@ -379,10 +364,16 @@ dependencies = [
 name = "dragonglass-examples"
 version = "0.1.0"
 dependencies = [
- "dragonglass 0.1.0",
+ "dragonglass-backend-vulkan 0.1.0",
+ "dragonglass-core 0.1.0",
  "env_logger 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "glob 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "legion 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "nalgebra-glm 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "snafu 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "winapi 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "winit 0.19.5 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
