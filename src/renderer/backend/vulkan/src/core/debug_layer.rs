@@ -55,8 +55,7 @@ impl DebugLayer {
 
     pub fn validation_layers_enabled() -> bool {
         // Enable validation layers only in debug mode
-        // cfg!(debug_assertions)
-        true
+        cfg!(debug_assertions)
     }
 
     pub fn debug_layer_names() -> LayerNameVec {
