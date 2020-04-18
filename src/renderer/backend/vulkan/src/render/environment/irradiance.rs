@@ -190,8 +190,7 @@ impl IrradianceMap {
                         );
 
                         let push_block_irradiance = PushBlockIrradiance {
-                            mvp: glm::perspective(std::f32::consts::PI / 2.0, 1.0, 0.1, 512.0)
-                                * matrix,
+                            mvp: glm::perspective(90_f32.to_radians(), 1.0, 0.1, 512.0) * matrix,
                             delta_phi: 2_f32.to_radians(),
                             delta_theta: (0.5_f32 * std::f32::consts::PI) / 64_f32,
                         };
@@ -585,7 +584,7 @@ impl Offscreen {
                 height: description.height,
                 depth: 1,
             })
-            .mip_levels(description.mip_levels)
+            .mip_levels(1)
             .array_layers(1)
             .format(description.format)
             .tiling(vk::ImageTiling::OPTIMAL)

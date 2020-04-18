@@ -104,7 +104,7 @@ impl App {
             .add_thread_local(render_system())
             .build();
 
-        let mut camera = Camera {
+        let camera = Camera {
             speed: 5.0,
             ..Default::default()
         };

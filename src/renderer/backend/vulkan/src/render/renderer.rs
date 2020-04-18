@@ -6,7 +6,7 @@ use crate::{
         skybox::{SkyboxPipeline, SkyboxPipelineData, SkyboxRenderer, VERTICES},
     },
     render::{
-        environment::{Brdflut, HdrCubemap, IrradianceMap},
+        environment::{Brdflut, HdrCubemap, IrradianceMap, PrefilterMap},
         shader_compilation::compile_shaders,
         VulkanSwapchain,
     },
@@ -31,7 +31,7 @@ pub struct Renderer {
     pub skybox_pipeline_data: Option<SkyboxPipelineData>,
     pub cubemap: Option<HdrCubemap>,
     pub irradiance_map: Option<IrradianceMap>,
-    pub prefilter_map: Option<HdrCubemap>,
+    pub prefilter_map: Option<PrefilterMap>,
     pub brdflut: Option<Brdflut>,
     pub can_reload: bool,
 }
@@ -169,21 +169,13 @@ impl Renderer {
         self.irradiance_map = Some(irradiance_map);
 
         // Manual prefiltering
-        // let prefilter_map = PrefilterMap::new(
-        //     self.context.clone(),
-        //     &self.transient_command_pool,
-        //     &hdr_cubemap.cubemap,
-        //     &cube,
-        // );
-
-        let prefilter_cubemap_path = "examples/assets/skyboxes/apartment/apartment_env.hdr";
-        let hdr_prefilter_map = HdrCubemap::new(
+        let prefilter_map = PrefilterMap::new(
             self.context.clone(),
-            &self.command_pool,
+            &self.transient_command_pool,
+            &hdr_cubemap.cubemap,
             &cube,
-            &prefilter_cubemap_path,
         );
-        self.prefilter_map = Some(hdr_prefilter_map);
+        self.prefilter_map = Some(prefilter_map);
 
         self.cubemap = Some(hdr_cubemap);
     }

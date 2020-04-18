@@ -3,7 +3,6 @@ use crate::{
     resource::{Buffer, CommandPool, ImageView, Sampler},
 };
 use ash::{version::DeviceV1_0, vk};
-use dragonglass_core::byte_slice_from;
 use gltf::image::Format;
 use image::{DynamicImage, ImageBuffer, Pixel, RgbImage};
 use std::{iter, sync::Arc};
@@ -475,8 +474,7 @@ pub struct Cubemap {
 
 impl Cubemap {
     pub fn new(context: Arc<VulkanContext>, dimension: u32, format: vk::Format) -> Self {
-        let mut description = TextureDescription::empty(dimension, dimension, format);
-        description.mip_levels = 1; // TODO: Generate proper cubemap mipmaps
+        let description = TextureDescription::empty(dimension, dimension, format);
         let texture = Self::create_texture(context.clone(), &description);
         let view = Self::create_view(context.clone(), &texture, &description);
         let sampler = Self::create_sampler(context.clone(), &description);
