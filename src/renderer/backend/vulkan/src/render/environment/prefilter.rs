@@ -171,10 +171,8 @@ impl PrefilterMap {
         let scissors = [scissor];
 
         for mip_level in 0..output_cubemap.description.mip_levels {
-            println!("mip_level: {}", mip_level);
             for (face, matrix) in matrices.iter().enumerate() {
                 let current_dimension = dimension as f32 * 0.5_f32.powf(mip_level as f32);
-                println!("face: {} - current_dimension: {}", face, current_dimension);
                 viewport.width = current_dimension;
                 viewport.height = current_dimension;
                 let viewports = [viewport];

@@ -18,9 +18,7 @@ vec2 SampleSphericalMap(vec3 v)
 
 void main()
 {
-  vec3 adjustedPos = inPos;
-  adjustedPos.y *= -1.0;
-  vec2 uv = SampleSphericalMap(normalize(adjustedPos));
+  vec2 uv = SampleSphericalMap(normalize(inPos));
   vec3 color = texture(equirectangularMap, uv).rgb;
   outColor = vec4(color, 1.0);
 }

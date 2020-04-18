@@ -12,8 +12,6 @@ layout(binding = 0) uniform Ubo {
 layout(location = 0) out vec3 vert_texcoord;
 
 void main() {
-  vec3 position = mat3(ubo.view) * vPosition;
-  gl_Position = (ubo.projection * vec4(position, 0.0)).xyzz;
+  gl_Position = ubo.projection * mat4(mat3(ubo.view)) * vec4(vPosition.xyz, 1.0);
   vert_texcoord = vPosition;
-  vert_texcoord.y *= -1.0;
 }

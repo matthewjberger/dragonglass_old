@@ -149,7 +149,7 @@ impl Renderer {
     pub fn load_environment(&mut self) {
         let cube = ModelBuffers::new(&self.transient_command_pool, VERTICES, None);
 
-        let cubemap_path = "examples/assets/skyboxes/apartment/apartment.hdr";
+        let cubemap_path = "examples/assets/skyboxes/walk_of_fame/walk_of_fame.hdr";
         let hdr_cubemap = HdrCubemap::new(
             self.context.clone(),
             &self.command_pool,
