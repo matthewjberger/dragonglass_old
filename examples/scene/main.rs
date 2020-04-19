@@ -94,6 +94,16 @@ fn main() {
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
         match event {
+            Event::NewEvents { .. } => {
+                let delta_time =
+                    (Instant::now().duration_since(last_frame).as_micros() as f64) / 1_000_000_f64;
+                last_frame = Instant::now();
+                world
+                    .resources
+                    .get_mut::<DeltaTime>()
+                    .expect("Failed to get delta time resource!")
+                    .0 = delta_time;
+            }
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                 WindowEvent::KeyboardInput {
@@ -174,15 +184,6 @@ fn main() {
                     input.mouse.position_delta = glm::vec2(0.0, 0.0);
                 }
                 cursor_moved = false;
-
-                let delta_time =
-                    (Instant::now().duration_since(last_frame).as_millis() as f64) / 1000_f64;
-                last_frame = Instant::now();
-                world
-                    .resources
-                    .get_mut::<DeltaTime>()
-                    .expect("Failed to get delta time resource!")
-                    .0 = delta_time;
                 window.request_redraw();
             }
             Event::RedrawRequested(_) => {
