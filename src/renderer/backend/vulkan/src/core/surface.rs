@@ -5,6 +5,7 @@ use ash::{
     vk,
     vk::SurfaceKHR,
 };
+use winit::window::Window;
 
 pub struct Surface {
     surface: AshSurface,
@@ -12,7 +13,7 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub fn new(instance: &Instance, window: &winit::Window) -> Self {
+    pub fn new(instance: &Instance, window: &Window) -> Self {
         let surface = AshSurface::new(instance.entry(), instance.instance());
         let surface_khr = unsafe {
             create_surface(instance.entry(), instance.instance(), window)
@@ -88,12 +89,13 @@ unsafe fn create_surface<E: EntryV1_0, I: InstanceV1_0>(
 unsafe fn create_surface<E: EntryV1_0, I: InstanceV1_0>(
     entry: &E,
     instance: &I,
-    window: &winit::Window,
+    window: &Window,
 ) -> Result<vk::SurfaceKHR, vk::Result> {
     use ash::extensions::khr::XlibSurface;
-    use winit::os::unix::WindowExt;
-    let x11_display = window.get_xlib_display().expect("Failed to get xlib display!");
-    let x11_window = window.get_xlib_window().expect("Failed to get xlib window!");
+    use winit::platform::unix::WindowExtUnix;
+
+    let x11_display = window.xlib_display().expect("Failed to get xlib display!");
+    let x11_window = window.xlib_window().expect("Failed to get xlib window!");
     let x11_create_info = vk::XlibSurfaceCreateInfoKHR::builder()
         .window(x11_window)
         .dpy(x11_display as *mut vk::Display);

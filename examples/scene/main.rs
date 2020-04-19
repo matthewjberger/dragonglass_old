@@ -12,8 +12,13 @@ use legion::prelude::*;
 use nalgebra_glm as glm;
 use std::time::Instant;
 use winit::{
-    dpi::LogicalSize, ElementState, Event, EventsLoop, MouseButton, MouseScrollDelta,
-    VirtualKeyCode, WindowEvent,
+    dpi::PhysicalSize,
+    event::{
+        ElementState, Event, KeyboardInput, MouseButton, MouseScrollDelta, VirtualKeyCode,
+        WindowEvent,
+    },
+    event_loop::{ControlFlow, EventLoop},
+    window::WindowBuilder,
 };
 
 #[derive(Default)]
@@ -24,10 +29,10 @@ fn main() {
     let (width, height, title) = (1920, 1080, "Dragonglass - Vulkan Rendering");
 
     log::debug!("Initializing application.");
-    let mut event_loop = EventsLoop::new();
-    let window = winit::WindowBuilder::new()
+    let event_loop = EventLoop::new();
+    let window = WindowBuilder::new()
         .with_title(title)
-        .with_dimensions((width, height).into())
+        .with_inner_size(PhysicalSize::new(width, height))
         .build(&event_loop)
         .expect("Failed to create window.");
 
@@ -81,28 +86,28 @@ fn main() {
     prepare_schedule.execute(&mut world);
 
     let mut last_frame = Instant::now();
-    loop {
-        let mut input = world
-            .resources
-            .get_mut::<Input>()
-            .expect("Failed to get input resource!");
-        let mut app_state = world
-            .resources
-            .get_mut::<AppState>()
-            .expect("Failed to get input resource!");
-        let mut should_exit = false;
-        let window_size = window
-            .get_inner_size()
-            .expect("Failed to get window inner size!");
-        let mut cursor_moved = false;
-        input.mouse.wheel_delta = 0.0;
+    event_loop.run(move |event, _, control_flow| {
+        *control_flow = ControlFlow::Poll;
 
-        event_loop.poll_events(|event| {
+        {
+            let mut input = world
+                .resources
+                .get_mut::<Input>()
+                .expect("Failed to get input resource!");
+            let mut app_state = world
+                .resources
+                .get_mut::<AppState>()
+                .expect("Failed to get input resource!");
+            let window_size = window.inner_size();
+            let mut cursor_moved = false;
+            input.mouse.wheel_delta = 0.0;
+
             if let Event::WindowEvent { event, .. } = event {
                 match event {
+                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
                     WindowEvent::KeyboardInput {
                         input:
-                            winit::KeyboardInput {
+                            KeyboardInput {
                                 virtual_keycode: Some(keycode),
                                 state,
                                 ..
@@ -110,11 +115,11 @@ fn main() {
                         ..
                     } => {
                         if keycode == VirtualKeyCode::Escape {
-                            should_exit = true;
+                            *control_flow = ControlFlow::Exit;
                         }
                         *input.keystates.entry(keycode).or_insert(state) = state;
                     }
-                    WindowEvent::Resized(LogicalSize { width, height }) => {
+                    WindowEvent::Resized(PhysicalSize { width, height }) => {
                         app_state.window.width = width as u32;
                         app_state.window.height = height as u32;
                     }
@@ -132,8 +137,8 @@ fn main() {
                         input.mouse.position = current_position;
                         input.mouse.position_delta = current_position - last_position;
                         input.mouse.offset_from_center = glm::vec2(
-                            ((window_size.width / 2.0) - position.x) as _,
-                            ((window_size.height / 2.0) - position.y) as _,
+                            ((window_size.width as f32 / 2.0) - position.x as f32) as _,
+                            ((window_size.height as f32 / 2.0) - position.y as f32) as _,
                         );
                         cursor_moved = true;
                     }
@@ -149,14 +154,10 @@ fn main() {
                     _ => {}
                 }
             }
-        });
-        should_exit = should_exit;
-        if !cursor_moved {
-            input.mouse.position_delta = glm::vec2(0.0, 0.0);
-        }
 
-        if should_exit {
-            break;
+            if !cursor_moved {
+                input.mouse.position_delta = glm::vec2(0.0, 0.0);
+            }
         }
 
         schedule.execute(&mut world);
@@ -168,5 +169,5 @@ fn main() {
             .get_mut::<DeltaTime>()
             .expect("Failed to get delta time resource!")
             .0 = delta_time;
-    }
+    });
 }

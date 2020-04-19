@@ -16,6 +16,7 @@ use crate::{
 use ash::{version::DeviceV1_0, vk};
 use nalgebra_glm as glm;
 use std::sync::Arc;
+use winit::window::Window;
 
 pub struct Renderer {
     pub context: Arc<VulkanContext>,
@@ -37,7 +38,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(window: &winit::Window) -> Self {
+    pub fn new(window: &Window) -> Self {
         let context =
             Arc::new(VulkanContext::new(&window).expect("Failed to create VulkanContext"));
 
@@ -52,9 +53,7 @@ impl Renderer {
         let transient_command_pool =
             CommandPool::new(context.clone(), vk::CommandPoolCreateFlags::TRANSIENT);
 
-        let logical_size = window
-            .get_inner_size()
-            .expect("Failed to get the window's inner size!");
+        let logical_size = window.inner_size();
         let dimensions = [logical_size.width as u32, logical_size.height as u32];
 
         let vulkan_swapchain = Some(VulkanSwapchain::new(

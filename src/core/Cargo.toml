@@ -6,5 +6,5 @@ edition = "2018"
 
 [dependencies]
 nalgebra-glm = "0.5.0"
-winit = "0.19.5"
+winit = "0.22.1"
 legion = "0.2.1"

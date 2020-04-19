@@ -1,7 +1,7 @@
 use crate::{input::Input, AppState, DeltaTime};
 use legion::prelude::*;
 use nalgebra_glm as glm;
-use winit::VirtualKeyCode;
+use winit::event::VirtualKeyCode;
 
 pub struct CameraState {
     pub view: glm::Mat4,

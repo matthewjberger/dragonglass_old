@@ -16,7 +16,7 @@ use dragonglass_core::{
 };
 use legion::prelude::*;
 use nalgebra_glm as glm;
-use winit::VirtualKeyCode;
+use winit::event::VirtualKeyCode;
 
 pub fn prepare_renderer_system() -> Box<dyn Schedulable> {
     SystemBuilder::new("prepare_renderer")
