@@ -50,7 +50,11 @@ fn main() {
 
     world.resources.insert(DeltaTime(0 as _));
 
-    world.resources.insert(AppState::default());
+    let mut app_state = AppState::default();
+    let window_size = window.inner_size();
+    app_state.window.width = window_size.width as u32;
+    app_state.window.height = window_size.height as u32;
+    world.resources.insert(app_state);
 
     // Register the render preparation system and its components
     let mut prepare_schedule = Schedule::builder()
@@ -86,88 +90,112 @@ fn main() {
     prepare_schedule.execute(&mut world);
 
     let mut last_frame = Instant::now();
+    let mut cursor_moved = false;
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Poll;
-
-        {
-            let mut input = world
-                .resources
-                .get_mut::<Input>()
-                .expect("Failed to get input resource!");
-            let mut app_state = world
-                .resources
-                .get_mut::<AppState>()
-                .expect("Failed to get input resource!");
-            let window_size = window.inner_size();
-            let mut cursor_moved = false;
-            input.mouse.wheel_delta = 0.0;
-
-            if let Event::WindowEvent { event, .. } = event {
-                match event {
-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                    WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                virtual_keycode: Some(keycode),
-                                state,
-                                ..
-                            },
-                        ..
-                    } => {
-                        if keycode == VirtualKeyCode::Escape {
-                            *control_flow = ControlFlow::Exit;
-                        }
-                        *input.keystates.entry(keycode).or_insert(state) = state;
+        match event {
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            virtual_keycode: Some(keycode),
+                            state,
+                            ..
+                        },
+                    ..
+                } => {
+                    let mut input = world
+                        .resources
+                        .get_mut::<Input>()
+                        .expect("Failed to get input resource!");
+                    if keycode == VirtualKeyCode::Escape {
+                        *control_flow = ControlFlow::Exit;
                     }
-                    WindowEvent::Resized(PhysicalSize { width, height }) => {
-                        app_state.window.width = width as u32;
-                        app_state.window.height = height as u32;
-                    }
-                    WindowEvent::MouseInput { button, state, .. } => {
-                        let clicked = state == ElementState::Pressed;
-                        match button {
-                            MouseButton::Left => input.mouse.is_left_clicked = clicked,
-                            MouseButton::Right => input.mouse.is_right_clicked = clicked,
-                            _ => {}
-                        }
-                    }
-                    WindowEvent::CursorMoved { position, .. } => {
-                        let last_position = input.mouse.position;
-                        let current_position = glm::vec2(position.x as _, position.y as _);
-                        input.mouse.position = current_position;
-                        input.mouse.position_delta = current_position - last_position;
-                        input.mouse.offset_from_center = glm::vec2(
-                            ((window_size.width as f32 / 2.0) - position.x as f32) as _,
-                            ((window_size.height as f32 / 2.0) - position.y as f32) as _,
-                        );
-                        cursor_moved = true;
-                    }
-                    WindowEvent::MouseWheel {
-                        delta: MouseScrollDelta::LineDelta(_, v_lines),
-                        ..
-                    } => {
-                        input.mouse.wheel_delta = v_lines;
-                    }
-                    WindowEvent::DroppedFile(file_pathbuf) => {
-                        println!("Received file: {:?}", file_pathbuf);
-                    }
-                    _ => {}
+                    *input.keystates.entry(keycode).or_insert(state) = state;
                 }
-            }
+                WindowEvent::Resized(PhysicalSize { width, height }) => {
+                    let mut app_state = world
+                        .resources
+                        .get_mut::<AppState>()
+                        .expect("Failed to get input resource!");
+                    app_state.window.width = width as u32;
+                    app_state.window.height = height as u32;
+                }
+                WindowEvent::MouseInput { button, state, .. } => {
+                    let mut input = world
+                        .resources
+                        .get_mut::<Input>()
+                        .expect("Failed to get input resource!");
+                    let clicked = state == ElementState::Pressed;
+                    match button {
+                        MouseButton::Left => input.mouse.is_left_clicked = clicked,
+                        MouseButton::Right => input.mouse.is_right_clicked = clicked,
+                        _ => {}
+                    }
+                }
+                WindowEvent::CursorMoved { position, .. } => {
+                    let mut input = world
+                        .resources
+                        .get_mut::<Input>()
+                        .expect("Failed to get input resource!");
+                    let last_position = input.mouse.position;
+                    let current_position = glm::vec2(position.x as _, position.y as _);
+                    input.mouse.position = current_position;
+                    input.mouse.position_delta = current_position - last_position;
+                    input.mouse.offset_from_center = glm::vec2(
+                        ((window_size.width as f32 / 2.0) - position.x as f32) as _,
+                        ((window_size.height as f32 / 2.0) - position.y as f32) as _,
+                    );
+                    cursor_moved = true;
+                }
+                WindowEvent::MouseWheel {
+                    delta: MouseScrollDelta::LineDelta(_, v_lines),
+                    ..
+                } => {
+                    let mut input = world
+                        .resources
+                        .get_mut::<Input>()
+                        .expect("Failed to get input resource!");
+                    input.mouse.wheel_delta = v_lines;
+                }
+                WindowEvent::DroppedFile(file_pathbuf) => {
+                    println!("Received file: {:?}", file_pathbuf);
+                }
+                _ => {}
+            },
+            Event::MainEventsCleared => {
+                let mut input = world
+                    .resources
+                    .get_mut::<Input>()
+                    .expect("Failed to get input resource!");
 
-            if !cursor_moved {
-                input.mouse.position_delta = glm::vec2(0.0, 0.0);
+                if !cursor_moved {
+                    input.mouse.position_delta = glm::vec2(0.0, 0.0);
+                }
+                cursor_moved = false;
+
+                let delta_time =
+                    (Instant::now().duration_since(last_frame).as_millis() as f64) / 1000_f64;
+                last_frame = Instant::now();
+                world
+                    .resources
+                    .get_mut::<DeltaTime>()
+                    .expect("Failed to get delta time resource!")
+                    .0 = delta_time;
+                window.request_redraw();
             }
+            Event::RedrawRequested(_) => {
+                schedule.execute(&mut world);
+            }
+            Event::RedrawEventsCleared => {
+                let mut input = world
+                    .resources
+                    .get_mut::<Input>()
+                    .expect("Failed to get input resource!");
+                input.mouse.wheel_delta = 0.0;
+            }
+            _ => (),
         }
-
-        schedule.execute(&mut world);
-
-        let delta_time = (Instant::now().duration_since(last_frame).as_millis() as f64) / 1000_f64;
-        last_frame = Instant::now();
-        world
-            .resources
-            .get_mut::<DeltaTime>()
-            .expect("Failed to get delta time resource!")
-            .0 = delta_time;
     });
 }
