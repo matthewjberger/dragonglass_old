@@ -1,5 +1,5 @@
 pub use self::{
-    buffer::Buffer,
+    buffer::{Buffer, GeometryBuffer},
     command_pool::CommandPool,
     descriptor_pool::DescriptorPool,
     descriptor_set_layout::DescriptorSetLayout,
@@ -8,7 +8,9 @@ pub use self::{
     pipeline_layout::PipelineLayout,
     sampler::Sampler,
     shader::Shader,
-    texture::{Cubemap, CubemapFaces, Texture, TextureBundle, TextureDescription},
+    texture::{
+        Cubemap, CubemapFaces, ImageLayoutTransition, Texture, TextureBundle, TextureDescription,
+    },
 };
 
 pub mod buffer;

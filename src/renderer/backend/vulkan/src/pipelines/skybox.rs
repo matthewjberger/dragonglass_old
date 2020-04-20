@@ -1,9 +1,9 @@
 use crate::{
     core::VulkanContext,
-    model::ModelBuffers,
     render::{GraphicsPipeline, Renderer},
     resource::{
-        texture::Cubemap, Buffer, DescriptorPool, DescriptorSetLayout, PipelineLayout, Shader,
+        texture::Cubemap, Buffer, DescriptorPool, DescriptorSetLayout, GeometryBuffer,
+        PipelineLayout, Shader,
     },
 };
 use ash::{version::DeviceV1_0, vk};
@@ -251,7 +251,7 @@ pub struct SkyboxPipelineData {
     pub descriptor_pool: DescriptorPool,
     pub descriptor_set: vk::DescriptorSet,
     pub uniform_buffer: Buffer,
-    pub cube: ModelBuffers,
+    pub cube: GeometryBuffer,
 }
 
 impl SkyboxPipelineData {
@@ -268,7 +268,7 @@ impl SkyboxPipelineData {
             vk_mem::MemoryUsage::CpuToGpu,
         );
 
-        let cube = ModelBuffers::new(&renderer.transient_command_pool, VERTICES, None);
+        let cube = GeometryBuffer::new(&renderer.transient_command_pool, VERTICES, None);
 
         let data = SkyboxPipelineData {
             descriptor_pool,

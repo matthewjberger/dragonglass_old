@@ -1,6 +1,6 @@
 use crate::{
     core::VulkanContext,
-    model::{gltf::GltfAsset, ModelBuffers},
+    model::gltf::GltfAsset,
     pipelines::{
         pbr::{PbrPipeline, PbrPipelineData, PbrRenderer},
         skybox::{SkyboxPipeline, SkyboxPipelineData, SkyboxRenderer, VERTICES},
@@ -10,7 +10,7 @@ use crate::{
         shader_compilation::compile_shaders,
         VulkanSwapchain,
     },
-    resource::CommandPool,
+    resource::{CommandPool, GeometryBuffer},
     sync::SynchronizationSet,
 };
 use ash::{version::DeviceV1_0, vk};
@@ -146,7 +146,7 @@ impl Renderer {
     }
 
     pub fn load_environment(&mut self) {
-        let cube = ModelBuffers::new(&self.transient_command_pool, VERTICES, None);
+        let cube = GeometryBuffer::new(&self.transient_command_pool, VERTICES, None);
 
         let cubemap_path = "examples/assets/skyboxes/walk_of_fame/walk_of_fame.hdr";
         let hdr_cubemap = HdrCubemap::new(

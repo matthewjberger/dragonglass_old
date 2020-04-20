@@ -1,11 +1,10 @@
 use crate::{
     core::VulkanContext,
-    model::ModelBuffers,
     pipelines::skybox::{SkyboxPipeline, VERTICES},
     render::{Framebuffer, GraphicsPipeline, RenderPass},
     resource::{
-        texture::{Cubemap, ImageLayoutTransition, Texture, TextureDescription},
-        CommandPool, DescriptorPool, DescriptorSetLayout, ImageView, PipelineLayout, Shader,
+        CommandPool, Cubemap, DescriptorPool, DescriptorSetLayout, GeometryBuffer,
+        ImageLayoutTransition, ImageView, PipelineLayout, Shader, Texture, TextureDescription,
     },
 };
 use ash::{version::DeviceV1_0, vk};
@@ -28,7 +27,7 @@ impl PrefilterMap {
         context: Arc<VulkanContext>,
         command_pool: &CommandPool,
         cubemap: &Cubemap,
-        cube: &ModelBuffers,
+        cube: &GeometryBuffer,
     ) -> Self {
         let dimension = 512;
         let format = vk::Format::R16G16B16A16_SFLOAT;

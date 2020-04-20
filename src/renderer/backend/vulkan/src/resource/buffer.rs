@@ -1,4 +1,4 @@
-use crate::core::VulkanContext;
+use crate::{core::VulkanContext, resource::CommandPool};
 use ash::vk;
 use std::sync::Arc;
 
@@ -95,5 +95,43 @@ impl Drop for Buffer {
             .allocator()
             .destroy_buffer(self.buffer, &self.allocation)
             .expect("Failed to destroy buffer!");
+    }
+}
+
+pub struct GeometryBuffer {
+    pub vertex_buffer: Buffer,
+    pub index_buffer: Option<Buffer>,
+}
+
+impl GeometryBuffer {
+    pub fn new(command_pool: &CommandPool, vertices: &[f32], indices: Option<&[u32]>) -> Self {
+        let vertex_buffer =
+            Self::create_buffer(command_pool, &vertices, vk::BufferUsageFlags::VERTEX_BUFFER);
+
+        let index_buffer = if let Some(indices) = indices {
+            let index_buffer =
+                Self::create_buffer(command_pool, &indices, vk::BufferUsageFlags::INDEX_BUFFER);
+            Some(index_buffer)
+        } else {
+            None
+        };
+
+        Self {
+            vertex_buffer,
+            index_buffer,
+        }
+    }
+
+    fn create_buffer<T: Copy>(
+        command_pool: &CommandPool,
+        data: &[T],
+        usage_flags: vk::BufferUsageFlags,
+    ) -> Buffer {
+        let region = vk::BufferCopy {
+            src_offset: 0,
+            dst_offset: 0,
+            size: (data.len() * std::mem::size_of::<T>()) as ash::vk::DeviceSize,
+        };
+        command_pool.create_device_local_buffer(usage_flags, &data, &[region])
     }
 }

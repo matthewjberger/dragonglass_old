@@ -1,11 +1,11 @@
 use crate::{
     core::VulkanContext,
-    model::ModelBuffers,
     pipelines::skybox::{SkyboxPipeline, VERTICES},
     render::{Framebuffer, GraphicsPipeline, RenderPass},
     resource::{
-        texture::{Cubemap, ImageLayoutTransition, Texture, TextureBundle, TextureDescription},
-        CommandPool, DescriptorPool, DescriptorSetLayout, ImageView, PipelineLayout, Shader,
+        CommandPool, Cubemap, DescriptorPool, DescriptorSetLayout, GeometryBuffer,
+        ImageLayoutTransition, ImageView, PipelineLayout, Shader, Texture, TextureBundle,
+        TextureDescription,
     },
 };
 use ash::{version::DeviceV1_0, vk};
@@ -25,7 +25,7 @@ impl HdrCubemap {
     pub fn new(
         context: Arc<VulkanContext>,
         command_pool: &CommandPool,
-        cube: &ModelBuffers,
+        cube: &GeometryBuffer,
         path: &str,
     ) -> Self {
         let description = TextureDescription::from_hdr(path);
