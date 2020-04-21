@@ -125,46 +125,47 @@ pub fn render_system() -> Box<dyn Runnable> {
                 };
                 let ubos = [ubo];
 
-                for transform in query.iter(&mut world) {
+                if let Some(pbr_data) = &renderer.pbr_pipeline_data.as_ref() {
+                    pbr_data.uniform_buffer.upload_to_buffer(
+                        &ubos,
+                        0,
+                        std::mem::align_of::<UniformBufferObject>() as _,
+                    );
+                }
+
+                let mut mesh_offset = 0;
+                for (index, transform) in query.iter(&mut world).enumerate() {
                     // TODO: Keep track of the global transform using the gltf document
                     // and render meshes at the correct transform
                     // TODO: Go through all assets
                     let asset_transform = transform.translate * transform.rotate * transform.scale;
-                    let asset_index = 0;
-
-                    let asset = &renderer.assets[asset_index];
+                    let asset = &renderer.assets[index];
                     asset.walk(|node_index, graph| {
                         let global_transform =
                             GltfAsset::calculate_global_transform(node_index, graph);
                         if let Some(mesh) = graph[node_index].mesh.as_ref() {
                             if let Some(pbr_data) = &renderer.pbr_pipeline_data.as_ref() {
-                                pbr_data.uniform_buffer.upload_to_buffer(
-                                    &ubos,
-                                    0,
-                                    std::mem::align_of::<UniformBufferObject>() as _,
-                                );
-
-                                let full_dynamic_ubo_size = (asset.number_of_meshes as u64
-                                    * pbr_data.dynamic_alignment)
-                                    as u64;
-
                                 let dynamic_ubo = DynamicUniformBufferObject {
                                     model: asset_transform * global_transform,
                                 };
                                 let ubos = [dynamic_ubo];
                                 let buffer = &pbr_data.dynamic_uniform_buffer;
-                                let offset =
-                                    (pbr_data.dynamic_alignment * mesh.mesh_id as u64) as usize;
+                                let offset = (pbr_data.dynamic_alignment
+                                    * (mesh_offset + mesh.mesh_id) as u64)
+                                    as usize;
 
                                 buffer.upload_to_buffer(&ubos, offset, pbr_data.dynamic_alignment);
-                                buffer
-                                    .flush(0, full_dynamic_ubo_size as _)
-                                    .expect("Failed to flush buffer!");
+
+                                // let full_dynamic_ubo_size = (asset.number_of_meshes as u64 * pbr_data.dynamic_alignment) as u64;
+                                // buffer
+                                //     .flush(dynamic_buffer_offset, full_dynamic_ubo_size as _)
+                                //     .expect("Failed to flush buffer!");
                             }
                         }
 
                         // TODO: Handle skins
                     });
+                    mesh_offset += asset.number_of_meshes;
                 }
 
                 let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];

@@ -35,6 +35,7 @@ pub struct Renderer {
     pub prefilter_map: Option<PrefilterMap>,
     pub brdflut: Option<Brdflut>,
     pub can_reload: bool,
+    pub buffers: Option<GeometryBuffer>,
 }
 
 impl Renderer {
@@ -79,6 +80,7 @@ impl Renderer {
             prefilter_map: None,
             brdflut: None,
             can_reload: false,
+            buffers: None,
         };
 
         renderer.pbr_pipeline = Some(PbrPipeline::new(&mut renderer));
@@ -190,6 +192,28 @@ impl Renderer {
         let number_of_meshes = assets.iter().fold(0, |total_meshes, asset| {
             total_meshes + asset.number_of_meshes
         });
+
+        let vertices = assets
+            .iter()
+            .flat_map(|asset| asset.vertices.iter().copied())
+            .collect::<Vec<_>>();
+
+        let mut index_offset = 0;
+        let indices = assets
+            .iter()
+            .flat_map(|asset| {
+                let indices = asset
+                    .indices
+                    .iter()
+                    .map(|index| index + index_offset)
+                    .collect::<Vec<_>>();
+                index_offset += asset.vertices.len() as u32;
+                indices
+            })
+            .collect::<Vec<_>>();
+
+        let buffers = GeometryBuffer::new(&self.transient_command_pool, &vertices, Some(&indices));
+        self.buffers = Some(buffers);
 
         let textures = assets
             .iter()
@@ -313,9 +337,45 @@ impl Renderer {
 
         self.update_viewport(command_buffer);
 
-        self.assets
-            .iter()
-            .for_each(|asset| pbr_renderer.draw_asset(device, &asset));
+        let buffers = self
+            .buffers
+            .as_ref()
+            .expect("Failed to get geometry buffer!");
+
+        let offsets = [0];
+        let vertex_buffers = [buffers.vertex_buffer.buffer()];
+
+        let mut mesh_offset = 0;
+        let mut vertex_offset = 0;
+        let mut index_offset = 0;
+        let mut texture_offset = 0;
+        self.assets.iter().for_each(|asset| {
+            unsafe {
+                device.cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
+                device.cmd_bind_index_buffer(
+                    command_buffer,
+                    buffers
+                        .index_buffer
+                        .as_ref()
+                        .expect("Failed to get index buffer!")
+                        .buffer(),
+                    index_offset as _,
+                    vk::IndexType::UINT32,
+                );
+            }
+            pbr_renderer.draw_asset(
+                device,
+                &asset,
+                mesh_offset,
+                vertex_offset,
+                index_offset,
+                texture_offset,
+            );
+            mesh_offset += asset.number_of_meshes;
+            vertex_offset += asset.vertices.len() as i32;
+            index_offset += asset.indices.len() as u32;
+            texture_offset += asset.textures.len() as i32;
+        });
     }
 
     pub fn render_skybox(&self, command_buffer: vk::CommandBuffer) {

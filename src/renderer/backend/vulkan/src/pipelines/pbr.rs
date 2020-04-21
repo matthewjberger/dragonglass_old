@@ -544,25 +544,15 @@ impl PbrRenderer {
         }
     }
 
-    pub fn draw_asset(&self, device: &ash::Device, asset: &GltfAsset) {
-        let offsets = [0];
-        let vertex_buffers = [asset.buffers.vertex_buffer.buffer()];
-
-        unsafe {
-            device.cmd_bind_vertex_buffers(self.command_buffer, 0, &vertex_buffers, &offsets);
-            device.cmd_bind_index_buffer(
-                self.command_buffer,
-                asset
-                    .buffers
-                    .index_buffer
-                    .as_ref()
-                    .expect("Failed to get index buffer!")
-                    .buffer(),
-                0,
-                vk::IndexType::UINT32,
-            );
-        }
-
+    pub fn draw_asset(
+        &self,
+        device: &ash::Device,
+        asset: &GltfAsset,
+        mesh_offset: usize,
+        vertex_offset: i32,
+        index_offset: u32,
+        texture_offset: i32,
+    ) {
         asset.walk(|node_index, graph| {
             if let Some(mesh) = graph[node_index].mesh.as_ref() {
                 unsafe {
@@ -572,12 +562,12 @@ impl PbrRenderer {
                         self.pipeline_layout,
                         0,
                         &[self.descriptor_set],
-                        &[(mesh.mesh_id as u64 * self.dynamic_alignment) as _],
+                        &[((mesh_offset + mesh.mesh_id) as u64 * self.dynamic_alignment) as _],
                     );
                 }
 
                 for primitive in mesh.primitives.iter() {
-                    let material = Self::create_material(&asset, &primitive);
+                    let material = Self::create_material(&asset, &primitive, texture_offset);
                     unsafe {
                         device.cmd_push_constants(
                             self.command_buffer,
@@ -591,8 +581,8 @@ impl PbrRenderer {
                             self.command_buffer,
                             primitive.number_of_indices,
                             1,
-                            primitive.first_index,
-                            0,
+                            index_offset + primitive.first_index,
+                            vertex_offset,
                             0,
                         );
                     }
@@ -601,7 +591,11 @@ impl PbrRenderer {
         });
     }
 
-    fn create_material(asset: &GltfAsset, primitive: &Primitive) -> PushConstantBlockMaterial {
+    fn create_material(
+        asset: &GltfAsset,
+        primitive: &Primitive,
+        texture_offset: i32,
+    ) -> PushConstantBlockMaterial {
         let mut material = PushConstantBlockMaterial {
             base_color_factor: glm::vec4(0.0, 0.0, 0.0, 1.0),
             emissive_factor: glm::Vec3::identity(),
@@ -632,24 +626,28 @@ impl PbrRenderer {
             material.alpha_mask = primitive_material.alpha_mode() as i32;
 
             if let Some(base_color_texture) = pbr.base_color_texture() {
-                material.color_texture_set = base_color_texture.texture().index() as i32;
+                material.color_texture_set =
+                    texture_offset + base_color_texture.texture().index() as i32;
             }
 
             if let Some(metallic_roughness_texture) = pbr.metallic_roughness_texture() {
                 material.metallic_roughness_texture_set =
-                    metallic_roughness_texture.texture().index() as i32;
+                    texture_offset + metallic_roughness_texture.texture().index() as i32;
             }
 
             if let Some(normal_texture) = primitive_material.normal_texture() {
-                material.normal_texture_set = normal_texture.texture().index() as i32;
+                material.normal_texture_set =
+                    texture_offset + normal_texture.texture().index() as i32;
             }
 
             if let Some(occlusion_texture) = primitive_material.occlusion_texture() {
-                material.occlusion_texture_set = occlusion_texture.texture().index() as i32;
+                material.occlusion_texture_set =
+                    texture_offset + occlusion_texture.texture().index() as i32;
             }
 
             if let Some(emissive_texture) = primitive_material.emissive_texture() {
-                material.emissive_texture_set = emissive_texture.texture().index() as i32;
+                material.emissive_texture_set =
+                    texture_offset + emissive_texture.texture().index() as i32;
             }
         }
 
