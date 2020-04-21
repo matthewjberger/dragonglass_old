@@ -545,24 +545,6 @@ impl PbrRenderer {
     }
 
     pub fn draw_asset(&self, device: &ash::Device, asset: &GltfAsset) {
-        let offsets = [0];
-        let vertex_buffers = [asset.buffers.vertex_buffer.buffer()];
-
-        unsafe {
-            device.cmd_bind_vertex_buffers(self.command_buffer, 0, &vertex_buffers, &offsets);
-            device.cmd_bind_index_buffer(
-                self.command_buffer,
-                asset
-                    .buffers
-                    .index_buffer
-                    .as_ref()
-                    .expect("Failed to get index buffer!")
-                    .buffer(),
-                0,
-                vk::IndexType::UINT32,
-            );
-        }
-
         asset.walk(|node_index, graph| {
             if let Some(mesh) = graph[node_index].mesh.as_ref() {
                 unsafe {

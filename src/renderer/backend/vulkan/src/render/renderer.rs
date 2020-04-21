@@ -35,6 +35,7 @@ pub struct Renderer {
     pub prefilter_map: Option<PrefilterMap>,
     pub brdflut: Option<Brdflut>,
     pub can_reload: bool,
+    pub geometry_buffer: Option<GeometryBuffer>,
 }
 
 impl Renderer {
@@ -79,6 +80,7 @@ impl Renderer {
             prefilter_map: None,
             brdflut: None,
             can_reload: false,
+            geometry_buffer: None,
         };
 
         renderer.pbr_pipeline = Some(PbrPipeline::new(&mut renderer));
@@ -190,6 +192,21 @@ impl Renderer {
         let number_of_meshes = assets.iter().fold(0, |total_meshes, asset| {
             total_meshes + asset.number_of_meshes
         });
+
+        let vertices = assets
+            .iter()
+            .flat_map(|asset| asset.vertices.iter().copied())
+            .collect::<Vec<_>>();
+
+        let indices = assets
+            .iter()
+            .flat_map(|asset| asset.indices.iter().copied())
+            .collect::<Vec<_>>();
+
+        let geometry_buffer =
+            GeometryBuffer::new(&self.transient_command_pool, &vertices, Some(&indices));
+
+        self.geometry_buffer = Some(geometry_buffer);
 
         let textures = assets
             .iter()
@@ -312,6 +329,28 @@ impl Renderer {
         let pbr_renderer = PbrRenderer::new(command_buffer, &pbr_pipeline, &pbr_pipeline_data);
 
         self.update_viewport(command_buffer);
+
+        let geometry_buffer = self
+            .geometry_buffer
+            .as_ref()
+            .expect("Failed to get geometry buffer!");
+
+        let offsets = [0];
+        let vertex_buffers = [geometry_buffer.vertex_buffer.buffer()];
+
+        unsafe {
+            device.cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
+            device.cmd_bind_index_buffer(
+                command_buffer,
+                geometry_buffer
+                    .index_buffer
+                    .as_ref()
+                    .expect("Failed to get an index buffer!")
+                    .buffer(),
+                0,
+                vk::IndexType::UINT32,
+            );
+        }
 
         self.assets
             .iter()

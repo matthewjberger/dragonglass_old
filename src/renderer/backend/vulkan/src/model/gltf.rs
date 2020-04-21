@@ -1,6 +1,6 @@
 use crate::{
     render::Renderer,
-    resource::{GeometryBuffer, TextureBundle, TextureDescription},
+    resource::{TextureBundle, TextureDescription},
 };
 use ash::vk;
 use gltf::animation::{util::ReadOutputs, Interpolation};
@@ -102,8 +102,9 @@ pub struct GltfAsset {
     pub textures: Vec<TextureBundle>,
     pub scenes: Vec<Scene>,
     pub number_of_meshes: usize,
-    pub buffers: GeometryBuffer,
     pub animations: Vec<Animation>,
+    pub vertices: Vec<f32>,
+    pub indices: Vec<u32>,
 }
 
 impl GltfAsset {
@@ -130,15 +131,14 @@ impl GltfAsset {
 
         let number_of_meshes = gltf.nodes().filter(|node| node.mesh().is_some()).count();
 
-        let buffers =
-            GeometryBuffer::new(&renderer.transient_command_pool, &vertices, Some(&indices));
         GltfAsset {
             gltf,
             textures,
             scenes,
             number_of_meshes,
-            buffers,
             animations,
+            vertices,
+            indices,
         }
     }
 
