@@ -352,6 +352,7 @@ impl Renderer {
             );
         }
 
+        // TODO: Group these offsets into a struct
         let mut texture_offset = 0;
         let mut index_offset = 0;
         let mut vertex_offset = 0;
