@@ -352,9 +352,24 @@ impl Renderer {
             );
         }
 
-        self.assets
-            .iter()
-            .for_each(|asset| pbr_renderer.draw_asset(device, &asset));
+        let mut texture_offset = 0;
+        let mut index_offset = 0;
+        let mut vertex_offset = 0;
+        let mut mesh_offset = 0;
+        for asset in self.assets.iter() {
+            pbr_renderer.draw_asset(
+                device,
+                &asset,
+                texture_offset,
+                mesh_offset,
+                index_offset,
+                vertex_offset,
+            );
+            texture_offset += asset.textures.len() as i32;
+            mesh_offset += asset.number_of_meshes;
+            index_offset += asset.indices.len() as u32;
+            vertex_offset += (asset.vertices.len() / GltfAsset::vertex_stride()) as u32;
+        }
     }
 
     pub fn render_skybox(&self, command_buffer: vk::CommandBuffer) {

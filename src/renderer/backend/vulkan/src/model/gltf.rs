@@ -240,6 +240,22 @@ impl GltfAsset {
         }
     }
 
+    pub fn vertex_stride() -> usize {
+        let position_length = 3;
+        let normal_length = 3;
+        let tex_coords_0_length = 2;
+        let tex_coords_1_length = 2;
+        let joints_0_length = 4;
+        let weights_0_length = 4;
+
+        position_length
+            + normal_length
+            + tex_coords_0_length
+            + tex_coords_1_length
+            + joints_0_length
+            + weights_0_length
+    }
+
     fn load_mesh(
         node: &gltf::Node,
         buffers: &[gltf::buffer::Data],
@@ -249,20 +265,7 @@ impl GltfAsset {
         if let Some(mesh) = node.mesh() {
             let mut all_mesh_primitives = Vec::new();
             for primitive in mesh.primitives() {
-                let position_length = 3;
-                let normal_length = 3;
-                let tex_coords_0_length = 2;
-                let tex_coords_1_length = 2;
-                let joints_0_length = 4;
-                let weights_0_length = 4;
-
-                let stride = (position_length
-                    + normal_length
-                    + tex_coords_0_length
-                    + tex_coords_1_length
-                    + joints_0_length
-                    + weights_0_length)
-                    * std::mem::size_of::<f32>();
+                let stride = Self::vertex_stride() * std::mem::size_of::<f32>();
 
                 let vertex_list_size = vertices.len() * std::mem::size_of::<u32>();
                 let vertex_count = (vertex_list_size / stride) as u32;

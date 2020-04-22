@@ -4,6 +4,9 @@ use nalgebra_glm as glm;
 pub struct AssetName(pub String); // TODO: Make this a key instead of a full path
 
 #[derive(Debug)]
+pub struct AssetIndex(pub usize);
+
+#[derive(Debug)]
 pub struct Transform {
     pub translate: glm::Mat4,
     pub rotate: glm::Mat4,
