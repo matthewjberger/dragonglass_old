@@ -1,6 +1,6 @@
 use dragonglass_backend_vulkan::{
     render::Renderer,
-    systems::render::{animation_system, prepare_renderer_system, reload_system, render_system},
+    systems::render::{animation_system, prepare_renderer, reload_system, render_system},
 };
 use dragonglass_core::{
     camera::{orbital_camera_mouse_system, Camera, CameraState},
@@ -40,8 +40,7 @@ fn main() {
 
     let mut world = World::new();
 
-    let renderer = Renderer::new(&window);
-    world.resources.insert(renderer);
+    let mut renderer = Renderer::new(&window);
 
     let input = Input::default();
     world.resources.insert(input);
@@ -55,11 +54,6 @@ fn main() {
     app_state.window.width = window_size.width as u32;
     app_state.window.height = window_size.height as u32;
     world.resources.insert(app_state);
-
-    // Register the render preparation system and its components
-    let mut prepare_schedule = Schedule::builder()
-        .add_system(prepare_renderer_system())
-        .build();
 
     let mut schedule = Schedule::builder()
         .add_system(orbital_camera_mouse_system())
@@ -112,7 +106,21 @@ fn main() {
         )],
     );
 
-    prepare_schedule.execute(&mut world);
+    world.insert(
+        (),
+        vec![(
+            AssetName("examples/assets/models/Sponza/Sponza.gltf".to_string()),
+            AnimationState { time: 0.0 },
+            Transform {
+                translate: glm::translate(&glm::Mat4::identity(), &glm::vec3(0.0, -4.0, 0.0)),
+                scale: glm::scale(&glm::Mat4::identity(), &glm::vec3(6.0, 6.0, 6.0)),
+                ..Default::default()
+            },
+        )],
+    );
+
+    prepare_renderer(&mut renderer, &mut world);
+    world.resources.insert(renderer);
 
     let mut last_frame = Instant::now();
     let mut cursor_moved = false;

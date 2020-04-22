@@ -10,7 +10,7 @@ use crate::{
 use ash::vk;
 use dragonglass_core::{
     camera::CameraState,
-    components::{AssetName, Transform},
+    components::{AssetIndex, AssetName, Transform},
     input::Input,
     AnimationState, AppState,
 };
@@ -18,19 +18,23 @@ use legion::prelude::*;
 use nalgebra_glm as glm;
 use winit::event::VirtualKeyCode;
 
-pub fn prepare_renderer_system() -> Box<dyn Schedulable> {
-    SystemBuilder::new("prepare_renderer")
-        .write_resource::<Renderer>()
-        .with_query(<Read<AssetName>>::query())
-        .build(|_, mut world, renderer, query| {
-            let asset_names = query
-                .iter(&mut world)
-                .map(|asset_name| asset_name.0.to_string())
-                .collect::<Vec<_>>();
-            renderer.load_assets(&asset_names);
-            renderer.allocate_command_buffers();
-            renderer.record_command_buffers();
-        })
+pub fn prepare_renderer(renderer: &mut Renderer, mut world: &mut World) {
+    let query = Read::<AssetName>::query();
+
+    let data = query
+        .iter_entities(&mut world)
+        .map(|(entity, asset_name)| (entity, asset_name.0.to_string()))
+        .collect::<Vec<_>>();
+
+    let mut asset_names = Vec::new();
+    for (index, (entity, asset_name)) in data.iter().enumerate() {
+        world.add_component(*entity, AssetIndex(index));
+        asset_names.push(asset_name.to_string());
+    }
+
+    renderer.load_assets(&asset_names);
+    renderer.allocate_command_buffers();
+    renderer.record_command_buffers();
 }
 
 pub fn reload_system() -> Box<dyn Schedulable> {
@@ -54,7 +58,7 @@ pub fn render_system() -> Box<dyn Runnable> {
         .write_resource::<Renderer>()
         .read_resource::<CameraState>()
         .read_resource::<AppState>()
-        .with_query(<Read<Transform>>::query())
+        .with_query(<(Read<Transform>, Read<AssetIndex>)>::query())
         .build_thread_local(
             move |_, mut world, (renderer, camera_state, app_state), query| {
                 let context = renderer.context.clone();
@@ -133,12 +137,10 @@ pub fn render_system() -> Box<dyn Runnable> {
                     );
                 }
 
-                // TODO: Keep track of the global transform using the gltf document
-                // and render meshes at the correct transform
                 let mut mesh_offset = 0;
-                for (asset_index, transform) in query.iter(&mut world).enumerate() {
+                for (transform, asset_index) in query.iter(&mut world) {
                     let asset_transform = transform.translate * transform.rotate * transform.scale;
-                    let asset = &renderer.assets[asset_index];
+                    let asset = &renderer.assets[asset_index.0];
                     asset.walk(|node_index, graph| {
                         let global_transform =
                             GltfAsset::calculate_global_transform(node_index, graph);
@@ -206,15 +208,16 @@ pub fn render_system() -> Box<dyn Runnable> {
 pub fn animation_system() -> Box<dyn Schedulable> {
     SystemBuilder::new("animation_system")
         .write_resource::<Renderer>()
-        .with_query(<Write<AnimationState>>::query())
+        .with_query(<(Write<AnimationState>, Read<AssetIndex>)>::query())
         .build(move |_, mut world, renderer, query| {
-            let animation_states = &mut query.iter(&mut world).collect::<Vec<_>>();
-            if animation_states.is_empty() {
-                return;
+            for (_, asset_index) in query.iter(&mut world) {
+                // TODO: Correlate the animation to the animation state and update the animation time there
+                for animation in renderer.assets[asset_index.0].animations.iter_mut() {
+                    animation.time += 0.0005;
+                }
+
+                // TODO: Turn animation into system
+                renderer.assets[asset_index.0].animate();
             }
-            for animation in renderer.assets[1].animations.iter_mut() {
-                animation.time += 0.0005;
-            }
-            renderer.assets[1].animate();
         })
 }
