@@ -104,43 +104,35 @@ impl PrefilterMap {
         let device = context.logical_device().logical_device();
 
         let matrices = vec![
-            glm::rotate(
-                &glm::rotate(
-                    &glm::Mat4::identity(),
-                    90_f32.to_radians(),
-                    &glm::vec3(0.0, 1.0, 0.0),
-                ),
-                180_f32.to_radians(),
+            glm::look_at(
+                &glm::vec3(0.0, 0.0, 0.0),
                 &glm::vec3(1.0, 0.0, 0.0),
+                &glm::vec3(0.0, -1.0, 0.0),
             ),
-            glm::rotate(
-                &glm::rotate(
-                    &glm::Mat4::identity(),
-                    (-90_f32).to_radians(),
-                    &glm::vec3(0.0, 1.0, 0.0),
-                ),
-                180_f32.to_radians(),
-                &glm::vec3(1.0, 0.0, 0.0),
+            glm::look_at(
+                &glm::vec3(0.0, 0.0, 0.0),
+                &glm::vec3(-1.0, 0.0, 0.0),
+                &glm::vec3(0.0, -1.0, 0.0),
             ),
-            glm::rotate(
-                &glm::Mat4::identity(),
-                (-90_f32).to_radians(),
-                &glm::vec3(1.0, 0.0, 0.0),
-            ),
-            glm::rotate(
-                &glm::Mat4::identity(),
-                90_f32.to_radians(),
-                &glm::vec3(1.0, 0.0, 0.0),
-            ),
-            glm::rotate(
-                &glm::Mat4::identity(),
-                180_f32.to_radians(),
-                &glm::vec3(1.0, 0.0, 0.0),
-            ),
-            glm::rotate(
-                &glm::Mat4::identity(),
-                180_f32.to_radians(),
+            glm::look_at(
+                &glm::vec3(0.0, 0.0, 0.0),
+                &glm::vec3(0.0, 1.0, 0.0),
                 &glm::vec3(0.0, 0.0, 1.0),
+            ),
+            glm::look_at(
+                &glm::vec3(0.0, 0.0, 0.0),
+                &glm::vec3(0.0, -1.0, 0.0),
+                &glm::vec3(0.0, 0.0, -1.0),
+            ),
+            glm::look_at(
+                &glm::vec3(0.0, 0.0, 0.0),
+                &glm::vec3(0.0, 0.0, 1.0),
+                &glm::vec3(0.0, -1.0, 0.0),
+            ),
+            glm::look_at(
+                &glm::vec3(0.0, 0.0, 0.0),
+                &glm::vec3(0.0, 0.0, -1.0),
+                &glm::vec3(0.0, -1.0, 0.0),
             ),
         ];
 
@@ -190,7 +182,7 @@ impl PrefilterMap {
                         );
 
                         let push_block_irradiance = PushBlockPrefilterEnv {
-                            mvp: glm::perspective(90_f32.to_radians(), 1.0, 0.1, 512.0) * matrix,
+                            mvp: glm::perspective_zo(1.0, 90_f32.to_radians(), 0.1, 512.0) * matrix,
                             roughness: mip_level as f32
                                 / (output_cubemap.description.mip_levels - 1) as f32,
                             num_samples: 32,

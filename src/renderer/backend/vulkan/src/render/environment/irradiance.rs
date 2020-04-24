@@ -104,43 +104,35 @@ impl IrradianceMap {
         let device = context.logical_device().logical_device();
 
         let matrices = vec![
-            glm::rotate(
-                &glm::rotate(
-                    &glm::Mat4::identity(),
-                    90_f32.to_radians(),
-                    &glm::vec3(0.0, 1.0, 0.0),
-                ),
-                180_f32.to_radians(),
+            glm::look_at(
+                &glm::vec3(0.0, 0.0, 0.0),
                 &glm::vec3(1.0, 0.0, 0.0),
+                &glm::vec3(0.0, -1.0, 0.0),
             ),
-            glm::rotate(
-                &glm::rotate(
-                    &glm::Mat4::identity(),
-                    (-90_f32).to_radians(),
-                    &glm::vec3(0.0, 1.0, 0.0),
-                ),
-                180_f32.to_radians(),
-                &glm::vec3(1.0, 0.0, 0.0),
+            glm::look_at(
+                &glm::vec3(0.0, 0.0, 0.0),
+                &glm::vec3(-1.0, 0.0, 0.0),
+                &glm::vec3(0.0, -1.0, 0.0),
             ),
-            glm::rotate(
-                &glm::Mat4::identity(),
-                (-90_f32).to_radians(),
-                &glm::vec3(1.0, 0.0, 0.0),
-            ),
-            glm::rotate(
-                &glm::Mat4::identity(),
-                90_f32.to_radians(),
-                &glm::vec3(1.0, 0.0, 0.0),
-            ),
-            glm::rotate(
-                &glm::Mat4::identity(),
-                180_f32.to_radians(),
-                &glm::vec3(1.0, 0.0, 0.0),
-            ),
-            glm::rotate(
-                &glm::Mat4::identity(),
-                180_f32.to_radians(),
+            glm::look_at(
+                &glm::vec3(0.0, 0.0, 0.0),
+                &glm::vec3(0.0, 1.0, 0.0),
                 &glm::vec3(0.0, 0.0, 1.0),
+            ),
+            glm::look_at(
+                &glm::vec3(0.0, 0.0, 0.0),
+                &glm::vec3(0.0, -1.0, 0.0),
+                &glm::vec3(0.0, 0.0, -1.0),
+            ),
+            glm::look_at(
+                &glm::vec3(0.0, 0.0, 0.0),
+                &glm::vec3(0.0, 0.0, 1.0),
+                &glm::vec3(0.0, -1.0, 0.0),
+            ),
+            glm::look_at(
+                &glm::vec3(0.0, 0.0, 0.0),
+                &glm::vec3(0.0, 0.0, -1.0),
+                &glm::vec3(0.0, -1.0, 0.0),
             ),
         ];
 
@@ -190,7 +182,7 @@ impl IrradianceMap {
                         );
 
                         let push_block_irradiance = PushBlockIrradiance {
-                            mvp: glm::perspective(90_f32.to_radians(), 1.0, 0.1, 512.0) * matrix,
+                            mvp: glm::perspective_zo(1.0, 90_f32.to_radians(), 0.1, 512.0) * matrix,
                             delta_phi: 2_f32.to_radians(),
                             delta_theta: (0.5_f32 * std::f32::consts::PI) / 64_f32,
                         };
