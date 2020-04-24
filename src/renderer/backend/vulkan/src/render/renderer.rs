@@ -218,7 +218,7 @@ impl Renderer {
         let skybox_pipeline_data = SkyboxPipelineData::new(
             &self,
             &self
-                .cubemap
+                .prefilter_map
                 .as_ref()
                 .expect("Failed to get cubemap!")
                 .cubemap,

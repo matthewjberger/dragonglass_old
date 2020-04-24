@@ -106,18 +106,18 @@ fn main() {
         )],
     );
 
-    world.insert(
-        (),
-        vec![(
-            AssetName("examples/assets/models/Sponza/Sponza.gltf".to_string()),
-            AnimationState { time: 0.0 },
-            Transform {
-                translate: glm::translate(&glm::Mat4::identity(), &glm::vec3(0.0, -6.0, 0.0)),
-                scale: glm::scale(&glm::Mat4::identity(), &glm::vec3(6.0, 6.0, 6.0)),
-                ..Default::default()
-            },
-        )],
-    );
+    // world.insert(
+    //     (),
+    //     vec![(
+    //         AssetName("examples/assets/models/Sponza/Sponza.gltf".to_string()),
+    //         AnimationState { time: 0.0 },
+    //         Transform {
+    //             translate: glm::translate(&glm::Mat4::identity(), &glm::vec3(0.0, -6.0, 0.0)),
+    //             scale: glm::scale(&glm::Mat4::identity(), &glm::vec3(6.0, 6.0, 6.0)),
+    //             ..Default::default()
+    //         },
+    //     )],
+    // );
 
     prepare_renderer(&mut renderer, &mut world);
     world.resources.insert(renderer);
