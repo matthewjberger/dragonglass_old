@@ -278,10 +278,11 @@ impl GltfAsset {
                     .expect("Failed to read any vertex positions from the model. Vertex positions are required.")
                     .map(glm::Vec3::from)
                     .collect::<Vec<_>>();
+                let data_length = positions.len();
 
                 let normals = reader
                     .read_normals()
-                    .map_or(vec![glm::vec3(0.0, 0.0, 0.0); positions.len()], |normals| {
+                    .map_or(vec![glm::vec3(0.0, 0.0, 0.0); data_length], |normals| {
                         normals.map(glm::Vec3::from).collect::<Vec<_>>()
                     });
 
@@ -292,11 +293,11 @@ impl GltfAsset {
 
                 let tex_coords_0 = reader
                     .read_tex_coords(0)
-                    .map_or(vec![glm::vec2(0.0, 0.0); positions.len()], convert_coords);
+                    .map_or(vec![glm::vec2(0.0, 0.0); data_length], convert_coords);
 
                 let tex_coords_1 = reader
                     .read_tex_coords(1)
-                    .map_or(vec![glm::vec2(0.0, 0.0); positions.len()], convert_coords);
+                    .map_or(vec![glm::vec2(0.0, 0.0); data_length], convert_coords);
 
                 let convert_joints = |coords: gltf::mesh::util::ReadJoints<'_>| -> Vec<glm::Vec4> {
                     coords
@@ -308,7 +309,7 @@ impl GltfAsset {
                 };
 
                 let joints_0 = reader.read_joints(0).map_or(
-                    vec![glm::vec4(0.0, 0.0, 0.0, 0.0); positions.len()],
+                    vec![glm::vec4(0.0, 0.0, 0.0, 0.0); data_length],
                     convert_joints,
                 );
 
@@ -318,7 +319,7 @@ impl GltfAsset {
                     };
 
                 let weights_0 = reader.read_weights(0).map_or(
-                    vec![glm::vec4(0.0, 0.0, 0.0, 0.0); positions.len()],
+                    vec![glm::vec4(0.0, 0.0, 0.0, 0.0); data_length],
                     convert_weights,
                 );
 
