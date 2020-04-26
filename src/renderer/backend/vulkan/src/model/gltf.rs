@@ -639,14 +639,14 @@ impl GltfAsset {
         let joint_0_description = vk::VertexInputAttributeDescription::builder()
             .binding(0)
             .location(4)
-            .format(vk::Format::R32G32_SFLOAT)
+            .format(vk::Format::R32G32B32A32_SFLOAT)
             .offset((10 * float_size) as _)
             .build();
 
         let weight_0_description = vk::VertexInputAttributeDescription::builder()
             .binding(0)
             .location(5)
-            .format(vk::Format::R32G32_SFLOAT)
+            .format(vk::Format::R32G32B32A32_SFLOAT)
             .offset((14 * float_size) as _)
             .build();
 
