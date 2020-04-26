@@ -15,8 +15,11 @@ layout(binding = 0) uniform UboView {
   vec3 cameraposition;
 } uboView;
 
+#define MAX_NUM_JOINTS 128
+
 layout(binding = 1) uniform UboInstance {
   mat4 model;
+  mat4 jointMatrices[MAX_NUM_JOINTS];
 } uboInstance;
 
 layout(push_constant) uniform Constants {
@@ -33,8 +36,15 @@ layout (location = 4) out vec3 outCameraPos;
 void main()
 {
   vec4 locPos;
-  locPos = uboInstance.model * vec4(inPos, 1.0);
-  outNormal = normalize(transpose(inverse(mat3(uboInstance.model))) * inNormal);
+
+  mat4 skinMatrix =
+    inWeight0.x * uboInstance.jointMatrices[int(inJoint0.x)] +
+    inWeight0.y * uboInstance.jointMatrices[int(inJoint0.y)] +
+    inWeight0.z * uboInstance.jointMatrices[int(inJoint0.z)] +
+    inWeight0.w * uboInstance.jointMatrices[int(inJoint0.w)];
+
+  locPos = uboInstance.model * skinMatrix * vec4(inPos, 1.0);
+  outNormal = normalize(transpose(inverse(mat3(uboInstance.model * skinMatrix))) * inNormal);
   locPos.y = -locPos.y;
   outWorldPos = locPos.xyz / locPos.w;
   outUV0 = inUV0;

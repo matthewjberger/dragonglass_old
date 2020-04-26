@@ -207,9 +207,16 @@ pub struct UniformBufferObject {
     pub cameraposition: glm::Vec3,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct DynamicUniformBufferObject {
     pub model: glm::Mat4,
+    pub joint_matrices: [glm::Mat4; DynamicUniformBufferObject::MAX_NUM_JOINTS],
+}
+
+impl DynamicUniformBufferObject {
+    // The equivalent constant in the pbr vertex shader
+    // should match this value
+    pub const MAX_NUM_JOINTS: usize = 128;
 }
 
 pub struct PbrPipelineData {

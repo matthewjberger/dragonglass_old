@@ -16,6 +16,7 @@ use dragonglass_core::{
 };
 use legion::prelude::*;
 use nalgebra_glm as glm;
+use petgraph::graph::NodeIndex;
 use winit::event::VirtualKeyCode;
 
 pub fn prepare_renderer(renderer: &mut Renderer, mut world: &mut World) {
@@ -146,9 +147,34 @@ pub fn render_system() -> Box<dyn Runnable> {
                             GltfAsset::calculate_global_transform(node_index, graph);
                         if let Some(mesh) = graph[node_index].mesh.as_ref() {
                             if let Some(pbr_data) = &renderer.pbr_pipeline_data.as_ref() {
-                                let dynamic_ubo = DynamicUniformBufferObject {
+                                let mut dynamic_ubo = DynamicUniformBufferObject {
                                     model: asset_transform * global_transform,
+                                    joint_matrices: [glm::Mat4::identity();
+                                        DynamicUniformBufferObject::MAX_NUM_JOINTS],
                                 };
+
+                                // Skinning
+                                if let Some(skin) = graph[node_index].skin.as_ref() {
+                                    for (index, joint) in skin.joints.iter().enumerate() {
+                                        let joint_global_transform =
+                                            GltfAsset::calculate_global_transform(
+                                                NodeIndex::new(joint.index),
+                                                &graph,
+                                            );
+
+                                        // TODO: This must not be correct, fix it
+                                        let joint_matrix =
+                                        // Inverse transform of the node the mesh is attached to
+                                            glm::inverse(&global_transform) *
+                                        // Current global transform of the joint node
+                                            joint_global_transform *
+                                        // Transform of the joint's inverse bind matrix
+                                            joint.inverse_bind_matrix;
+
+                                        dynamic_ubo.joint_matrices[index] = joint_matrix;
+                                    }
+                                }
+
                                 let ubos = [dynamic_ubo];
                                 let buffer = &pbr_data.dynamic_uniform_buffer;
                                 let offset = (pbr_data.dynamic_alignment
