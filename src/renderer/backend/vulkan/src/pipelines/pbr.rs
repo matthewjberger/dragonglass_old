@@ -135,7 +135,7 @@ impl PbrPipeline {
 
         let vertex_shader = Shader::from_file(
             context.clone(),
-            "examples/assets/shaders/shader.vert.spv",
+            "examples/assets/shaders/pbr.vert.spv",
             vk::ShaderStageFlags::VERTEX,
             &shader_entry_point_name,
         )
@@ -143,7 +143,7 @@ impl PbrPipeline {
 
         let fragment_shader = Shader::from_file(
             context,
-            "examples/assets/shaders/shader.frag.spv",
+            "examples/assets/shaders/pbr.frag.spv",
             vk::ShaderStageFlags::FRAGMENT,
             &shader_entry_point_name,
         )

@@ -96,7 +96,7 @@ impl Renderer {
 
     pub fn reload_pbr_pipeline(&mut self) {
         let shader_directory = "examples/assets/shaders";
-        let shader_glob = shader_directory.to_owned() + "/**/shader*.glsl";
+        let shader_glob = shader_directory.to_owned() + "/**/pbr*.glsl";
         if compile_shaders(&shader_glob).is_err() {
             println!("Failed to recompile shaders!");
         }
