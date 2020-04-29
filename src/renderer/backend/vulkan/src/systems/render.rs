@@ -12,7 +12,7 @@ use dragonglass_core::{
     camera::CameraState,
     components::{AssetIndex, AssetName, Transform},
     input::Input,
-    AnimationState, AppState,
+    AnimationState, AppState, DeltaTime,
 };
 use legion::prelude::*;
 use nalgebra_glm as glm;
@@ -208,12 +208,13 @@ pub fn render_system() -> Box<dyn Runnable> {
 pub fn animation_system() -> Box<dyn Schedulable> {
     SystemBuilder::new("animation_system")
         .write_resource::<Renderer>()
+        .read_resource::<DeltaTime>()
         .with_query(<(Write<AnimationState>, Read<AssetIndex>)>::query())
-        .build(move |_, mut world, renderer, query| {
+        .build(move |_, mut world, (renderer, delta_time), query| {
             for (_, asset_index) in query.iter(&mut world) {
                 // TODO: Correlate the animation to the animation state and update the animation time there
                 for animation in renderer.assets[asset_index.0].animations.iter_mut() {
-                    animation.time += 0.0005;
+                    animation.time += 0.75 * delta_time.0 as f32;
                 }
 
                 // TODO: Turn animation into system
