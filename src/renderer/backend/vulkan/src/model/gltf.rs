@@ -340,7 +340,7 @@ impl GltfAsset {
                     };
 
                 let weights_0 = reader.read_weights(0).map_or(
-                    vec![glm::vec4(0.0, 0.0, 0.0, 0.0); data_length],
+                    vec![glm::vec4(1.0, 0.0, 0.0, 0.0); data_length],
                     convert_weights,
                 );
 
