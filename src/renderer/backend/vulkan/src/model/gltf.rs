@@ -86,7 +86,7 @@ pub struct Skin {
 }
 
 pub struct Joint {
-    pub index: usize,
+    pub target_gltf_index: usize,
     pub inverse_bind_matrix: glm::Mat4,
 }
 
@@ -218,7 +218,7 @@ impl GltfAsset {
                 };
                 joints.push(Joint {
                     inverse_bind_matrix,
-                    index: joint_node.index(),
+                    target_gltf_index: joint_node.index(),
                 });
             }
 
