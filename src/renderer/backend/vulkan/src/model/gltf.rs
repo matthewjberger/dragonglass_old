@@ -124,6 +124,8 @@ pub struct GltfAsset {
 }
 
 impl GltfAsset {
+    pub const DEFAULT_NAME: &'static str = "<Unnamed>";
+
     pub fn new(renderer: &Renderer, asset_name: &str) -> GltfAsset {
         let (gltf, buffers, asset_textures) =
             gltf::import(&asset_name).expect("Couldn't import file!");
@@ -192,7 +194,7 @@ impl GltfAsset {
                 );
                 node_graphs.push(node_graph);
             }
-            let name = scene.name().unwrap_or(&"".to_string()).to_string();
+            let name = scene.name().unwrap_or(&Self::DEFAULT_NAME).to_string();
             scenes.push(Scene { node_graphs, name });
         }
         (scenes, vertices, indices)
@@ -220,7 +222,7 @@ impl GltfAsset {
                 });
             }
 
-            let name = skin.name().unwrap_or(&"".to_string()).to_string();
+            let name = skin.name().unwrap_or(&Self::DEFAULT_NAME).to_string();
 
             Some(Skin { joints, name })
         } else {
@@ -239,7 +241,7 @@ impl GltfAsset {
     ) {
         let mesh = Self::load_mesh(node, buffers, vertices, indices);
         let skin = Self::load_skin(node, buffers);
-        let name = node.name().unwrap_or(&"".to_string()).to_string();
+        let name = node.name().unwrap_or(&Self::DEFAULT_NAME).to_string();
         let node_info = Node {
             animation_transform: Transform::default(),
             local_transform: Self::determine_transform(node),
@@ -419,7 +421,7 @@ impl GltfAsset {
     fn prepare_animations(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<Animation> {
         let mut animations = Vec::new();
         for animation in gltf.animations() {
-            let name = animation.name().unwrap_or(&"".to_string()).to_string();
+            let name = animation.name().unwrap_or(&Self::DEFAULT_NAME).to_string();
             let mut channels = Vec::new();
             for channel in animation.channels() {
                 let sampler = channel.sampler();
