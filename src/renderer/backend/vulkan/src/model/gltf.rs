@@ -56,7 +56,7 @@ pub struct Node {
     pub local_transform: glm::Mat4,
     pub mesh: Option<Mesh>,
     pub skin: Option<Skin>,
-    pub index: usize,
+    pub gltf_index: usize,
     pub name: String,
 }
 
@@ -65,7 +65,7 @@ impl fmt::Debug for Node {
         formatter
             .debug_struct("Node")
             .field("name", &self.name)
-            .field("gltf_index", &self.index)
+            .field("gltf_index", &self.gltf_index)
             .finish()
     }
 }
@@ -247,7 +247,7 @@ impl GltfAsset {
             local_transform: Self::determine_transform(node),
             mesh,
             skin,
-            index: node.index(),
+            gltf_index: node.index(),
             name,
         };
 
@@ -491,7 +491,7 @@ impl GltfAsset {
                 for scene in self.scenes.iter_mut() {
                     for graph in scene.node_graphs.iter_mut() {
                         for node_index in graph.node_indices() {
-                            if graph[node_index].index == channel.node_index {
+                            if graph[node_index].gltf_index == channel.node_index {
                                 let max = *channel.inputs.last().unwrap();
                                 let mut time = animation.time % max;
                                 let first_input = channel.inputs.first().unwrap();
@@ -603,6 +603,16 @@ impl GltfAsset {
             }
         }
         indices
+    }
+
+    pub fn matching_node_index(gltf_index: usize, graph: &NodeGraph) -> Option<NodeIndex> {
+        let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
+        while let Some(node_index) = dfs.next(&graph) {
+            if graph[node_index].gltf_index == gltf_index {
+                return Some(node_index);
+            }
+        }
+        None
     }
 
     pub fn print_nodegraph(graph: &NodeGraph) {
