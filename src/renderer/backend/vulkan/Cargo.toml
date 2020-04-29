@@ -15,7 +15,7 @@ snafu = "0.6.0"
 image = "0.23.3"
 petgraph = "0.5.0"
 legion = "0.2.1"
-gltf = "0.14.0"
+gltf = { version = "0.14.0", features = ["names"] }
 vk-mem = "0.2.0"
 glob = "0.3.0"
 raw-window-handle = "0.3.3"

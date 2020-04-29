@@ -55,10 +55,12 @@ pub struct Node {
     pub mesh: Option<Mesh>,
     pub skin: Option<Skin>,
     pub index: usize,
+    pub name: String,
 }
 
 pub struct Scene {
     pub node_graphs: Vec<NodeGraph>,
+    pub name: String,
 }
 
 pub struct Mesh {
@@ -68,6 +70,7 @@ pub struct Mesh {
 
 pub struct Skin {
     pub joints: Vec<Joint>,
+    pub name: String,
 }
 
 pub struct Joint {
@@ -86,6 +89,7 @@ pub struct Animation {
     pub time: f32,
     channels: Vec<Channel>,
     max_animation_time: f32,
+    pub name: String,
 }
 
 pub struct Channel {
@@ -176,7 +180,8 @@ impl GltfAsset {
                 );
                 node_graphs.push(node_graph);
             }
-            scenes.push(Scene { node_graphs });
+            let name = scene.name().unwrap_or(&"".to_string()).to_string();
+            scenes.push(Scene { node_graphs, name });
         }
         (scenes, vertices, indices)
     }
@@ -203,7 +208,9 @@ impl GltfAsset {
                 });
             }
 
-            Some(Skin { joints })
+            let name = skin.name().unwrap_or(&"".to_string()).to_string();
+
+            Some(Skin { joints, name })
         } else {
             None
         }
@@ -220,12 +227,14 @@ impl GltfAsset {
     ) {
         let mesh = Self::load_mesh(node, buffers, vertices, indices);
         let skin = Self::load_skin(node, buffers);
+        let name = node.name().unwrap_or(&"".to_string()).to_string();
         let node_info = Node {
             animation_transform: Transform::default(),
             local_transform: Self::determine_transform(node),
             mesh,
             skin,
             index: node.index(),
+            name,
         };
 
         let node_index = node_graph.add_node(node_info);
@@ -396,9 +405,9 @@ impl GltfAsset {
     // }
 
     fn prepare_animations(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<Animation> {
-        // TODO: load names if present as well
         let mut animations = Vec::new();
         for animation in gltf.animations() {
+            let name = animation.name().unwrap_or(&"".to_string()).to_string();
             let mut channels = Vec::new();
             for channel in animation.channels() {
                 let sampler = channel.sampler();
@@ -449,6 +458,7 @@ impl GltfAsset {
                 channels,
                 time: 0.0,
                 max_animation_time,
+                name,
             });
         }
         animations
