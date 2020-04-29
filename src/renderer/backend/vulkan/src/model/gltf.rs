@@ -7,10 +7,12 @@ use gltf::animation::{util::ReadOutputs, Interpolation};
 use nalgebra::{Matrix4, Quaternion, UnitQuaternion};
 use nalgebra_glm as glm;
 use petgraph::{
+    dot::{Config, Dot},
     graph::{Graph, NodeIndex},
     prelude::*,
     visit::Dfs,
 };
+use std::fmt;
 
 #[derive(Debug)]
 pub enum TransformationSet {
@@ -56,6 +58,16 @@ pub struct Node {
     pub skin: Option<Skin>,
     pub index: usize,
     pub name: String,
+}
+
+impl fmt::Debug for Node {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Node")
+            .field("name", &self.name)
+            .field("gltf_index", &self.index)
+            .finish()
+    }
 }
 
 pub struct Scene {
@@ -589,6 +601,10 @@ impl GltfAsset {
             }
         }
         indices
+    }
+
+    pub fn print_nodegraph(graph: &NodeGraph) {
+        println!("{:?}", Dot::with_config(&graph, &[Config::EdgeNoLabel]));
     }
 
     pub fn calculate_global_transform(node_index: NodeIndex, graph: &NodeGraph) -> glm::Mat4 {
