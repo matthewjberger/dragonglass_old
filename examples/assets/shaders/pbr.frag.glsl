@@ -109,7 +109,8 @@ void main()
     baseColor = material.baseColorFactor;
   }
 
-  if (baseColor.a < material.alphaMaskCutoff) {
+  // // Alpha Mode 1 is Opaque
+  if (material.alphaMask != 1.0 && baseColor.a < material.alphaMaskCutoff) {
     discard;
   }
 

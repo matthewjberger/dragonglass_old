@@ -16,7 +16,6 @@ use dragonglass_core::{
 };
 use legion::prelude::*;
 use nalgebra_glm as glm;
-use petgraph::graph::NodeIndex;
 use winit::event::VirtualKeyCode;
 
 pub fn prepare_renderer(renderer: &mut Renderer, mut world: &mut World) {
@@ -156,20 +155,20 @@ pub fn render_system() -> Box<dyn Runnable> {
                                 // Skinning
                                 if let Some(skin) = graph[node_index].skin.as_ref() {
                                     for (index, joint) in skin.joints.iter().enumerate() {
+                                        let joint_node_index =
+                                            GltfAsset::matching_node_index(joint.index, &graph)
+                                                .expect("Failed to match joint index!");
+
                                         let joint_global_transform =
                                             GltfAsset::calculate_global_transform(
-                                                NodeIndex::new(joint.index),
+                                                joint_node_index,
                                                 &graph,
                                             );
 
-                                        // TODO: This must not be correct, fix it
-                                        let joint_matrix =
-                                        // Inverse transform of the node the mesh is attached to
-                                            glm::inverse(&global_transform) *
-                                        // Current global transform of the joint node
-                                            joint_global_transform *
-                                        // Transform of the joint's inverse bind matrix
-                                            joint.inverse_bind_matrix;
+                                        let mut joint_matrix =
+                                            joint_global_transform * joint.inverse_bind_matrix;
+                                        joint_matrix =
+                                            glm::inverse(&global_transform) * joint_matrix;
 
                                         dynamic_ubo.joint_matrices[index] = joint_matrix;
                                     }
@@ -177,21 +176,18 @@ pub fn render_system() -> Box<dyn Runnable> {
 
                                 let ubos = [dynamic_ubo];
                                 let buffer = &pbr_data.dynamic_uniform_buffer;
-                                let offset = (pbr_data.dynamic_alignment
-                                    * (mesh_offset + mesh.mesh_id) as u64)
-                                    as usize;
+                                let offset = std::mem::size_of::<DynamicUniformBufferObject>()
+                                    * (mesh_offset + mesh.mesh_id) as usize;
 
                                 buffer.upload_to_buffer(&ubos, offset, pbr_data.dynamic_alignment);
 
-                                let dynamic_ubo_size = (asset.number_of_meshes as u64
-                                    * pbr_data.dynamic_alignment)
-                                    as u64;
+                                let dynamic_ubo_size = asset.number_of_meshes
+                                    * std::mem::size_of::<DynamicUniformBufferObject>();
                                 buffer
                                     .flush(offset, dynamic_ubo_size as _)
                                     .expect("Failed to flush buffer!");
                             }
                         }
-                        // TODO: Handle skins
                     });
                     mesh_offset += asset.number_of_meshes;
                 }
@@ -238,8 +234,10 @@ pub fn animation_system() -> Box<dyn Schedulable> {
         .build(move |_, mut world, renderer, query| {
             for (_, asset_index) in query.iter(&mut world) {
                 // TODO: Correlate the animation to the animation state and update the animation time there
+                #[allow(clippy::never_loop)]
                 for animation in renderer.assets[asset_index.0].animations.iter_mut() {
                     animation.time += 0.0005;
+                    break;
                 }
 
                 // TODO: Turn animation into system

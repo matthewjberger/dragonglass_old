@@ -14,6 +14,7 @@ use crate::{
     sync::SynchronizationSet,
 };
 use ash::{version::DeviceV1_0, vk};
+use gltf::material::AlphaMode;
 use nalgebra_glm as glm;
 use std::sync::Arc;
 use winit::window::Window;
@@ -27,6 +28,7 @@ pub struct Renderer {
     pub transient_command_pool: CommandPool,
     pub assets: Vec<GltfAsset>,
     pub pbr_pipeline: Option<PbrPipeline>,
+    pub pbr_pipeline_blend: Option<PbrPipeline>,
     pub pbr_pipeline_data: Option<PbrPipelineData>,
     pub skybox_pipeline: Option<SkyboxPipeline>,
     pub skybox_pipeline_data: Option<SkyboxPipelineData>,
@@ -72,6 +74,7 @@ impl Renderer {
             transient_command_pool,
             assets: Vec::new(),
             pbr_pipeline: None,
+            pbr_pipeline_blend: None,
             pbr_pipeline_data: None,
             skybox_pipeline: None,
             skybox_pipeline_data: None,
@@ -83,7 +86,8 @@ impl Renderer {
             geometry_buffer: None,
         };
 
-        renderer.pbr_pipeline = Some(PbrPipeline::new(&mut renderer));
+        renderer.pbr_pipeline = Some(PbrPipeline::new(&mut renderer, false));
+        renderer.pbr_pipeline_blend = Some(PbrPipeline::new(&mut renderer, true));
         renderer.skybox_pipeline = Some(SkyboxPipeline::new(&mut renderer));
         renderer
     }
@@ -102,9 +106,11 @@ impl Renderer {
         }
 
         self.pbr_pipeline = None;
+        self.pbr_pipeline_blend = None;
         self.pbr_pipeline_data = None;
 
-        let pbr_pipeline = PbrPipeline::new(self);
+        let pbr_pipeline = PbrPipeline::new(self, false);
+        let pbr_pipeline_blend = PbrPipeline::new(self, true);
 
         let textures = self
             .assets
@@ -118,6 +124,7 @@ impl Renderer {
 
         let pbr_pipeline_data = PbrPipelineData::new(&self, number_of_meshes, &textures);
         self.pbr_pipeline = Some(pbr_pipeline);
+        self.pbr_pipeline_blend = Some(pbr_pipeline_blend);
         self.pbr_pipeline_data = Some(pbr_pipeline_data);
 
         self.record_command_buffers();
@@ -135,13 +142,16 @@ impl Renderer {
         );
         self.vulkan_swapchain = Some(new_swapchain);
 
-        let pbr_pipeline = PbrPipeline::new(self);
+        let pbr_pipeline = PbrPipeline::new(self, false);
+        let pbr_pipeline_blend = PbrPipeline::new(self, true);
         let skybox_pipeline = SkyboxPipeline::new(self);
 
         self.pbr_pipeline = None;
+        self.pbr_pipeline_blend = None;
         self.skybox_pipeline = None;
 
         self.pbr_pipeline = Some(pbr_pipeline);
+        self.pbr_pipeline_blend = Some(pbr_pipeline_blend);
         self.skybox_pipeline = Some(skybox_pipeline);
 
         self.record_command_buffers();
@@ -311,65 +321,81 @@ impl Renderer {
         }
     }
 
+    // TODO: Refactor this
     pub fn render_assets(&self, command_buffer: vk::CommandBuffer) {
-        let device = &self.context.logical_device().logical_device();
+        for pass in 0..3 {
+            let alpha_mode = match pass {
+                0 => AlphaMode::Opaque,
+                1 => AlphaMode::Mask,
+                2 => AlphaMode::Blend,
+                _ => AlphaMode::default(),
+            };
 
-        let pbr_pipeline = self
-            .pbr_pipeline
-            .as_ref()
-            .expect("Failed to get pbr pipeline!");
+            let device = &self.context.logical_device().logical_device();
 
-        pbr_pipeline.bind(device, command_buffer);
-
-        let pbr_pipeline_data = self
-            .pbr_pipeline_data
-            .as_ref()
-            .expect("Failed to get pbr pipeline data!");
-
-        let pbr_renderer = PbrRenderer::new(command_buffer, &pbr_pipeline, &pbr_pipeline_data);
-
-        self.update_viewport(command_buffer);
-
-        let geometry_buffer = self
-            .geometry_buffer
-            .as_ref()
-            .expect("Failed to get geometry buffer!");
-
-        let offsets = [0];
-        let vertex_buffers = [geometry_buffer.vertex_buffer.buffer()];
-
-        unsafe {
-            device.cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
-            device.cmd_bind_index_buffer(
-                command_buffer,
-                geometry_buffer
-                    .index_buffer
+            let pbr_pipeline = if alpha_mode == AlphaMode::Blend {
+                self.pbr_pipeline_blend
                     .as_ref()
-                    .expect("Failed to get an index buffer!")
-                    .buffer(),
-                0,
-                vk::IndexType::UINT32,
-            );
-        }
+                    .expect("Failed to get pbr blend pipeline!")
+            } else {
+                self.pbr_pipeline
+                    .as_ref()
+                    .expect("Failed to get pbr pipeline!")
+            };
 
-        // TODO: Group these offsets into a struct
-        let mut texture_offset = 0;
-        let mut index_offset = 0;
-        let mut vertex_offset = 0;
-        let mut mesh_offset = 0;
-        for asset in self.assets.iter() {
-            pbr_renderer.draw_asset(
-                device,
-                &asset,
-                texture_offset,
-                mesh_offset,
-                index_offset,
-                vertex_offset,
-            );
-            texture_offset += asset.textures.len() as i32;
-            mesh_offset += asset.number_of_meshes;
-            index_offset += asset.indices.len() as u32;
-            vertex_offset += (asset.vertices.len() / GltfAsset::vertex_stride()) as u32;
+            pbr_pipeline.bind(device, command_buffer);
+
+            let pbr_pipeline_data = self
+                .pbr_pipeline_data
+                .as_ref()
+                .expect("Failed to get pbr pipeline data!");
+
+            let pbr_renderer = PbrRenderer::new(command_buffer, &pbr_pipeline, &pbr_pipeline_data);
+
+            self.update_viewport(command_buffer);
+
+            let geometry_buffer = self
+                .geometry_buffer
+                .as_ref()
+                .expect("Failed to get geometry buffer!");
+
+            let offsets = [0];
+            let vertex_buffers = [geometry_buffer.vertex_buffer.buffer()];
+
+            unsafe {
+                device.cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &offsets);
+                device.cmd_bind_index_buffer(
+                    command_buffer,
+                    geometry_buffer
+                        .index_buffer
+                        .as_ref()
+                        .expect("Failed to get an index buffer!")
+                        .buffer(),
+                    0,
+                    vk::IndexType::UINT32,
+                );
+            }
+
+            // TODO: Group these offsets into a struct
+            let mut texture_offset = 0;
+            let mut index_offset = 0;
+            let mut vertex_offset = 0;
+            let mut mesh_offset = 0;
+            for asset in self.assets.iter() {
+                pbr_renderer.draw_asset(
+                    device,
+                    &asset,
+                    texture_offset,
+                    mesh_offset,
+                    index_offset,
+                    vertex_offset,
+                    alpha_mode,
+                );
+                texture_offset += asset.textures.len() as i32;
+                mesh_offset += asset.number_of_meshes;
+                index_offset += asset.indices.len() as u32;
+                vertex_offset += (asset.vertices.len() / GltfAsset::vertex_stride()) as u32;
+            }
         }
     }
 

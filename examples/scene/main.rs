@@ -85,7 +85,9 @@ fn main() {
     world.insert(
         (),
         vec![(
-            AssetName("examples/assets/models/RiggedSimple.glb".to_string()),
+            // AssetName("examples/assets/models/RiggedSimple.glb".to_string()),
+            // AssetName("examples/assets/models/RiggedFigure.glb".to_string()),
+            AssetName("examples/assets/models/AlphaBlendModeTest.glb".to_string()),
             AnimationState { time: 0.0 },
             Transform::default(),
         )],

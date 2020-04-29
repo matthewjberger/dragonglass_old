@@ -42,6 +42,7 @@ void main()
     inWeight0.y * uboInstance.jointMatrices[int(inJoint0.y)] +
     inWeight0.z * uboInstance.jointMatrices[int(inJoint0.z)] +
     inWeight0.w * uboInstance.jointMatrices[int(inJoint0.w)];
+  skinMatrix = mat4(1.0f);
 
   locPos = uboInstance.model * skinMatrix * vec4(inPos, 1.0);
   outNormal = normalize(transpose(inverse(mat3(uboInstance.model * skinMatrix))) * inNormal);
