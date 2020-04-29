@@ -197,9 +197,6 @@ impl PbrPipeline {
     }
 }
 
-// This should match the number of textures defined in the shader
-const MAX_TEXTURES: u32 = 100;
-
 #[derive(Debug, Clone, Copy)]
 pub struct UniformBufferObject {
     pub view: glm::Mat4,
@@ -222,6 +219,9 @@ pub struct PbrPipelineData {
 }
 
 impl PbrPipelineData {
+    // This should match the number of textures defined in the shader
+    pub const MAX_TEXTURES: usize = 100;
+
     pub fn new(renderer: &Renderer, number_of_meshes: usize, textures: &[&TextureBundle]) -> Self {
         let descriptor_set_layout = Self::descriptor_set_layout(renderer.context.clone());
         let descriptor_pool = Self::create_descriptor_pool(renderer.context.clone());
@@ -291,7 +291,7 @@ impl PbrPipelineData {
             .build();
         let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
             .binding(2)
-            .descriptor_count(MAX_TEXTURES)
+            .descriptor_count(Self::MAX_TEXTURES as _)
             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
             .stage_flags(vk::ShaderStageFlags::FRAGMENT)
             .build();
@@ -342,7 +342,7 @@ impl PbrPipelineData {
 
         let sampler_pool_size = vk::DescriptorPoolSize {
             ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-            descriptor_count: MAX_TEXTURES,
+            descriptor_count: Self::MAX_TEXTURES as _,
         };
 
         let irradiance_cubemap_pool_size = vk::DescriptorPoolSize {
@@ -413,7 +413,7 @@ impl PbrPipelineData {
             .collect::<Vec<_>>();
 
         let number_of_images = image_infos.len();
-        let required_images = MAX_TEXTURES as usize;
+        let required_images = Self::MAX_TEXTURES;
         if number_of_images < required_images {
             let remaining = required_images - number_of_images;
             for _ in 0..remaining {
