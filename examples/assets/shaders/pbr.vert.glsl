@@ -15,8 +15,12 @@ layout(binding = 0) uniform UboView {
   vec3 cameraposition;
 } uboView;
 
+#define MAX_NUM_JOINTS 3
+
 layout(binding = 1) uniform UboInstance {
   mat4 model;
+  mat4 jointMatrices;
+  bool hasJoints;
 } uboInstance;
 
 layout(push_constant) uniform Constants {

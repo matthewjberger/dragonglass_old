@@ -31,6 +31,14 @@ layout(push_constant) uniform Material {
 
 layout(location = 0) out vec4 outColor;
 
+#define MAX_NUM_JOINTS 3
+
+layout(binding = 1) uniform UboInstance {
+  mat4 model;
+  mat4 jointMatrices;
+  bool hasJoints;
+} uboInstance;
+
 const float M_PI = 3.141592653589793;
 const float minRoughness = 0.04;
 const vec3 LightColor = vec3(1.0);
@@ -202,4 +210,8 @@ void main()
 	}
 
   outColor = vec4(color, baseColor.a);
+
+  if (!uboInstance.hasJoints) {
+    outColor = vec4(0.0, 1.0, 0.0, 1.0);
+  }
 }

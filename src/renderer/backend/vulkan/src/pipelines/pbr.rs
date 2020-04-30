@@ -204,9 +204,16 @@ pub struct UniformBufferObject {
     pub cameraposition: glm::Vec3,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct DynamicUniformBufferObject {
     pub model: glm::Mat4,
+    pub joint_matrices: glm::Mat4,
+    pub has_joints: bool,
+}
+
+impl DynamicUniformBufferObject {
+    // This has to match the vertex shader's max number of joints
+    pub const MAX_NUM_JOINTS: usize = 3;
 }
 
 pub struct PbrPipelineData {
@@ -287,7 +294,7 @@ impl PbrPipelineData {
             .binding(1)
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
             .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::VERTEX)
+            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
             .build();
         let sampler_binding = vk::DescriptorSetLayoutBinding::builder()
             .binding(2)
