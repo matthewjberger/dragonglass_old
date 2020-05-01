@@ -12,7 +12,7 @@ layout (location = 5) in vec4 inWeight0;
 layout(binding = 0) uniform UboView {
   mat4 view;
   mat4 projection;
-  vec3 cameraposition;
+  vec4 cameraPosition;
 } uboView;
 
 layout(binding = 1) uniform UboInstance {
@@ -28,7 +28,6 @@ layout (location = 0) out vec3 outWorldPos;
 layout (location = 1) out vec3 outNormal;
 layout (location = 2) out vec2 outUV0;
 layout (location = 3) out vec2 outUV1;
-layout (location = 4) out vec3 outCameraPos;
 
 void main()
 {
@@ -39,6 +38,5 @@ void main()
   outWorldPos = locPos.xyz / locPos.w;
   outUV0 = inUV0;
   outUV1 = inUV1;
-  outCameraPos = uboView.cameraposition;
   gl_Position =  uboView.projection * uboView.view * vec4(outWorldPos, 1.0);
 }

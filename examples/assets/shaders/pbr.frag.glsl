@@ -8,7 +8,6 @@ layout (location = 0) in vec3 inWorldPos;
 layout (location = 1) in vec3 inNormal;
 layout (location = 2) in vec2 inUV0;
 layout (location = 3) in vec2 inUV1;
-layout (location = 4) in vec3 inCameraPos;
 
 layout(binding = 2) uniform sampler2D textures[100];
 layout(binding = 3) uniform samplerCube irradiance_cubemap;
@@ -30,6 +29,12 @@ layout(push_constant) uniform Material {
 } material;
 
 layout(location = 0) out vec4 outColor;
+
+layout(binding = 0) uniform UboView {
+  mat4 view;
+  mat4 projection;
+  vec4 cameraPosition;
+} uboView;
 
 const float M_PI = 3.141592653589793;
 const float minRoughness = 0.04;
@@ -140,7 +145,7 @@ void main()
 	vec3 specularEnvironmentR90 = vec3(1.0, 1.0, 1.0) * reflectance90;
 
   vec3 n = getNormal();
-  vec3 v = normalize(inCameraPos - inWorldPos);    // Vector from surface point to camera
+  vec3 v = normalize(uboView.cameraPosition.xyz - inWorldPos);    // Vector from surface point to camera
 	vec3 l = normalize(lightDir.xyz);     // Vector from surface point to light
 	vec3 h = normalize(l+v);                        // Half vector between both l and v
 	vec3 reflection = -normalize(reflect(v, n));

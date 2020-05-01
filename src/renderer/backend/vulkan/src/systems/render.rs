@@ -119,7 +119,12 @@ pub fn render_system() -> Box<dyn Runnable> {
                 }
 
                 let ubo = UniformBufferObject {
-                    cameraposition: camera_state.position,
+                    camera_position: glm::vec4(
+                        camera_state.position.x,
+                        camera_state.position.y,
+                        camera_state.position.z,
+                        1.0,
+                    ),
                     view: camera_state.view,
                     projection,
                 };

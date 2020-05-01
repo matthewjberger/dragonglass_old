@@ -201,7 +201,7 @@ impl PbrPipeline {
 pub struct UniformBufferObject {
     pub view: glm::Mat4,
     pub projection: glm::Mat4,
-    pub cameraposition: glm::Vec3,
+    pub camera_position: glm::Vec4,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -281,7 +281,7 @@ impl PbrPipelineData {
             .binding(0)
             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
             .descriptor_count(1)
-            .stage_flags(vk::ShaderStageFlags::VERTEX)
+            .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT)
             .build();
         let dynamic_ubo_binding = vk::DescriptorSetLayoutBinding::builder()
             .binding(1)
