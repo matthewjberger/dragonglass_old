@@ -82,7 +82,7 @@ impl CommandPool {
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk_mem::MemoryUsage::CpuToGpu,
         );
-        staging_buffer.upload_to_buffer(&data, 0, std::mem::align_of::<T>() as _);
+        staging_buffer.upload_to_buffer(&data, 0);
         staging_buffer
     }
 

@@ -50,7 +50,21 @@ impl Buffer {
         Buffer::new(context, &allocation_create_info, &buffer_create_info)
     }
 
-    pub fn upload_to_buffer<T: Copy>(&self, data: &[T], offset: usize, alignment: vk::DeviceSize) {
+    pub fn upload_to_buffer<T>(&self, data: &[T], offset: usize) {
+        // TODO: Add checks for size of data being written
+        let data_pointer = self.map_memory().expect("Failed to map memory!");
+        unsafe {
+            data_pointer.add(offset);
+            (data_pointer as *mut T).copy_from_nonoverlapping(data.as_ptr(), data.len());
+        }
+    }
+
+    pub fn upload_to_buffer_aligned<T: Copy>(
+        &self,
+        data: &[T],
+        offset: usize,
+        alignment: vk::DeviceSize,
+    ) {
         let data_pointer = self.map_memory().expect("Failed to map memory!");
         unsafe {
             let mut align = ash::util::Align::new(

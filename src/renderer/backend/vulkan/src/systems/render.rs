@@ -115,11 +115,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                     };
                     let skybox_ubos = [skybox_ubo];
 
-                    skybox_data.uniform_buffer.upload_to_buffer(
-                        &skybox_ubos,
-                        0,
-                        std::mem::align_of::<SkyboxUniformBufferObject>() as _,
-                    );
+                    skybox_data.uniform_buffer.upload_to_buffer(&skybox_ubos, 0);
                 }
 
                 let ubo = UniformBufferObject {
@@ -130,11 +126,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                 let ubos = [ubo];
 
                 if let Some(pbr_data) = &renderer.pbr_pipeline_data.as_ref() {
-                    pbr_data.uniform_buffer.upload_to_buffer(
-                        &ubos,
-                        0,
-                        std::mem::align_of::<UniformBufferObject>() as _,
-                    );
+                    pbr_data.uniform_buffer.upload_to_buffer(&ubos, 0);
                 }
 
                 let mut mesh_offset = 0;
@@ -155,7 +147,11 @@ pub fn render_system() -> Box<dyn Runnable> {
                                     * (mesh_offset + mesh.mesh_id) as u64)
                                     as usize;
 
-                                buffer.upload_to_buffer(&ubos, offset, pbr_data.dynamic_alignment);
+                                buffer.upload_to_buffer_aligned(
+                                    &ubos,
+                                    offset,
+                                    pbr_data.dynamic_alignment,
+                                );
 
                                 let dynamic_ubo_size = (asset.number_of_meshes as u64
                                     * pbr_data.dynamic_alignment)

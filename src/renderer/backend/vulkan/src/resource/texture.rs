@@ -207,7 +207,7 @@ impl Texture {
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk_mem::MemoryUsage::CpuToGpu,
         );
-        buffer.upload_to_buffer(&description.pixels, 0, std::mem::align_of::<u8>() as _);
+        buffer.upload_to_buffer(&description.pixels, 0);
 
         let transition = ImageLayoutTransition {
             old_layout: vk::ImageLayout::UNDEFINED,
@@ -504,7 +504,7 @@ impl Cubemap {
             vk::BufferUsageFlags::TRANSFER_SRC,
             vk_mem::MemoryUsage::CpuToGpu,
         );
-        buffer.upload_to_buffer(&pixels, 0, std::mem::align_of::<u8>() as _);
+        buffer.upload_to_buffer(&pixels, 0);
 
         let transition = ImageLayoutTransition {
             old_layout: vk::ImageLayout::UNDEFINED,
