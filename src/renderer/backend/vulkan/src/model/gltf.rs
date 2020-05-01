@@ -625,8 +625,8 @@ impl GltfAsset {
             .iter()
             .fold(glm::Mat4::identity(), |transform, index| {
                 transform
-                    * graph[*index].local_transform
                     * graph[*index].animation_transform.matrix()
+                    * graph[*index].local_transform
             })
     }
 
