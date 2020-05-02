@@ -143,9 +143,40 @@ pub fn render_system() -> Box<dyn Runnable> {
                             GltfAsset::calculate_global_transform(node_index, graph);
                         if let Some(mesh) = graph[node_index].mesh.as_ref() {
                             if let Some(pbr_data) = &renderer.pbr_pipeline_data.as_ref() {
-                                let dynamic_ubo = DynamicUniformBufferObject {
+                                let mut dynamic_ubo = DynamicUniformBufferObject {
                                     model: asset_transform * global_transform,
+                                    joint_matrices: [glm::Mat4::identity(); DynamicUniformBufferObject::MAX_NUM_JOINTS],
+                                    joint_count: 0.0,
                                 };
+
+                                if let Some(skin) = graph[node_index].skin.as_ref() {
+                                    dynamic_ubo.joint_count = skin.joints.len() as f32;
+                                    for (index, joint) in skin.joints.iter().enumerate() {
+                                        if index > DynamicUniformBufferObject::MAX_NUM_JOINTS {
+                                            eprintln!("Skin joint count {} is greater than the maximum joint limit of {}", skin.joints.len(), DynamicUniformBufferObject::MAX_NUM_JOINTS);
+                                            break;
+                                        }
+
+                                        let joint_node_index = GltfAsset::matching_node_index(
+                                            joint.target_gltf_index,
+                                            &graph,
+                                        )
+                                        .expect("Failed to find joint target node index!");
+
+                                        let joint_global_transform =
+                                            GltfAsset::calculate_global_transform(
+                                                joint_node_index,
+                                                &graph,
+                                            );
+
+                                        let joint_matrix = glm::inverse(&global_transform)
+                                            * joint_global_transform
+                                            * joint.inverse_bind_matrix;
+
+                                        dynamic_ubo.joint_matrices[index] = joint_matrix;
+                                    }
+                                }
+
                                 let ubos = [dynamic_ubo];
                                 let buffer = &pbr_data.dynamic_uniform_buffer;
                                 let offset = (pbr_data.dynamic_alignment

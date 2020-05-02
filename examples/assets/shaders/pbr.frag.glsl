@@ -9,6 +9,14 @@ layout (location = 1) in vec3 inNormal;
 layout (location = 2) in vec2 inUV0;
 layout (location = 3) in vec2 inUV1;
 
+#define MAX_NUM_JOINTS 20
+
+layout(binding = 1) uniform UboInstance {
+  mat4 model;
+  mat4 jointMatrices[MAX_NUM_JOINTS];
+  float jointCount;
+} uboInstance;
+
 layout(binding = 2) uniform sampler2D textures[100];
 layout(binding = 3) uniform samplerCube irradiance_cubemap;
 layout(binding = 4) uniform samplerCube prefilter_cubemap;

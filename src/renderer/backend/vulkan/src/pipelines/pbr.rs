@@ -207,6 +207,13 @@ pub struct UniformBufferObject {
 #[derive(Debug, Clone, Copy)]
 pub struct DynamicUniformBufferObject {
     pub model: glm::Mat4,
+    pub joint_matrices: [glm::Mat4; DynamicUniformBufferObject::MAX_NUM_JOINTS],
+    pub joint_count: f32,
+}
+
+impl DynamicUniformBufferObject {
+    // This has to match the value in the vertex shader
+    pub const MAX_NUM_JOINTS: usize = 20;
 }
 
 pub struct PbrPipelineData {

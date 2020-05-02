@@ -73,13 +73,8 @@ fn main() {
     world.insert(
         (),
         vec![(
-            // AssetName("examples/assets/models/MetalRoughSpheres.glb".to_string()),
-            AssetName("examples/assets/models/RiggedSimple.glb".to_string()),
-            AnimationState { time: 0.0 },
-            Transform {
-                translate: glm::translate(&glm::Mat4::identity(), &glm::vec3(0.0, 0.0, 0.0)),
-                ..Default::default()
-            },
+            AssetName("examples/assets/models/MetalRoughSpheres.glb".to_string()),
+            Transform::default(),
         )],
     );
 
@@ -99,7 +94,6 @@ fn main() {
         (),
         vec![(
             AssetName("examples/assets/models/DamagedHelmet.glb".to_string()),
-            AnimationState { time: 0.0 },
             Transform {
                 translate: glm::translate(&glm::Mat4::identity(), &glm::vec3(-6.0, 0.0, 0.0)),
                 ..Default::default()
@@ -107,18 +101,18 @@ fn main() {
         )],
     );
 
-    // world.insert(
-    //     (),
-    //     vec![(
-    //         AssetName("examples/assets/models/Sponza/Sponza.gltf".to_string()),
-    //         AnimationState { time: 0.0 },
-    //         Transform {
-    //             translate: glm::translate(&glm::Mat4::identity(), &glm::vec3(0.0, -6.0, 0.0)),
-    //             scale: glm::scale(&glm::Mat4::identity(), &glm::vec3(6.0, 6.0, 6.0)),
-    //             ..Default::default()
-    //         },
-    //     )],
-    // );
+    world.insert(
+        (),
+        vec![(
+            AssetName("examples/assets/models/Sponza/Sponza.gltf".to_string()),
+            AnimationState { time: 0.0 },
+            Transform {
+                translate: glm::translate(&glm::Mat4::identity(), &glm::vec3(0.0, -6.0, 0.0)),
+                scale: glm::scale(&glm::Mat4::identity(), &glm::vec3(6.0, 6.0, 6.0)),
+                ..Default::default()
+            },
+        )],
+    );
 
     prepare_renderer(&mut renderer, &mut world);
     world.resources.insert(renderer);

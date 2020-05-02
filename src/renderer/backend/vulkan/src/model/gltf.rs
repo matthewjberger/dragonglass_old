@@ -4,12 +4,12 @@ use crate::{
 };
 use ash::vk;
 use gltf::animation::{util::ReadOutputs, Interpolation};
-use nalgebra::{Matrix4, Quaternion, UnitQuaternion};
+use nalgebra::Matrix4;
 use nalgebra_glm as glm;
 use petgraph::{
+    algo::astar,
     dot::{Config, Dot},
     graph::{Graph, NodeIndex},
-    prelude::*,
     visit::Dfs,
 };
 use std::fmt;
@@ -38,7 +38,7 @@ impl Transform {
         }
 
         if let Some(rotation) = self.rotation {
-            matrix *= Matrix4::from(UnitQuaternion::from_quaternion(rotation));
+            matrix *= glm::quat_to_mat4(&rotation);
         }
 
         if let Some(scale) = self.scale {
@@ -526,27 +526,30 @@ impl GltfAsset {
                                 TransformationSet::Translations(translations) => {
                                     let start = translations[channel.previous_key];
                                     let end = translations[next_key];
-                                    let translation = start.lerp(&end, normalized_time);
-                                    let translation_vec = glm::make_vec3(translation.as_slice());
+                                    let translation = glm::mix(&start, &end, normalized_time);
                                     graph[node_index].animation_transform.translation =
-                                        Some(translation_vec);
+                                        Some(translation);
                                 }
                                 TransformationSet::Rotations(rotations) => {
                                     let start = rotations[channel.previous_key];
                                     let end = rotations[next_key];
                                     let start_quat =
-                                        Quaternion::new(start[3], start[0], start[1], start[2]);
-                                    let end_quat = Quaternion::new(end[3], end[0], end[1], end[2]);
-                                    let rotation_quat = start_quat.lerp(&end_quat, normalized_time);
+                                        glm::make_quat(&[start[0], start[1], start[2], start[3]]);
+                                    let end_quat =
+                                        glm::make_quat(&[end[0], end[1], end[2], end[3]]);
+                                    let rotation_quat = glm::quat_normalize(&glm::quat_slerp(
+                                        &start_quat,
+                                        &end_quat,
+                                        normalized_time,
+                                    ));
                                     graph[node_index].animation_transform.rotation =
                                         Some(rotation_quat);
                                 }
                                 TransformationSet::Scales(scales) => {
                                     let start = scales[channel.previous_key];
                                     let end = scales[next_key];
-                                    let scale = start.lerp(&end, normalized_time);
-                                    let scale_vec = glm::make_vec3(scale.as_slice());
-                                    graph[node_index].animation_transform.scale = Some(scale_vec);
+                                    let scale = glm::mix(&start, &end, normalized_time);
+                                    graph[node_index].animation_transform.scale = Some(scale);
                                 }
                                 TransformationSet::MorphTargetWeights(_weights) => unimplemented!(),
                             }
@@ -555,45 +558,6 @@ impl GltfAsset {
                 }
             }
         }
-    }
-
-    pub fn path_between_nodes(
-        starting_node_index: NodeIndex,
-        node_index: NodeIndex,
-        graph: &NodeGraph,
-    ) -> Vec<NodeIndex> {
-        let mut indices = Vec::new();
-        let mut dfs = Dfs::new(&graph, starting_node_index);
-        while let Some(current_node_index) = dfs.next(&graph) {
-            let mut incoming_walker = graph
-                .neighbors_directed(current_node_index, Incoming)
-                .detach();
-            let mut outgoing_walker = graph
-                .neighbors_directed(current_node_index, Outgoing)
-                .detach();
-
-            if let Some(parent) = incoming_walker.next_node(&graph) {
-                while let Some(last_index) = indices.last() {
-                    if *last_index == parent {
-                        break;
-                    }
-                    // Discard indices for transforms that are no longer needed
-                    indices.pop();
-                }
-            }
-
-            indices.push(current_node_index);
-
-            if node_index == current_node_index {
-                break;
-            }
-
-            // If the node has no children, don't store the index
-            if outgoing_walker.next(&graph).is_none() {
-                indices.pop();
-            }
-        }
-        indices
     }
 
     pub fn matching_node_index(gltf_index: usize, graph: &NodeGraph) -> Option<NodeIndex> {
@@ -611,8 +575,16 @@ impl GltfAsset {
     }
 
     pub fn calculate_global_transform(node_index: NodeIndex, graph: &NodeGraph) -> glm::Mat4 {
-        let indices = Self::path_between_nodes(NodeIndex::new(0), node_index, graph);
-        indices
+        let (_, astar_indices) = astar(
+            &graph,
+            NodeIndex::new(0),
+            |finish| finish == node_index,
+            |_| 1,
+            |_| 0,
+        )
+        .expect("Failed to find path between nodes");
+
+        astar_indices
             .iter()
             .fold(glm::Mat4::identity(), |transform, index| {
                 transform
