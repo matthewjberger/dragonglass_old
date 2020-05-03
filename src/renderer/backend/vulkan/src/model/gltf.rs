@@ -109,8 +109,6 @@ pub struct Channel {
     inputs: Vec<f32>,
     transformations: TransformationSet,
     _interpolation: Interpolation,
-    previous_key: usize,
-    previous_time: f32,
 }
 
 pub struct GltfAsset {
@@ -408,16 +406,6 @@ impl GltfAsset {
         }
     }
 
-    // TODO: Write this method for vec3's and vec4's
-    // fn interpolate(interpolation: Interpolation) {
-    //     match interpolation {
-    //         Interpolation::Linear => {}
-    //         Interpolation::Step => {}
-    //         Interpolation::CatmullRomSpline => {}
-    //         Interpolation::CubicSpline => {}
-    //     }
-    // }
-
     fn prepare_animations(gltf: &gltf::Document, buffers: &[gltf::buffer::Data]) -> Vec<Animation> {
         let mut animations = Vec::new();
         for animation in gltf.animations() {
@@ -458,8 +446,6 @@ impl GltfAsset {
                     inputs,
                     transformations,
                     _interpolation,
-                    previous_key: 0,
-                    previous_time: 0.0,
                 });
             }
 
@@ -492,72 +478,63 @@ impl GltfAsset {
                     for graph in scene.node_graphs.iter_mut() {
                         for node_index in graph.node_indices() {
                             if graph[node_index].gltf_index == channel.target_gltf_index {
-                                let max = *channel.inputs.last().unwrap();
-                                let mut time = animation.time % max;
-                                let first_input = channel.inputs.first().unwrap();
-                                if time.lt(first_input) {
-                                    time = *first_input;
-                                }
+                                let mut input_iter = channel.inputs.iter().enumerate().peekable();
+                                while let Some((previous_key, previous_time)) = input_iter.next() {
+                                    if let Some((next_key, next_time)) = input_iter.peek() {
+                                        let next_key = *next_key;
+                                        let next_time = **next_time;
+                                        let previous_time = *previous_time;
 
-                                if channel.previous_time > time {
-                                    channel.previous_key = 0;
-                                }
-                                channel.previous_time = time;
+                                        if animation.time < previous_time
+                                            || animation.time > next_time
+                                        {
+                                            continue;
+                                        }
 
-                                let mut next_key: usize = 0;
-                                for index in channel.previous_key..channel.inputs.len() {
-                                    let index = index as usize;
-                                    if time <= channel.inputs[index] {
-                                        next_key =
-                                            nalgebra::clamp(index, 1, channel.inputs.len() - 1);
-                                        break;
+                                        let interpolation = (animation.time - previous_time)
+                                            / (next_time - previous_time);
+
+                                        // TODO: Interpolate with other methods
+                                        // Only Linear interpolation is used for now
+                                        match &channel.transformations {
+                                            TransformationSet::Translations(translations) => {
+                                                let start = translations[previous_key];
+                                                let end = translations[next_key];
+                                                let translation_vec =
+                                                    glm::mix(&start, &end, interpolation);
+                                                graph[node_index].animation_transform.translation =
+                                                    Some(translation_vec);
+                                            }
+                                            TransformationSet::Rotations(rotations) => {
+                                                let start = rotations[previous_key];
+                                                let end = rotations[next_key];
+                                                let start_quat = Quaternion::new(
+                                                    start[3], start[0], start[1], start[2],
+                                                );
+                                                let end_quat =
+                                                    Quaternion::new(end[3], end[0], end[1], end[2]);
+                                                let rotation_quat = glm::quat_slerp(
+                                                    &start_quat,
+                                                    &end_quat,
+                                                    interpolation,
+                                                );
+                                                graph[node_index].animation_transform.rotation =
+                                                    Some(glm::quat_normalize(&rotation_quat));
+                                            }
+                                            TransformationSet::Scales(scales) => {
+                                                let start = scales[previous_key];
+                                                let end = scales[next_key];
+                                                let scale_vec =
+                                                    glm::mix(&start, &end, interpolation);
+                                                graph[node_index].animation_transform.scale =
+                                                    Some(scale_vec);
+                                            }
+                                            TransformationSet::MorphTargetWeights(_weights) => {
+                                                unimplemented!()
+                                            }
+                                        }
                                     }
                                 }
-                                channel.previous_key = nalgebra::clamp(next_key - 1, 0, next_key);
-
-                                let key_delta =
-                                    channel.inputs[next_key] - channel.inputs[channel.previous_key];
-                                let normalized_time =
-                                    (time - channel.inputs[channel.previous_key]) / key_delta;
-
-                                // TODO: Interpolate with other methods
-                                // Only Linear interpolation is used for now
-                                match &channel.transformations {
-                                    TransformationSet::Translations(translations) => {
-                                        let start = translations[channel.previous_key];
-                                        let end = translations[next_key];
-                                        let translation = start.lerp(&end, normalized_time);
-                                        let translation_vec =
-                                            glm::make_vec3(translation.as_slice());
-                                        graph[node_index].animation_transform.translation =
-                                            Some(translation_vec);
-                                    }
-                                    TransformationSet::Rotations(rotations) => {
-                                        let start = rotations[channel.previous_key];
-                                        let end = rotations[next_key];
-                                        let start_quat =
-                                            Quaternion::new(start[3], start[0], start[1], start[2]);
-                                        let end_quat =
-                                            Quaternion::new(end[3], end[0], end[1], end[2]);
-                                        let rotation_quat =
-                                            start_quat.lerp(&end_quat, normalized_time);
-                                        graph[node_index].animation_transform.rotation =
-                                            Some(rotation_quat);
-                                    }
-                                    TransformationSet::Scales(scales) => {
-                                        let start = scales[channel.previous_key];
-                                        let end = scales[next_key];
-                                        let scale = start.lerp(&end, normalized_time);
-                                        let scale_vec = glm::make_vec3(scale.as_slice());
-                                        graph[node_index].animation_transform.scale =
-                                            Some(scale_vec);
-                                    }
-                                    TransformationSet::MorphTargetWeights(_weights) => {
-                                        unimplemented!()
-                                    }
-                                }
-
-                                break;
                             }
                         }
                     }
