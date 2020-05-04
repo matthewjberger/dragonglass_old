@@ -118,34 +118,54 @@ pub fn render_system() -> Box<dyn Runnable> {
                     skybox_data.uniform_buffer.upload_to_buffer(&skybox_ubos, 0);
                 }
 
-                let ubo = UniformBufferObject {
+                let mut ubo = UniformBufferObject {
+                    view: camera_state.view,
+                    projection,
                     camera_position: glm::vec4(
                         camera_state.position.x,
                         camera_state.position.y,
                         camera_state.position.z,
                         1.0,
                     ),
-                    view: camera_state.view,
-                    projection,
+                    joint_matrices: [glm::Mat4::identity(); UniformBufferObject::MAX_NUM_JOINTS],
                 };
-                let ubos = [ubo];
-
-                if let Some(pbr_data) = &renderer.pbr_pipeline_data.as_ref() {
-                    pbr_data.uniform_buffer.upload_to_buffer(&ubos, 0);
-                }
 
                 let mut mesh_offset = 0;
                 for (transform, asset_index) in query.iter(&mut world) {
                     let asset_transform = transform.translate * transform.rotate * transform.scale;
                     let asset = &renderer.assets[asset_index.0];
-                    asset.walk(|node_index, graph| {
+                    asset.walk_mut(|node_index, graph| {
                         let global_transform =
                             GltfAsset::calculate_global_transform(node_index, graph);
                         if let Some(mesh) = graph[node_index].mesh.as_ref() {
                             if let Some(pbr_data) = &renderer.pbr_pipeline_data.as_ref() {
-                                let dynamic_ubo = DynamicUniformBufferObject {
+                                let mut dynamic_ubo = DynamicUniformBufferObject {
                                     model: asset_transform * global_transform,
+                                    joint_count: 0.0,
                                 };
+
+                                if let Some(skin) = graph[node_index].skin.as_ref() {
+                                    dynamic_ubo.joint_count = skin.joints.len() as f32;
+                                    for (index, joint) in skin.joints.iter().enumerate() {
+                                        if index > UniformBufferObject::MAX_NUM_JOINTS {
+                                            eprintln!("Skin joint count {} is greater than the maximum joint limit of {}", skin.joints.len(), UniformBufferObject::MAX_NUM_JOINTS);
+                                            break;
+                                        }
+
+                                        let joint_node_index = GltfAsset::matching_node_index(joint.target_gltf_index, &graph)
+                                            .expect("Failed to find joint target node index!");
+
+                                        let joint_global_transform =
+                                            GltfAsset::calculate_global_transform(joint_node_index, &graph);
+
+                                        let joint_matrix = glm::inverse(&global_transform)
+                                            * joint_global_transform
+                                            * joint.inverse_bind_matrix;
+
+                                        ubo.joint_matrices[index] = joint_matrix;
+                                    }
+                                }
+
                                 let ubos = [dynamic_ubo];
                                 let buffer = &pbr_data.dynamic_uniform_buffer;
                                 let offset = (pbr_data.dynamic_alignment
@@ -166,9 +186,13 @@ pub fn render_system() -> Box<dyn Runnable> {
                                     .expect("Failed to flush buffer!");
                             }
                         }
-                        // TODO: Handle skins
                     });
                     mesh_offset += asset.number_of_meshes;
+                }
+
+                let ubos = [ubo];
+                if let Some(pbr_data) = &renderer.pbr_pipeline_data.as_ref() {
+                    pbr_data.uniform_buffer.upload_to_buffer(&ubos, 0);
                 }
 
                 let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];

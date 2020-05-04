@@ -4,7 +4,7 @@ use crate::{
 };
 use ash::vk;
 use gltf::animation::{util::ReadOutputs, Interpolation};
-use nalgebra::{Matrix4, Quaternion, UnitQuaternion};
+use nalgebra::{Matrix4, Quaternion};
 use nalgebra_glm as glm;
 use petgraph::{
     dot::{Config, Dot},
@@ -38,7 +38,7 @@ impl Transform {
         }
 
         if let Some(rotation) = self.rotation {
-            matrix *= Matrix4::from(UnitQuaternion::from_quaternion(rotation));
+            matrix *= glm::quat_to_mat4(&rotation);
         }
 
         if let Some(scale) = self.scale {
@@ -159,14 +159,16 @@ impl GltfAsset {
     }
 
     fn determine_transform(node: &gltf::Node) -> glm::Mat4 {
-        let transform: Vec<f32> = node
-            .transform()
-            .matrix()
-            .iter()
-            .flat_map(|array| array.iter())
-            .cloned()
-            .collect();
-        glm::make_mat4(&transform.as_slice())
+        let (translation, rotation, scale) = node.transform().decomposed();
+
+        let translation_vec: glm::Vec3 = translation.into();
+        let rotation_quaternion =
+            &glm::make_quat(&[rotation[3], rotation[0], rotation[1], rotation[2]]);
+        let scale_vec: glm::Vec3 = scale.into();
+        let translation = glm::Mat4::new_translation(&translation_vec);
+        let rotation = glm::quat_to_mat4(&rotation_quaternion);
+        let scale = glm::Mat4::new_nonuniform_scaling(&scale_vec);
+        translation * rotation * scale
     }
 
     fn prepare_scenes(
@@ -519,7 +521,7 @@ impl GltfAsset {
                                                     interpolation,
                                                 );
                                                 graph[node_index].animation_transform.rotation =
-                                                    Some(glm::quat_normalize(&rotation_quat));
+                                                    Some(rotation_quat);
                                             }
                                             TransformationSet::Scales(scales) => {
                                                 let start = scales[previous_key];
@@ -621,14 +623,28 @@ impl GltfAsset {
             .iter()
             .fold(glm::Mat4::identity(), |transform, index| {
                 transform
+                    // * graph[*index].local_transform
                     * graph[*index].animation_transform.matrix()
-                    * graph[*index].local_transform
             })
     }
 
     pub fn walk<F>(&self, action: F)
     where
         F: Fn(NodeIndex, &NodeGraph),
+    {
+        for scene in self.scenes.iter() {
+            for graph in scene.node_graphs.iter() {
+                let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
+                while let Some(node_index) = dfs.next(&graph) {
+                    action(node_index, &graph);
+                }
+            }
+        }
+    }
+
+    pub fn walk_mut<F>(&self, mut action: F)
+    where
+        F: FnMut(NodeIndex, &NodeGraph),
     {
         for scene in self.scenes.iter() {
             for graph in scene.node_graphs.iter() {

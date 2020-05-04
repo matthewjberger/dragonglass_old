@@ -197,16 +197,23 @@ impl PbrPipeline {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct UniformBufferObject {
+    pub joint_matrices: [glm::Mat4; UniformBufferObject::MAX_NUM_JOINTS],
     pub view: glm::Mat4,
     pub projection: glm::Mat4,
     pub camera_position: glm::Vec4,
 }
 
+impl UniformBufferObject {
+    // This has to match the value in the vertex shader
+    pub const MAX_NUM_JOINTS: usize = 20;
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct DynamicUniformBufferObject {
     pub model: glm::Mat4,
+    pub joint_count: f32,
 }
 
 pub struct PbrPipelineData {
