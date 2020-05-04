@@ -30,10 +30,13 @@ layout(push_constant) uniform Material {
 
 layout(location = 0) out vec4 outColor;
 
+#define MAX_NUM_JOINTS 128
+
 layout(binding = 0) uniform UboView {
   mat4 view;
   mat4 projection;
   vec4 cameraPosition;
+  mat4 jointMatrices[MAX_NUM_JOINTS];
 } uboView;
 
 const float M_PI = 3.141592653589793;

@@ -9,10 +9,13 @@ layout (location = 3) in vec2 inUV1;
 layout (location = 4) in vec4 inJoint0;
 layout (location = 5) in vec4 inWeight0;
 
+#define MAX_NUM_JOINTS 128
+
 layout(binding = 0) uniform UboView {
   mat4 view;
   mat4 projection;
   vec4 cameraPosition;
+  mat4 jointMatrices[MAX_NUM_JOINTS];
 } uboView;
 
 layout(binding = 1) uniform UboInstance {
