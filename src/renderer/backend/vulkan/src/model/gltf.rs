@@ -640,6 +640,20 @@ impl GltfAsset {
         }
     }
 
+    pub fn walk_mut<F>(&self, mut action: F)
+    where
+        F: FnMut(NodeIndex, &NodeGraph),
+    {
+        for scene in self.scenes.iter() {
+            for graph in scene.node_graphs.iter() {
+                let mut dfs = Dfs::new(&graph, NodeIndex::new(0));
+                while let Some(node_index) = dfs.next(&graph) {
+                    action(node_index, &graph);
+                }
+            }
+        }
+    }
+
     pub fn create_vertex_attributes() -> [vk::VertexInputAttributeDescription; 6] {
         let float_size = std::mem::size_of::<f32>();
         let position_description = vk::VertexInputAttributeDescription::builder()
