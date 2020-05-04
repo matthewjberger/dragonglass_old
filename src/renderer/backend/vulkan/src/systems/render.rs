@@ -146,6 +146,28 @@ pub fn render_system() -> Box<dyn Runnable> {
                                 let dynamic_ubo = DynamicUniformBufferObject {
                                     model: asset_transform * global_transform,
                                 };
+
+                                if let Some(skin) = graph[node_index].skin.as_ref() {
+                                    let max_joint_count = 128;
+                                    let joint_count = skin.joints.len() as f32;
+
+                                    for (index, joint) in skin.joints.iter().enumerate() {
+                                        if index > max_joint_count {
+                                            eprintln!("Skin joint count {} is greater than the maximum joint limit of {}!", joint_count, max_joint_count);
+                                        }
+
+                                        let joint_node_index = GltfAsset::matching_node_index(joint.target_gltf_index, &graph)
+                                            .expect("Failed to find joint target node index!");
+
+                                        let joint_global_transform =
+                                            GltfAsset::calculate_global_transform(joint_node_index, &graph);
+
+                                        let _joint_matrix = glm::inverse(&global_transform)
+                                            * joint_global_transform
+                                            * joint.inverse_bind_matrix;
+                                    }
+                                }
+
                                 let ubos = [dynamic_ubo];
                                 let buffer = &pbr_data.dynamic_uniform_buffer;
                                 let offset = (pbr_data.dynamic_alignment

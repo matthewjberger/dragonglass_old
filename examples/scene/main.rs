@@ -75,7 +75,7 @@ fn main() {
         vec![(
             // AssetName("examples/assets/models/MetalRoughSpheres.glb".to_string()),
             AssetName("examples/assets/models/RiggedSimple.glb".to_string()),
-            // AnimationState { time: 0.0 },
+            AnimationState { time: 0.0 },
             Transform::default(),
         )],
     );
