@@ -131,6 +131,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                 };
 
                 let mut mesh_offset = 0;
+                let mut joint_offset = 0;
                 for (transform, asset_index) in query.iter(&mut world) {
                     let asset_transform = transform.translate * transform.rotate * transform.scale;
                     let asset = &renderer.assets[asset_index.0];
@@ -145,7 +146,8 @@ pub fn render_system() -> Box<dyn Runnable> {
                                 };
 
                                 if let Some(skin) = graph[node_index].skin.as_ref() {
-                                    dynamic_ubo.joint_info = glm::vec4(skin.joints.len() as f32, 0.0, 0.0, 0.0);
+                                    let joint_count = skin.joints.len();
+                                    dynamic_ubo.joint_info = glm::vec4(joint_count as f32, joint_offset as f32, 0.0, 0.0);
                                     for (index, joint) in skin.joints.iter().enumerate() {
                                         if index > UniformBufferObject::MAX_NUM_JOINTS {
                                             eprintln!("Skin joint count {} is greater than the maximum joint limit of {}!", dynamic_ubo.joint_info, UniformBufferObject::MAX_NUM_JOINTS);
@@ -163,6 +165,7 @@ pub fn render_system() -> Box<dyn Runnable> {
 
                                         ubo.joint_matrices[index] = joint_matrix;
                                     }
+                                    joint_offset += joint_count;
                                 }
 
                                 let dynamic_ubos = [dynamic_ubo];
