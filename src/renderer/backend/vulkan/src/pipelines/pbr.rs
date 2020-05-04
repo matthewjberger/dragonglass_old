@@ -213,6 +213,8 @@ impl UniformBufferObject {
 #[derive(Debug, Clone, Copy)]
 pub struct DynamicUniformBufferObject {
     pub model: glm::Mat4,
+    // X value is the joint count. Y value is the joint matrix offset. A vec4 is necessary for proper alignment
+    pub joint_info: glm::Vec4,
 }
 
 pub struct PbrPipelineData {

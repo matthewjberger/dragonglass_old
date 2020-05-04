@@ -20,12 +20,9 @@ layout(binding = 0) uniform UboView {
 
 layout(binding = 1) uniform UboInstance {
   mat4 model;
+  float jointCount;
+  float jointOffset;
 } uboInstance;
-
-layout(push_constant) uniform Constants {
-  vec4 baseColorFactor;
-  int colorTextureSet;
-} constants;
 
 layout (location = 0) out vec3 outWorldPos;
 layout (location = 1) out vec3 outNormal;
@@ -34,9 +31,16 @@ layout (location = 3) out vec2 outUV1;
 
 void main()
 {
-  vec4 locPos;
-  locPos = uboInstance.model * vec4(inPos, 1.0);
-  outNormal = normalize(transpose(inverse(mat3(uboInstance.model))) * inNormal);
+  mat4 skinMatrix = mat4(1.0);
+  if (uboInstance.jointCount > 0.0) {
+    skinMatrix =
+      inWeight0.x * uboView.jointMatrices[int(inJoint0.x + uboInstance.jointOffset)] +
+      inWeight0.y * uboView.jointMatrices[int(inJoint0.y + uboInstance.jointOffset)] +
+      inWeight0.z * uboView.jointMatrices[int(inJoint0.z + uboInstance.jointOffset)] +
+      inWeight0.w * uboView.jointMatrices[int(inJoint0.w + uboInstance.jointOffset)];
+  }
+  vec4 locPos = uboInstance.model * skinMatrix * vec4(inPos, 1.0);
+  outNormal = normalize(transpose(inverse(mat3(uboInstance.model * skinMatrix))) * inNormal);
   locPos.y = -locPos.y;
   outWorldPos = locPos.xyz / locPos.w;
   outUV0 = inUV0;
