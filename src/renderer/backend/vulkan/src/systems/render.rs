@@ -163,7 +163,7 @@ pub fn render_system() -> Box<dyn Runnable> {
                                             * joint_global_transform
                                             * joint.inverse_bind_matrix;
 
-                                        ubo.joint_matrices[index] = joint_matrix;
+                                        ubo.joint_matrices[joint_offset + index] = joint_matrix;
                                     }
                                     joint_offset += joint_count;
                                 }
