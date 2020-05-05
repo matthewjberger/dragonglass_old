@@ -74,35 +74,35 @@ fn main() {
         (),
         vec![(
             // AssetName("examples/assets/models/MetalRoughSpheres.glb".to_string()),
-            AssetName("examples/assets/models/CesiumMan.glb".to_string()),
+            AssetName("examples/assets/models/Fox.glb".to_string()),
             AnimationState { time: 0.0 },
             Transform::default(),
         )],
     );
 
-    world.insert(
-        (),
-        vec![(
-            AssetName("examples/assets/models/RiggedSimple.glb".to_string()),
-            AnimationState { time: 0.0 },
-            Transform {
-                translate: glm::translate(&glm::Mat4::identity(), &glm::vec3(2.0, 0.0, 0.0)),
-                ..Default::default()
-            },
-        )],
-    );
+    // world.insert(
+    //     (),
+    //     vec![(
+    //         AssetName("examples/assets/models/RiggedSimple.glb".to_string()),
+    //         AnimationState { time: 0.0 },
+    //         Transform {
+    //             translate: glm::translate(&glm::Mat4::identity(), &glm::vec3(2.0, 0.0, 0.0)),
+    //             ..Default::default()
+    //         },
+    //     )],
+    // );
 
-    world.insert(
-        (),
-        vec![(
-            AssetName("examples/assets/models/BoxAnimated.glb".to_string()),
-            AnimationState { time: 0.0 },
-            Transform {
-                translate: glm::translate(&glm::Mat4::identity(), &glm::vec3(-2.0, 0.0, 0.0)),
-                ..Default::default()
-            },
-        )],
-    );
+    // world.insert(
+    //     (),
+    //     vec![(
+    //         AssetName("examples/assets/models/BoxAnimated.glb".to_string()),
+    //         AnimationState { time: 0.0 },
+    //         Transform {
+    //             translate: glm::translate(&glm::Mat4::identity(), &glm::vec3(-2.0, 0.0, 0.0)),
+    //             ..Default::default()
+    //         },
+    //     )],
+    // );
 
     // world.insert(
     //     (),

@@ -97,6 +97,7 @@ pub struct Joint {
 
 pub struct Primitive {
     pub number_of_indices: u32,
+    pub number_of_vertices: u32,
     pub first_index: u32,
     pub material_index: Option<usize>,
 }
@@ -292,7 +293,7 @@ impl GltfAsset {
                 let stride = Self::vertex_stride() * std::mem::size_of::<f32>();
 
                 let vertex_list_size = vertices.len() * std::mem::size_of::<u32>();
-                let vertex_count = (vertex_list_size / stride) as u32;
+                let number_of_vertices = (vertex_list_size / stride) as u32;
 
                 // Start reading primitive data
                 let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()]));
@@ -358,22 +359,23 @@ impl GltfAsset {
 
                 let first_index = indices.len() as u32;
 
-                let primitive_indices = reader
-                    .read_indices()
-                    .map(|read_indices| {
-                        read_indices
-                            .into_u32()
-                            .map(|x| x + vertex_count)
-                            .collect::<Vec<_>>()
-                    })
-                    .expect("Failed to read indices!");
-                indices.extend_from_slice(&primitive_indices);
+                let primitive_indices = reader.read_indices().map(|read_indices| {
+                    read_indices
+                        .into_u32()
+                        .map(|x| x + number_of_vertices)
+                        .collect::<Vec<_>>()
+                });
 
-                let number_of_indices = primitive_indices.len() as u32;
+                let mut number_of_indices = 0;
+                if let Some(primitive_indices) = primitive_indices {
+                    indices.extend_from_slice(&primitive_indices);
+                    number_of_indices = primitive_indices.len() as u32;
+                }
 
                 all_mesh_primitives.push(Primitive {
-                    first_index,
                     number_of_indices,
+                    number_of_vertices,
+                    first_index,
                     material_index: primitive.material().index(),
                 });
             }

@@ -587,14 +587,24 @@ impl PbrRenderer {
                             byte_slice_from(&material),
                         );
 
-                        device.cmd_draw_indexed(
-                            self.command_buffer,
-                            primitive.number_of_indices,
-                            1,
-                            index_offset + primitive.first_index,
-                            vertex_offset as _,
-                            0,
-                        );
+                        if primitive.number_of_indices > 0 {
+                            device.cmd_draw_indexed(
+                                self.command_buffer,
+                                primitive.number_of_indices,
+                                1,
+                                index_offset + primitive.first_index,
+                                vertex_offset as _,
+                                0,
+                            );
+                        } else {
+                            device.cmd_draw(
+                                self.command_buffer,
+                                primitive.number_of_vertices,
+                                1,
+                                0,
+                                0,
+                            );
+                        }
                     }
                 }
             }
