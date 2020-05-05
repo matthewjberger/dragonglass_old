@@ -22,38 +22,43 @@ pub enum TransformationSet {
     MorphTargetWeights(Vec<f32>),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Transform {
-    translation: Option<glm::Vec3>,
-    rotation: Option<glm::Quat>,
-    scale: Option<glm::Vec3>,
+    pub translation: glm::Vec3,
+    pub rotation: glm::Quat,
+    pub scale: glm::Vec3,
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self {
+            translation: glm::Vec3::identity(),
+            rotation: glm::Quat::identity(),
+            scale: glm::Vec3::identity(),
+        }
+    }
 }
 
 impl Transform {
+    pub fn new(translation: glm::Vec3, rotation: glm::Quat, scale: glm::Vec3) -> Self {
+        Self {
+            translation,
+            rotation,
+            scale,
+        }
+    }
+
     pub fn matrix(&self) -> glm::Mat4 {
-        let mut matrix = glm::Mat4::identity();
-
-        if let Some(translation) = self.translation {
-            matrix *= Matrix4::new_translation(&translation);
-        }
-
-        if let Some(rotation) = self.rotation {
-            matrix *= Matrix4::from(UnitQuaternion::from_quaternion(rotation));
-        }
-
-        if let Some(scale) = self.scale {
-            matrix *= Matrix4::new_nonuniform_scaling(&scale);
-        }
-
-        matrix
+        Matrix4::new_translation(&self.translation)
+            * Matrix4::from(UnitQuaternion::from_quaternion(self.rotation))
+            * Matrix4::new_nonuniform_scaling(&self.scale)
     }
 }
 
 pub type NodeGraph = Graph<Node, ()>;
 
 pub struct Node {
-    pub animation_transform: Transform,
-    pub local_transform: glm::Mat4,
+    pub local_transform: Transform,
     pub mesh: Option<Mesh>,
     pub skin: Option<Skin>,
     pub gltf_index: usize,
@@ -158,15 +163,14 @@ impl GltfAsset {
         }
     }
 
-    fn determine_transform(node: &gltf::Node) -> glm::Mat4 {
-        let transform: Vec<f32> = node
-            .transform()
-            .matrix()
-            .iter()
-            .flat_map(|array| array.iter())
-            .cloned()
-            .collect();
-        glm::make_mat4(&transform.as_slice())
+    fn determine_transform(node: &gltf::Node) -> Transform {
+        let (translation, rotation, scale) = node.transform().decomposed();
+
+        let translation: glm::Vec3 = translation.into();
+        let scale: glm::Vec3 = scale.into();
+        let rotation = glm::quat_normalize(&glm::make_quat(&rotation));
+
+        Transform::new(translation, rotation, scale)
     }
 
     fn prepare_scenes(
@@ -241,7 +245,6 @@ impl GltfAsset {
         let skin = Self::load_skin(node, buffers);
         let name = node.name().unwrap_or(&Self::DEFAULT_NAME).to_string();
         let node_info = Node {
-            animation_transform: Transform::default(),
             local_transform: Self::determine_transform(node),
             mesh,
             skin,
@@ -464,74 +467,74 @@ impl GltfAsset {
         animations
     }
 
-    pub fn animate(&mut self) {
+    pub fn animate(&mut self, index: usize) {
+        if self.animations.get(index).is_none() {
+            return;
+        }
+        let mut animation = &mut self.animations[index];
+
         // TODO: Allow for specifying a specific animation by name
-        for animation in self.animations.iter_mut() {
-            if animation.time > animation.max_animation_time {
-                animation.time = 0.0;
-            }
-            if animation.time < 0.0 {
-                animation.time = animation.max_animation_time;
-            }
-            for channel in animation.channels.iter_mut() {
-                for scene in self.scenes.iter_mut() {
-                    for graph in scene.node_graphs.iter_mut() {
-                        for node_index in graph.node_indices() {
-                            if graph[node_index].gltf_index == channel.target_gltf_index {
-                                let mut input_iter = channel.inputs.iter().enumerate().peekable();
-                                while let Some((previous_key, previous_time)) = input_iter.next() {
-                                    if let Some((next_key, next_time)) = input_iter.peek() {
-                                        let next_key = *next_key;
-                                        let next_time = **next_time;
-                                        let previous_time = *previous_time;
+        if animation.time > animation.max_animation_time {
+            animation.time = 0.0;
+        }
+        if animation.time < 0.0 {
+            animation.time = animation.max_animation_time;
+        }
+        for channel in animation.channels.iter_mut() {
+            for scene in self.scenes.iter_mut() {
+                for graph in scene.node_graphs.iter_mut() {
+                    for node_index in graph.node_indices() {
+                        if graph[node_index].gltf_index == channel.target_gltf_index {
+                            let mut input_iter = channel.inputs.iter().enumerate().peekable();
+                            while let Some((previous_key, previous_time)) = input_iter.next() {
+                                if let Some((next_key, next_time)) = input_iter.peek() {
+                                    let next_key = *next_key;
+                                    let next_time = **next_time;
+                                    let previous_time = *previous_time;
 
-                                        if animation.time < previous_time
-                                            || animation.time > next_time
-                                        {
-                                            continue;
+                                    if animation.time < previous_time || animation.time > next_time
+                                    {
+                                        continue;
+                                    }
+
+                                    let interpolation = (animation.time - previous_time)
+                                        / (next_time - previous_time);
+
+                                    // TODO: Interpolate with other methods
+                                    // Only Linear interpolation is used for now
+                                    match &channel.transformations {
+                                        TransformationSet::Translations(translations) => {
+                                            let start = translations[previous_key];
+                                            let end = translations[next_key];
+                                            let translation_vec =
+                                                glm::mix(&start, &end, interpolation);
+                                            graph[node_index].local_transform.translation =
+                                                translation_vec;
                                         }
-
-                                        let interpolation = (animation.time - previous_time)
-                                            / (next_time - previous_time);
-
-                                        // TODO: Interpolate with other methods
-                                        // Only Linear interpolation is used for now
-                                        match &channel.transformations {
-                                            TransformationSet::Translations(translations) => {
-                                                let start = translations[previous_key];
-                                                let end = translations[next_key];
-                                                let translation_vec =
-                                                    glm::mix(&start, &end, interpolation);
-                                                graph[node_index].animation_transform.translation =
-                                                    Some(translation_vec);
-                                            }
-                                            TransformationSet::Rotations(rotations) => {
-                                                let start = rotations[previous_key];
-                                                let end = rotations[next_key];
-                                                let start_quat = Quaternion::new(
-                                                    start[3], start[0], start[1], start[2],
-                                                );
-                                                let end_quat =
-                                                    Quaternion::new(end[3], end[0], end[1], end[2]);
-                                                let rotation_quat = glm::quat_slerp(
-                                                    &start_quat,
-                                                    &end_quat,
-                                                    interpolation,
-                                                );
-                                                graph[node_index].animation_transform.rotation =
-                                                    Some(glm::quat_normalize(&rotation_quat));
-                                            }
-                                            TransformationSet::Scales(scales) => {
-                                                let start = scales[previous_key];
-                                                let end = scales[next_key];
-                                                let scale_vec =
-                                                    glm::mix(&start, &end, interpolation);
-                                                graph[node_index].animation_transform.scale =
-                                                    Some(scale_vec);
-                                            }
-                                            TransformationSet::MorphTargetWeights(_weights) => {
-                                                unimplemented!()
-                                            }
+                                        TransformationSet::Rotations(rotations) => {
+                                            let start = rotations[previous_key];
+                                            let end = rotations[next_key];
+                                            let start_quat = Quaternion::new(
+                                                start[3], start[0], start[1], start[2],
+                                            );
+                                            let end_quat =
+                                                Quaternion::new(end[3], end[0], end[1], end[2]);
+                                            let rotation_quat = glm::quat_slerp(
+                                                &start_quat,
+                                                &end_quat,
+                                                interpolation,
+                                            );
+                                            graph[node_index].local_transform.rotation =
+                                                glm::quat_normalize(&rotation_quat);
+                                        }
+                                        TransformationSet::Scales(scales) => {
+                                            let start = scales[previous_key];
+                                            let end = scales[next_key];
+                                            let scale_vec = glm::mix(&start, &end, interpolation);
+                                            graph[node_index].local_transform.scale = scale_vec;
+                                        }
+                                        TransformationSet::MorphTargetWeights(_weights) => {
+                                            unimplemented!()
                                         }
                                     }
                                 }
@@ -620,9 +623,7 @@ impl GltfAsset {
         indices
             .iter()
             .fold(glm::Mat4::identity(), |transform, index| {
-                transform
-                    * graph[*index].animation_transform.matrix()
-                    * graph[*index].local_transform
+                transform * graph[*index].local_transform.matrix()
             })
     }
 

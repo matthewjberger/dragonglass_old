@@ -246,7 +246,7 @@ pub fn animation_system() -> Box<dyn Schedulable> {
                 }
 
                 // TODO: Turn animation into system
-                renderer.assets[asset_index.0].animate();
+                renderer.assets[asset_index.0].animate(0);
             }
         })
 }
