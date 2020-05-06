@@ -7,7 +7,6 @@ pub struct QueueFamilyIndexSet {
 }
 
 impl QueueFamilyIndexSet {
-    // TODO: Make this use less parameters if possible
     pub fn new(
         instance: &ash::Instance,
         physical_device: ash::vk::PhysicalDevice,
@@ -33,11 +32,14 @@ impl QueueFamilyIndexSet {
 
             // Check for a present queue
             let present_support = unsafe {
-                surface.surface().get_physical_device_surface_support(
-                    physical_device,
-                    index,
-                    surface.surface_khr(),
-                )
+                surface
+                    .surface()
+                    .get_physical_device_surface_support(
+                        physical_device,
+                        index,
+                        surface.surface_khr(),
+                    )
+                    .expect("Failed to get physical device surface support!")
             };
 
             if present_support && present_queue_family_index.is_none() {
@@ -54,8 +56,10 @@ impl QueueFamilyIndexSet {
         }
 
         Some(QueueFamilyIndexSet {
-            graphics_queue_family_index: graphics_queue_family_index.expect("Failed to get graphics queue family index!"),
-            present_queue_family_index: present_queue_family_index.expect("Failed to get present queue family index!"),
+            graphics_queue_family_index: graphics_queue_family_index
+                .expect("Failed to get graphics queue family index!"),
+            present_queue_family_index: present_queue_family_index
+                .expect("Failed to get present queue family index!"),
         })
     }
 

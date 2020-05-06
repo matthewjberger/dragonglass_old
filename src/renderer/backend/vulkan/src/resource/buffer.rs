@@ -57,6 +57,7 @@ impl Buffer {
             data_pointer.add(offset);
             (data_pointer as *mut T).copy_from_nonoverlapping(data.as_ptr(), data.len());
         }
+        self.unmap_memory().expect("Failed to unmap memory!");
     }
 
     pub fn upload_to_buffer_aligned<T: Copy>(
@@ -74,6 +75,7 @@ impl Buffer {
             );
             align.copy_from_slice(data);
         }
+        self.unmap_memory().expect("Failed to unmap memory!");
     }
 
     pub fn map_memory(&self) -> vk_mem::error::Result<*mut u8> {

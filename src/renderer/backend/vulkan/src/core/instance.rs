@@ -2,7 +2,7 @@ use crate::core::{surface::surface_extension_names, DebugLayer, LayerNameVec};
 use ash::{
     extensions::ext::DebugUtils,
     version::{EntryV1_0, InstanceV1_0},
-    vk, vk_make_version,
+    vk::{self, make_version},
 };
 use snafu::ResultExt;
 use std::ffi::{CStr, CString};
@@ -36,11 +36,11 @@ trait ApplicationDescription {
 }
 
 impl ApplicationDescription for Instance {
-    const APPLICATION_NAME: &'static str = "Vulkan Tutorial";
-    const APPLICATION_VERSION: u32 = vk_make_version!(1, 0, 0);
-    const API_VERSION: u32 = vk_make_version!(1, 0, 0);
-    const ENGINE_VERSION: u32 = vk_make_version!(1, 0, 0);
-    const ENGINE_NAME: &'static str = "Sepia Engine";
+    const APPLICATION_NAME: &'static str = "Dragonglass";
+    const APPLICATION_VERSION: u32 = make_version(1, 0, 0);
+    const API_VERSION: u32 = make_version(1, 0, 0);
+    const ENGINE_VERSION: u32 = make_version(1, 0, 0);
+    const ENGINE_NAME: &'static str = "Dragonglass Engine";
 }
 
 pub struct Instance {
