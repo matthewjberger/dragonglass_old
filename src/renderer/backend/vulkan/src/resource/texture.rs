@@ -146,6 +146,10 @@ impl TextureDescription {
             Format::B8G8R8A8 => vk::Format::B8G8R8A8_UNORM,
             Format::R8G8B8 => vk::Format::R8G8B8_UNORM,
             Format::B8G8R8 => vk::Format::B8G8R8_UNORM,
+            Format::R16 => vk::Format::R16_UNORM,
+            Format::R16G16 => vk::Format::R16G16_UNORM,
+            Format::R16G16B16 => vk::Format::R16G16B16_UNORM,
+            Format::R16G16B16A16 => vk::Format::R16G16B16A16_UNORM,
         }
     }
 }
