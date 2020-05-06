@@ -2,6 +2,7 @@ use crate::{
     core::VulkanContext,
     model::gltf::GltfAsset,
     pipelines::{
+        gui::{GuiPipeline, GuiPipelineData},
         pbr::{PbrPipeline, PbrPipelineData, PbrRenderer},
         skybox::{SkyboxPipeline, SkyboxPipelineData, SkyboxRenderer, VERTICES},
     },
@@ -30,6 +31,8 @@ pub struct Renderer {
     pub pbr_pipeline_data: Option<PbrPipelineData>,
     pub skybox_pipeline: Option<SkyboxPipeline>,
     pub skybox_pipeline_data: Option<SkyboxPipelineData>,
+    pub gui_pipeline: Option<GuiPipeline>,
+    pub gui_pipeline_data: Option<GuiPipelineData>,
     pub cubemap: Option<HdrCubemap>,
     pub irradiance_map: Option<IrradianceMap>,
     pub prefilter_map: Option<PrefilterMap>,
@@ -75,6 +78,8 @@ impl Renderer {
             pbr_pipeline_data: None,
             skybox_pipeline: None,
             skybox_pipeline_data: None,
+            gui_pipeline: None,
+            gui_pipeline_data: None,
             cubemap: None,
             irradiance_map: None,
             prefilter_map: None,
@@ -85,6 +90,7 @@ impl Renderer {
 
         renderer.pbr_pipeline = Some(PbrPipeline::new(&mut renderer));
         renderer.skybox_pipeline = Some(SkyboxPipeline::new(&mut renderer));
+        renderer.gui_pipeline = Some(GuiPipeline::new(&mut renderer));
         renderer
     }
 
@@ -137,12 +143,15 @@ impl Renderer {
 
         let pbr_pipeline = PbrPipeline::new(self);
         let skybox_pipeline = SkyboxPipeline::new(self);
+        let gui_pipeline = GuiPipeline::new(self);
 
         self.pbr_pipeline = None;
         self.skybox_pipeline = None;
+        self.gui_pipeline = None;
 
         self.pbr_pipeline = Some(pbr_pipeline);
         self.skybox_pipeline = Some(skybox_pipeline);
+        self.gui_pipeline = Some(gui_pipeline);
 
         self.record_command_buffers();
     }
