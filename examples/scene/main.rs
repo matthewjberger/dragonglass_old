@@ -8,6 +8,8 @@ use dragonglass_core::{
     input::Input,
     AnimationState, AppState, DeltaTime,
 };
+use imgui::{Context, FontConfig, FontSource};
+use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use legion::prelude::*;
 use nalgebra_glm as glm;
 use std::time::Instant;
@@ -37,6 +39,29 @@ fn main() {
         .expect("Failed to create window.");
 
     log::debug!("Running application.");
+
+    let mut imgui = Context::create();
+    imgui.set_ini_filename(None);
+
+    let mut platform = WinitPlatform::init(&mut imgui);
+    platform.attach_window(imgui.io_mut(), &window, HiDpiMode::Default);
+
+    let hidpi_factor = platform.hidpi_factor();
+    let font_size = (13.0 * hidpi_factor) as f32;
+    imgui.fonts().add_font(&[FontSource::DefaultFontData {
+        config: Some(FontConfig {
+            size_pixels: font_size,
+            ..FontConfig::default()
+        }),
+    }]);
+
+    imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
+
+    {
+        // This will need to be used in the renderer
+        let mut fonts = imgui.fonts();
+        let atlas_texture = fonts.build_rgba32_texture();
+    }
 
     let mut world = World::new();
 
@@ -125,6 +150,8 @@ fn main() {
         *control_flow = ControlFlow::Poll;
         match event {
             Event::NewEvents { .. } => {
+                imgui.io_mut().update_delta_time(last_frame);
+
                 let delta_time =
                     (Instant::now().duration_since(last_frame).as_micros() as f64) / 1_000_000_f64;
                 last_frame = Instant::now();
@@ -214,9 +241,23 @@ fn main() {
                     input.mouse.position_delta = glm::vec2(0.0, 0.0);
                 }
                 cursor_moved = false;
+
+                platform
+                    .prepare_frame(imgui.io_mut(), &window)
+                    .expect("Failed to prepare frame");
+
                 window.request_redraw();
             }
             Event::RedrawRequested(_) => {
+                let ui = imgui.frame();
+                // Application specific rendering
+                // construct the UI
+
+                platform.prepare_render(&ui, &window);
+
+                let draw_data = ui.render();
+                // render draw data
+
                 schedule.execute(&mut world);
             }
             Event::RedrawEventsCleared => {
@@ -226,7 +267,9 @@ fn main() {
                     .expect("Failed to get input resource!");
                 input.mouse.wheel_delta = 0.0;
             }
-            _ => (),
+            event => {
+                platform.handle_event(imgui.io_mut(), &window, &event);
+            }
         }
     });
 }

@@ -9,9 +9,11 @@ name = "scene"
 path = "scene/main.rs"
 
 [dependencies]
+imgui = "0.3.0"
+imgui-winit-support = "0.3.1"
 env_logger = "0.7.1"
 log = "0.4.8"
-winit = "0.22.1"
+winit = "0.21"
 nalgebra-glm = "0.7.0"
 snafu = "0.6.7"
 legion = "0.2.1"
