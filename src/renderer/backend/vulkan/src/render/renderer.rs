@@ -15,6 +15,7 @@ use crate::{
     sync::SynchronizationSet,
 };
 use ash::{version::DeviceV1_0, vk};
+use imgui::DrawData;
 use nalgebra_glm as glm;
 use std::sync::Arc;
 use winit::window::Window;
@@ -38,7 +39,8 @@ pub struct Renderer {
     pub prefilter_map: Option<PrefilterMap>,
     pub brdflut: Option<Brdflut>,
     pub can_reload: bool,
-    pub geometry_buffer: Option<GeometryBuffer>,
+    pub asset_geometry_buffer: Option<GeometryBuffer>,
+    pub gui_geometry_buffer: Option<GeometryBuffer>,
 }
 
 impl Renderer {
@@ -85,7 +87,8 @@ impl Renderer {
             prefilter_map: None,
             brdflut: None,
             can_reload: false,
-            geometry_buffer: None,
+            asset_geometry_buffer: None,
+            gui_geometry_buffer: None,
         };
 
         renderer.pbr_pipeline = Some(PbrPipeline::new(&mut renderer));
@@ -190,6 +193,32 @@ impl Renderer {
         self.cubemap = Some(hdr_cubemap);
     }
 
+    pub fn load_gui(&mut self, draw_data: &DrawData) {
+        let mut vertices = Vec::with_capacity(draw_data.total_vtx_count as usize);
+        for draw_list in draw_data.draw_lists() {
+            vertices.extend_from_slice(draw_list.vtx_buffer());
+        }
+
+        let mut indices = Vec::with_capacity(draw_data.total_idx_count as usize);
+        for draw_list in draw_data.draw_lists() {
+            indices.extend_from_slice(draw_list.idx_buffer());
+        }
+        let indices = indices.iter().map(|x| *x as u32).collect::<Vec<_>>();
+
+        let mut vertex_data = Vec::new();
+        vertices.iter().for_each(|vertex| {
+            vertex_data.extend_from_slice(&vertex.pos);
+            vertex_data.extend_from_slice(&vertex.uv);
+            vertex_data
+                .extend_from_slice(&vertex.col.iter().map(|x| *x as f32).collect::<Vec<_>>());
+        });
+
+        let gui_geometry_buffer =
+            GeometryBuffer::new(&self.transient_command_pool, &vertex_data, Some(&indices));
+
+        self.gui_geometry_buffer = Some(gui_geometry_buffer);
+    }
+
     pub fn load_assets(&mut self, asset_names: &[String]) {
         self.load_environment();
 
@@ -212,10 +241,10 @@ impl Renderer {
             .flat_map(|asset| asset.indices.iter().copied())
             .collect::<Vec<_>>();
 
-        let geometry_buffer =
+        let asset_geometry_buffer =
             GeometryBuffer::new(&self.transient_command_pool, &vertices, Some(&indices));
 
-        self.geometry_buffer = Some(geometry_buffer);
+        self.asset_geometry_buffer = Some(asset_geometry_buffer);
 
         let textures = assets
             .iter()
@@ -340,7 +369,7 @@ impl Renderer {
         self.update_viewport(command_buffer);
 
         let geometry_buffer = self
-            .geometry_buffer
+            .asset_geometry_buffer
             .as_ref()
             .expect("Failed to get geometry buffer!");
 

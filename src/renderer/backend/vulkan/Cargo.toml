@@ -5,6 +5,7 @@ authors = ["Matthew J. Berger <matthewberger@nevada.unr.edu>"]
 edition = "2018"
 
 [dependencies]
+imgui = "0.3.0"
 winit = "0.21"
 ash = "0.30.0"
 env_logger = "0.7.1"

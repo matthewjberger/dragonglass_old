@@ -4,7 +4,6 @@ use crate::{
     resource::{DescriptorPool, DescriptorSetLayout, PipelineLayout, Shader, TextureBundle},
 };
 use ash::{version::DeviceV1_0, vk};
-use dragonglass_core::byte_slice_from;
 use nalgebra_glm as glm;
 use std::{ffi::CString, mem, sync::Arc};
 
