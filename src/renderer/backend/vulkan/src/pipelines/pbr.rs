@@ -9,6 +9,7 @@ use crate::{
 };
 use ash::{version::DeviceV1_0, vk};
 use dragonglass_core::byte_slice_from;
+use gltf::material::AlphaMode;
 use nalgebra_glm as glm;
 use std::{ffi::CString, mem, sync::Arc};
 
@@ -22,8 +23,8 @@ pub struct PushConstantBlockMaterial {
     pub emissive_texture_set: i32,
     pub metallic_factor: f32,
     pub roughness_factor: f32,
-    pub alpha_mask: i32,
-    pub alpha_mask_cutoff: f32,
+    pub alpha_mode: i32,
+    pub alpha_cutoff: f32,
 }
 
 pub struct PbrPipeline {
@@ -31,7 +32,7 @@ pub struct PbrPipeline {
 }
 
 impl PbrPipeline {
-    pub fn new(renderer: &mut Renderer) -> Self {
+    pub fn new(renderer: &mut Renderer, blended: bool) -> Self {
         let (vertex_shader, fragment_shader, _shader_entry_point_name) =
             Self::create_shaders(renderer.context.clone());
         let shader_state_info = [vertex_shader.state_info(), fragment_shader.state_info()];
@@ -81,7 +82,11 @@ impl PbrPipeline {
             .back(Default::default())
             .build();
 
-        let color_blend_attachments = Self::create_color_blend_attachments();
+        let color_blend_attachments = if blended {
+            Self::create_color_blend_attachments_blended()
+        } else {
+            Self::create_color_blend_attachments_opaque()
+        };
         let color_blending_info = vk::PipelineColorBlendStateCreateInfo::builder()
             .logic_op_enable(false)
             .logic_op(vk::LogicOp::COPY)
@@ -152,14 +157,28 @@ impl PbrPipeline {
         (vertex_shader, fragment_shader, shader_entry_point_name)
     }
 
-    pub fn create_color_blend_attachments() -> [vk::PipelineColorBlendAttachmentState; 1] {
+    pub fn create_color_blend_attachments_opaque() -> [vk::PipelineColorBlendAttachmentState; 1] {
+        let color_blend_attachment = vk::PipelineColorBlendAttachmentState::builder()
+            .color_write_mask(vk::ColorComponentFlags::all())
+            .blend_enable(false)
+            .src_color_blend_factor(vk::BlendFactor::ONE)
+            .dst_color_blend_factor(vk::BlendFactor::ZERO)
+            .color_blend_op(vk::BlendOp::ADD)
+            .src_alpha_blend_factor(vk::BlendFactor::ONE)
+            .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
+            .alpha_blend_op(vk::BlendOp::ADD)
+            .build();
+        [color_blend_attachment]
+    }
+
+    pub fn create_color_blend_attachments_blended() -> [vk::PipelineColorBlendAttachmentState; 1] {
         let color_blend_attachment = vk::PipelineColorBlendAttachmentState::builder()
             .color_write_mask(vk::ColorComponentFlags::all())
             .blend_enable(true)
             .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
             .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
             .color_blend_op(vk::BlendOp::ADD)
-            .src_alpha_blend_factor(vk::BlendFactor::ONE)
+            .src_alpha_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
             .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
             .alpha_blend_op(vk::BlendOp::ADD)
             .build();
@@ -562,6 +581,7 @@ impl PbrRenderer {
         mesh_offset: usize,
         index_offset: u32,
         vertex_offset: u32,
+        alpha_mode: AlphaMode,
     ) {
         asset.walk(|node_index, graph| {
             if let Some(mesh) = graph[node_index].mesh.as_ref() {
@@ -577,6 +597,20 @@ impl PbrRenderer {
                 }
 
                 for primitive in mesh.primitives.iter() {
+                    let mut primitive_alpha_mode = AlphaMode::Opaque;
+                    if let Some(material_index) = primitive.material_index {
+                        let primitive_material = asset
+                            .gltf
+                            .materials()
+                            .nth(material_index)
+                            .expect("Failed to retrieve material!");
+                        primitive_alpha_mode = primitive_material.alpha_mode();
+                    }
+
+                    if primitive_alpha_mode != alpha_mode {
+                        continue;
+                    }
+
                     let material = Self::create_material(&asset, &primitive, texture_offset);
                     unsafe {
                         device.cmd_push_constants(
@@ -616,8 +650,8 @@ impl PbrRenderer {
             emissive_texture_set: -1,
             metallic_factor: 0.0,
             roughness_factor: 0.0,
-            alpha_mask: gltf::material::AlphaMode::Opaque as i32,
-            alpha_mask_cutoff: 0.0,
+            alpha_mode: gltf::material::AlphaMode::Opaque as i32,
+            alpha_cutoff: 0.0,
         };
 
         if let Some(material_index) = primitive.material_index {
@@ -632,8 +666,8 @@ impl PbrRenderer {
             material.metallic_factor = pbr.metallic_factor();
             material.roughness_factor = pbr.roughness_factor();
             material.emissive_factor = glm::Vec3::from(primitive_material.emissive_factor());
-            material.alpha_mask_cutoff = primitive_material.alpha_cutoff();
-            material.alpha_mask = primitive_material.alpha_mode() as i32;
+            material.alpha_mode = primitive_material.alpha_mode() as i32;
+            material.alpha_cutoff = primitive_material.alpha_cutoff();
 
             if let Some(base_color_texture) = pbr.base_color_texture() {
                 material.color_texture_set =

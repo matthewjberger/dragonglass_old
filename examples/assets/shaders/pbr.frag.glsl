@@ -24,8 +24,8 @@ layout(push_constant) uniform Material {
   int emissiveTextureSet;
   float metallicFactor;
   float roughnessFactor;
-  float alphaMask;
-  float alphaMaskCutoff;
+  int alphaMode;
+  float alphaCutoff;
 } material;
 
 layout(location = 0) out vec4 outColor;
@@ -117,7 +117,7 @@ void main()
     baseColor = material.baseColorFactor;
   }
 
-  if (baseColor.a < material.alphaMaskCutoff) {
+  if (material.alphaMode == 2 && baseColor.a < material.alphaCutoff) {
     discard;
   }
 
