@@ -18,6 +18,7 @@ nalgebra-glm = "0.7.0"
 snafu = "0.6.7"
 legion = "0.2.1"
 dragonglass-core = { path = "../src/core", version = "0.1.0" }
+openxr = { version = "0.12.1", features = ["static"] }
 
 # TODO: This needs to be behind a feature flag
 dragonglass-backend-vulkan = { path = "../src/renderer/backend/vulkan", version = "0.1.0" }

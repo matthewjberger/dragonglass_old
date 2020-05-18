@@ -12,6 +12,7 @@ use imgui::{Context, FontConfig, FontSource};
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
 use legion::prelude::*;
 use nalgebra_glm as glm;
+use openxr as xr;
 use std::time::Instant;
 use winit::{
     dpi::PhysicalSize,
@@ -66,6 +67,47 @@ fn main() {
     let mut world = World::new();
 
     let mut renderer = Renderer::new(&window);
+
+    let entry = xr::Entry::linked();
+
+    let extensions = entry.enumerate_extensions().unwrap();
+    println!("supported extensions: {:?}", extensions);
+    if !extensions.khr_convert_timespec_time {
+        panic!("timespec conversion unsupported");
+    }
+    let instance = entry
+        .create_instance(
+            &xr::ApplicationInfo {
+                application_name: "hello openxrs",
+                ..Default::default()
+            },
+            &xr::ExtensionSet::default(),
+        )
+        .unwrap();
+    let instance_props = instance.properties().unwrap();
+    println!(
+        "loaded instance: {} v{}",
+        instance_props.runtime_name, instance_props.runtime_version
+    );
+
+    let system = instance
+        .system(xr::FormFactor::HEAD_MOUNTED_DISPLAY)
+        .unwrap();
+    let system_props = instance.system_properties(system).unwrap();
+    println!(
+        "selected system {}: {}",
+        system_props.system_id.into_raw(),
+        if system_props.system_name.is_empty() {
+            "<unnamed>"
+        } else {
+            &system_props.system_name
+        }
+    );
+
+    let view_config_views = instance
+        .enumerate_view_configuration_views(system, xr::ViewConfigurationType::PRIMARY_STEREO)
+        .unwrap();
+    println!("view configuration views: {:?}", view_config_views);
 
     let input = Input::default();
     world.resources.insert(input);
